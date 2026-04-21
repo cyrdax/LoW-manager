@@ -74,7 +74,8 @@ body {
     var(--col-training, 200px)
     var(--col-sp, 110px)
     var(--col-implants, 90px)
-    var(--col-actions, 72px);
+    1fr                              /* flexible spacer — pushes actions to the right edge */
+    var(--col-actions, 140px);
   gap: 12px;
   align-items: center;
 }
@@ -167,9 +168,17 @@ body {
   background: #172a1f;
   border-color: #3a6b4d;
 }
+.prow.has-wrong-implants {
+  background: #2a1c17;
+  border-color: #8c4d2e;
+}
 .prow.is-boss.has-virtue {
   background: #1a2d33;
   border-color: #4d8aa3;
+}
+.prow.is-boss.has-wrong-implants {
+  background: #2d2517;
+  border-color: #9c6b2e;
 }
 .prow .reauth-line {
   position: absolute;
@@ -216,17 +225,19 @@ body {
 .prow .col-cell.right .value { text-align: right; }
 .prow .col-cell .free { color: var(--accent); font-size: 11px; }
 
-.prow .col-actions { display: flex; justify-content: flex-end; gap: 4px; }
+.col-actions { grid-column: 11; } /* skip the 1fr spacer track and land on the right edge */
+.prow .col-actions { display: flex; justify-content: flex-end; gap: 14px; padding-right: 4px; }
 .prow .col-actions button {
   background: transparent;
   color: var(--dim);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 4px 8px;
+  padding: 6px 20px;
   cursor: pointer;
   font: inherit;
   font-size: 14px;
   line-height: 1;
+  min-width: 48px;
 }
 .prow .col-actions button:hover { color: var(--text); background: var(--panel-2); }
 .prow .col-actions button.danger { color: var(--red); border-color: #3a2a2f; }

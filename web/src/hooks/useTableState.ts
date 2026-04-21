@@ -17,14 +17,14 @@ const DEFAULT_WIDTHS: Record<ColKey, number> = {
   training: 200,
   sp: 110,
   implants: 90,
-  actions: 72,
+  actions: 140,
 };
 
 const MIN_WIDTH: Partial<Record<ColKey, number>> = {
   name: 140, location: 90, ship: 120, wallet: 70, training: 120, sp: 70, implants: 60,
 };
 
-const STORE_KEY = 'efd.table.v1';
+const STORE_KEY = 'efd.table.v2';
 
 interface Persisted {
   widths: Record<ColKey, number>;

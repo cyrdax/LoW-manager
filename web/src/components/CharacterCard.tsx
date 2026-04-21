@@ -54,12 +54,15 @@ export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, o
   const corpLabel = c.corporationTicker ? `[${c.corporationTicker}]` : '';
   const implantsTitle = c.implantNames.length ? c.implantNames.join('\n') : 'No implants';
 
+  const hasImplants = c.implantNames.length > 0;
   const hasVirtue = c.implantNames.some(n => /virtue/i.test(n));
+  const hasWrongImplants = hasImplants && !hasVirtue;
   const rowClass = [
     'prow',
     c.needsReauth && 'needs-reauth',
     c.isBoss && 'is-boss',
     hasVirtue && 'has-virtue',
+    hasWrongImplants && 'has-wrong-implants',
   ].filter(Boolean).join(' ');
 
   return (
