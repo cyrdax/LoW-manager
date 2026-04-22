@@ -34,6 +34,7 @@ Updates push to the browser via Server-Sent Events as polls complete. No client-
 - **Has implants but none are Virtue**: orange-red tint. Flags alts who need to jump-clone before a scan op.
 - **Needs re-auth**: red border + "Needs re-auth" label. Usually means the refresh token was revoked on CCP's side or scopes changed.
 - Boss tint composes with implant tint (teal = boss with Virtues, amber = boss with wrong pod).
+- **AU-79 is ignored by the tint logic.** It's a cosmetic/special implant, so a pod containing only AU-79 counts as "no implants" for coloration. It still shows up in the `N/10` count and the hover tooltip.
 
 ### Sortable, resizable, persistent table
 

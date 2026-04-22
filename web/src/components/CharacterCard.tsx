@@ -54,8 +54,10 @@ export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, o
   const corpLabel = c.corporationTicker ? `[${c.corporationTicker}]` : '';
   const implantsTitle = c.implantNames.length ? c.implantNames.join('\n') : 'No implants';
 
-  const hasImplants = c.implantNames.length > 0;
-  const hasVirtue = c.implantNames.some(n => /virtue/i.test(n));
+  // AU-79 is a cosmetic/special implant that shouldn't count when judging the character's pod.
+  const relevantImplants = c.implantNames.filter(n => !/AU-?79/i.test(n));
+  const hasImplants = relevantImplants.length > 0;
+  const hasVirtue = relevantImplants.some(n => /virtue/i.test(n));
   const hasWrongImplants = hasImplants && !hasVirtue;
   const rowClass = [
     'prow',
