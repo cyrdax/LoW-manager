@@ -47,7 +47,8 @@ Updates push to the browser via Server-Sent Events as polls complete. No client-
 - **Add character** — opens a popup to CCP's SSO. Popup closes itself after login; the new character auto-selects.
 - **Set waypoint on all clients** — type a system name (≥ 2 chars). Up to 3 live suggestions populate below. Arrow keys to navigate, Enter to confirm, Esc to dismiss. Selecting a system fires `POST /ui/autopilot/waypoint/` against every *currently-online selected* character (or all online characters when nothing is selected).
 - **Fleet boss status** — shows whose row is starred, whether they're in a fleet, and their role. Invite is only enabled when the boss's role is `fleet_commander` (more on this below).
-- **Invite selected (N)** — sends fleet invites to every selected, non-boss, non-reauth-needed alt. Reports per-character results (`invited`, `already in fleet`, `CSPA blocked`, specific ESI errors).
+- **Invite target** — once the boss is fleet_commander of a real fleet, a dropdown appears listing every `Wing Name / Squad Name` on the fleet plus an "Auto (first wing / first squad)" default. Pick a specific target to route invites into that exact squad; leave on Auto to fall back to first-wing/first-squad (which matches a freshly-formed fleet's "Wing 1 / Squad 1"). ESI does not expose the in-client "Set as Default" marker, so this dropdown is the compensating control.
+- **Invite selected (N)** — sends fleet invites to every selected, non-boss, non-reauth-needed alt into the target chosen above. Reports per-character results (`invited`, `already in fleet`, `CSPA blocked`, specific ESI errors).
 
 ### Select-all + bulk actions
 
@@ -64,6 +65,7 @@ Several things players expect work differently or not at all through ESI. These 
 - **ESI cannot accept invites.** You still click Accept on each client. Once a character joins, their row shows a green ✓ pill and the "Invite selected" button skips them next time.
 - **ESI cannot post to chat or broadcast fleet commands.** Both were removed in 2018 / never existed. Don't waste time looking for them.
 - **Fleet write endpoints require `fleet_commander` role, not just fleet ownership.** This is CCP's rule, not ours — a squad commander who owns the fleet will get a 404 on fleet-level calls. The sidebar nudges you to move to the Fleet Commander slot in-client when needed.
+- **The in-client "Set as Default" wing/squad flag is not exposed via ESI.** `GET /fleets/{id}/` returns `motd`, `is_free_move`, `is_registered`, `is_voice_enabled` and nothing else; `GET /fleets/{id}/wings/` returns `id`, `name`, and `squads[]` per wing. No default marker. That's why the app asks you to pick an invite target explicitly.
 - **CSPA charges** set by a character block fleet invites to them; ESI returns 403 and the UI surfaces it per row.
 - **ESI returns non-ASCII ship names as Python `repr()` strings** like `u'\u30e0 FantasticScans…'`. This app decodes them server-side so you see the real characters.
 
@@ -133,10 +135,11 @@ npm start       # Fastify serves the built frontend on :3000
 
 1. **First run**: add every alt via the SSO popup. They'll populate the table as their polls complete (a second or two each).
 2. **Designate a boss**: click ★ next to the character you'll be flying as FC. The row turns blue.
-3. **Form the fleet in-client**: on the boss character, open the Fleet menu → Create Fleet. The app's sidebar flips to green **"Fleet commander · fleet NNNNN"** within ~30 s (ESI cache).
-4. **Invite selected**: hit the button. Each alt gets an in-client fleet invite popup. The app reports per-alt results.
-5. **Tab through each client and click Accept**. Rows light up with green ✓ pills as alts join.
-6. **Drive the group around**: use the "Set waypoint on all clients" search (type `jit`, Enter) to fan the autopilot out to every online alt.
+3. **Form the fleet in-client**: on the boss character, open the Fleet menu → Create Fleet. The app's sidebar flips to green **"Fleet commander · fleet NNNNN"** within ~30 s (ESI cache). The **Invite target** dropdown populates with the fleet's wings/squads.
+4. **(Optional) Pick a specific squad** in the Invite target dropdown if you don't want the Auto (first wing / first squad) default.
+5. **Invite selected**: hit the button. Each alt gets an in-client fleet invite popup. The app reports per-alt results.
+6. **Tab through each client and click Accept**. Rows light up with green ✓ pills as alts join.
+7. **Drive the group around**: use the "Set waypoint on all clients" search (type `jit`, Enter) to fan the autopilot out to every online alt.
 
 ### Keeping the boss in the Fleet Commander slot
 

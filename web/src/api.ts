@@ -56,13 +56,35 @@ export async function setBoss(id: number): Promise<void> {
   });
 }
 
-export async function inviteAll(characterIds?: number[]): Promise<{ fleet_id?: number; results: InviteResult[]; error?: string }> {
+export interface InviteTarget { wing_id: number; squad_id: number }
+
+export async function inviteAll(
+  characterIds?: number[],
+  target?: InviteTarget,
+): Promise<{ fleet_id?: number; results: InviteResult[]; error?: string }> {
+  const body: Record<string, unknown> = {};
+  if (characterIds) body.character_ids = characterIds;
+  if (target) { body.wing_id = target.wing_id; body.squad_id = target.squad_id; }
   const res = await fetch('/api/fleet/invite-all', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(characterIds ? { character_ids: characterIds } : {}),
+    body: JSON.stringify(body),
   });
   if (!res.ok) return { results: [], error: (await res.json()).error ?? res.statusText };
+  return res.json();
+}
+
+export interface FleetSquad { id: number; name: string }
+export interface FleetWing { id: number; name: string; squads: FleetSquad[] }
+export interface FleetStructure {
+  fleet: { fleet_id: number; role: string; wing_id: number; squad_id: number } | null;
+  wings: FleetWing[];
+  error?: string;
+}
+
+export async function fetchFleetStructure(): Promise<FleetStructure> {
+  const res = await fetch('/api/fleet/structure');
+  if (!res.ok) return { fleet: null, wings: [], error: res.statusText };
   return res.json();
 }
 

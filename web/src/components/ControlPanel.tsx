@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  fetchFleetStructure,
   inviteAll,
   searchSystems,
   setWaypointAll,
   type CharacterStatus,
+  type FleetStructure,
   type InviteResult,
   type SystemHit,
   type WaypointResult,
@@ -19,14 +21,31 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<InviteResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [structure, setStructure] = useState<FleetStructure | null>(null);
+  const [targetKey, setTargetKey] = useState<string>('auto');
 
   const boss = chars.find(c => c.isBoss);
   const bossInFleet = boss?.fleetId != null;
   const bossIsFC = boss?.fleetRole === 'fleet_commander';
 
+  // Fetch the fleet's wing/squad tree when the boss is FC of a fleet.
+  useEffect(() => {
+    if (!bossInFleet || !bossIsFC) { setStructure(null); return; }
+    let cancelled = false;
+    fetchFleetStructure().then(s => { if (!cancelled) setStructure(s); });
+    return () => { cancelled = true; };
+  }, [bossInFleet, bossIsFC, boss?.fleetId]);
+
   const selectedIds = Array.from(selection);
   const selectedCharsNonBoss = chars.filter(c => selection.has(c.characterId) && !c.isBoss && !c.needsReauth);
   const canInvite = !!boss && bossInFleet && bossIsFC && selectedCharsNonBoss.length > 0;
+
+  const parsedTarget = (() => {
+    if (targetKey === 'auto' || !structure) return undefined;
+    const [w, s] = targetKey.split(':').map(Number);
+    if (!Number.isFinite(w) || !Number.isFinite(s)) return undefined;
+    return { wing_id: w, squad_id: s };
+  })();
 
   const openAuth = () => {
     const w = window.open('/auth/login', '_blank', 'width=560,height=720');
@@ -42,7 +61,7 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
     setBusy(true);
     setError(null);
     setResults(null);
-    const r = await inviteAll(selectedCharsNonBoss.map(c => c.characterId));
+    const r = await inviteAll(selectedCharsNonBoss.map(c => c.characterId), parsedTarget);
     setBusy(false);
     if (r.error) setError(r.error);
     else setResults(r.results);
@@ -74,6 +93,31 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
           </div>
         )}
       </div>
+
+      {structure && structure.wings.length > 0 && (
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 6 }}>Invite target</div>
+          <select
+            value={targetKey}
+            onChange={e => setTargetKey(e.target.value)}
+            style={{ width: '100%' }}
+          >
+            <option value="auto">Auto (first wing / first squad)</option>
+            {structure.wings.flatMap(w =>
+              w.squads.length === 0
+                ? []
+                : w.squads.map(s => (
+                    <option key={`${w.id}:${s.id}`} value={`${w.id}:${s.id}`}>
+                      {w.name || `Wing ${w.id}`} / {s.name || `Squad ${s.id}`}
+                    </option>
+                  )),
+            )}
+          </select>
+          <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 4 }}>
+            ESI can't see which squad the fleet marks as "default" — pick explicitly.
+          </div>
+        </div>
+      )}
 
       <button className="primary" disabled={!canInvite || busy} onClick={doInviteAll}>
         {busy ? 'Inviting…' : `Invite selected (${selectedCharsNonBoss.length})`}
