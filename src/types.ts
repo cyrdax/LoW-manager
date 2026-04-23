@@ -34,11 +34,16 @@ export interface CharacterStatus {
   trainingSkillName: string | null;
   trainingLevel: number | null;
   trainingFinishDate: string | null;
+  // ISO date when the *last* queued skill finishes (i.e. when queue runs dry).
+  // Empty string "" = polled and queue is empty. null = not polled yet.
+  trainingQueueEnd: string | null;
   totalSp: number | null;
   unallocatedSp: number | null;
   implantNames: string[];
   fleetId: number | null;
   fleetRole: 'fleet_commander' | 'wing_commander' | 'squad_commander' | 'squad_member' | null;
+  fleetWingId: number | null;
+  fleetSquadId: number | null;
   isBoss: boolean;
   needsReauth: boolean;
   updatedAt: number;

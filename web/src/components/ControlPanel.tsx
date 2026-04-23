@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   fetchFleetStructure,
   inviteAll,
+  moveToSquad,
   searchSystems,
   setWaypointAll,
   type CharacterStatus,
@@ -20,6 +21,7 @@ interface Props {
 export function ControlPanel({ chars, selection, onRefresh }: Props) {
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<InviteResult[] | null>(null);
+  const [resultsLabel, setResultsLabel] = useState<'invited' | 'moved' | 'ok'>('ok');
   const [error, setError] = useState<string | null>(null);
   const [structure, setStructure] = useState<FleetStructure | null>(null);
   const [targetKey, setTargetKey] = useState<string>('auto');
@@ -29,16 +31,28 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
   const bossIsFC = boss?.fleetRole === 'fleet_commander';
 
   // Fetch the fleet's wing/squad tree when the boss is FC of a fleet.
+  // Fast retry while wings aren't readable (ESI registration lag is 10–60s typical);
+  // back off to idle once we have them.
+  const [pokeNonce, setPokeNonce] = useState(0);
   useEffect(() => {
     if (!bossInFleet || !bossIsFC) { setStructure(null); return; }
     let cancelled = false;
-    fetchFleetStructure().then(s => { if (!cancelled) setStructure(s); });
-    return () => { cancelled = true; };
-  }, [bossInFleet, bossIsFC, boss?.fleetId]);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      const s = await fetchFleetStructure().catch(() => null);
+      if (cancelled) return;
+      setStructure(s);
+      const haveWings = s && s.wings.some(w => w.squads.length > 0);
+      if (!haveWings) timer = setTimeout(tick, 2_500);
+    };
+    tick();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [bossInFleet, bossIsFC, boss?.fleetId, pokeNonce]);
 
   const selectedIds = Array.from(selection);
   const selectedCharsNonBoss = chars.filter(c => selection.has(c.characterId) && !c.isBoss && !c.needsReauth);
-  const canInvite = !!boss && bossInFleet && bossIsFC && selectedCharsNonBoss.length > 0;
+  const wingsVisible = !!structure && structure.wings.some(w => w.squads.length > 0);
+  const canInvite = !!boss && bossInFleet && bossIsFC && wingsVisible && selectedCharsNonBoss.length > 0;
 
   const parsedTarget = (() => {
     if (targetKey === 'auto' || !structure) return undefined;
@@ -46,6 +60,14 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
     if (!Number.isFinite(w) || !Number.isFinite(s)) return undefined;
     return { wing_id: w, squad_id: s };
   })();
+
+  // Move uses each pilot's own token; no boss involvement required. The only
+  // thing we need is a concrete wing/squad target, which today comes from the
+  // Invite-target dropdown (populated when boss happens to be FC). Once a
+  // target is picked, any selected pilot who is currently in *some* fleet
+  // can self-move if that fleet has free-move enabled.
+  const moveable = selectedCharsNonBoss.filter(c => c.fleetId != null);
+  const canMove = parsedTarget != null && moveable.length > 0;
 
   const openAuth = () => {
     const w = window.open('/auth/login', '_blank', 'width=560,height=720');
@@ -64,7 +86,18 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
     const r = await inviteAll(selectedCharsNonBoss.map(c => c.characterId), parsedTarget);
     setBusy(false);
     if (r.error) setError(r.error);
-    else setResults(r.results);
+    else { setResultsLabel('invited'); setResults(r.results); }
+  };
+
+  const doMove = async () => {
+    if (!parsedTarget) return;
+    setBusy(true);
+    setError(null);
+    setResults(null);
+    const r = await moveToSquad(moveable.map(c => c.characterId), parsedTarget);
+    setBusy(false);
+    if (r.error) setError(r.error);
+    else { setResultsLabel('moved'); setResults(r.results); }
   };
 
   return (
@@ -94,44 +127,109 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
         )}
       </div>
 
-      {structure && structure.wings.length > 0 && (
-        <div>
-          <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 6 }}>Invite target</div>
-          <select
-            value={targetKey}
-            onChange={e => setTargetKey(e.target.value)}
-            style={{ width: '100%' }}
-          >
-            <option value="auto">Auto (first wing / first squad)</option>
-            {structure.wings.flatMap(w =>
-              w.squads.length === 0
-                ? []
-                : w.squads.map(s => (
-                    <option key={`${w.id}:${s.id}`} value={`${w.id}:${s.id}`}>
-                      {w.name || `Wing ${w.id}`} / {s.name || `Squad ${s.id}`}
-                    </option>
-                  )),
+      {(() => {
+        // FC-read squads (authoritative, all wings/squads) come from structure.
+        type Opt = { key: string; label: string; source: 'fc' | 'members' };
+        const fcOpts: Opt[] = (structure?.wings ?? []).flatMap(w =>
+          w.squads.map(s => ({
+            key: `${w.id}:${s.id}`,
+            label: `${w.name || `Wing ${w.id}`} / ${s.name || `Squad ${s.id}`}`,
+            source: 'fc' as const,
+          })),
+        );
+        // Fallback: squads our own pilots happen to be in. Only useful when structure isn't readable.
+        const fleetIdForFallback = boss?.fleetId ?? chars.find(c => c.fleetId != null)?.fleetId;
+        const memberOpts: Opt[] = [];
+        if (fleetIdForFallback != null) {
+          const seen = new Set<string>();
+          for (const c of chars) {
+            if (c.fleetId !== fleetIdForFallback) continue;
+            if (c.fleetWingId == null || c.fleetSquadId == null) continue;
+            const key = `${c.fleetWingId}:${c.fleetSquadId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const occupants = chars.filter(c2 => c2.fleetWingId === c.fleetWingId && c2.fleetSquadId === c.fleetSquadId).length;
+            memberOpts.push({
+              key,
+              label: `Wing ${c.fleetWingId} / Squad ${c.fleetSquadId}  (${occupants} of yours here)`,
+              source: 'members',
+            });
+          }
+        }
+        const seenFc = new Set(fcOpts.map(o => o.key));
+        const opts = [...fcOpts, ...memberOpts.filter(m => !seenFc.has(m.key))];
+
+        const anyBossInFleet = bossInFleet;
+        if (!anyBossInFleet && opts.length === 0) return null;
+
+        return (
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 6 }}>Invite / move target</div>
+            {opts.length > 0 ? (
+              <>
+                <select value={targetKey} onChange={e => setTargetKey(e.target.value)} style={{ width: '100%' }}>
+                  <option value="auto">Auto (first wing with a squad)</option>
+                  {fcOpts.length > 0 && (
+                    <optgroup label="From FC token (authoritative)">
+                      {fcOpts.map(o => (<option key={o.key} value={o.key}>{o.label}</option>))}
+                    </optgroup>
+                  )}
+                  {memberOpts.filter(m => !seenFc.has(m.key)).length > 0 && (
+                    <optgroup label="Known via your pilots">
+                      {memberOpts.filter(m => !seenFc.has(m.key)).map(o => (
+                        <option key={o.key} value={o.key}>{o.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 4 }}>
+                  {fcOpts.length > 0
+                    ? 'ESI doesn\u2019t expose the fleet\u2019s default squad flag \u2014 pick explicitly.'
+                    : 'Boss isn\u2019t FC, so we can\u2019t read the full wing/squad tree. These squads come from pilots of yours already in the fleet.'}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--amber)' }}>
+                <div>
+                  ESI can\u2019t read this fleet\u2019s wings ({structure?.error ?? 'loading'}) and none of your pilots are in it yet. Usually clears within 10\u201360&nbsp;s of forming a fresh fleet.
+                </div>
+                <button
+                  style={{ marginTop: 6, padding: '4px 10px', fontSize: 12 }}
+                  onClick={() => setPokeNonce(n => n + 1)}
+                >
+                  Check now
+                </button>
+              </div>
             )}
-          </select>
-          <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 4 }}>
-            ESI can't see which squad the fleet marks as "default" — pick explicitly.
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <button className="primary" disabled={!canInvite || busy} onClick={doInviteAll}>
-        {busy ? 'Inviting…' : `Invite selected (${selectedCharsNonBoss.length})`}
+        {busy ? 'Working…' : `Invite selected (${selectedCharsNonBoss.length})`}
+      </button>
+
+      <button
+        disabled={!canMove || busy}
+        onClick={doMove}
+        title={
+          !parsedTarget ? 'Pick a specific wing/squad above (not Auto) to move into'
+          : moveable.length === 0 ? 'No selected characters are currently in any fleet'
+          : `Move ${moveable.length} to the chosen squad (requires free-move or appropriate role)`
+        }
+      >
+        {busy ? 'Working…' : `Move selected to target (${moveable.length})`}
       </button>
 
       {error && <div style={{ color: 'var(--red)', fontSize: 12 }}>{error}</div>}
 
       {results && (
         <div className="results">
-          <div style={{ fontSize: 12, color: 'var(--dim)' }}>Invite results</div>
+          <div style={{ fontSize: 12, color: 'var(--dim)' }}>Results</div>
           {results.map(r => (
             <div key={r.characterId} className="row">
               <span>{r.name}</span>
-              <span className={r.ok ? 'ok' : 'err'}>{r.ok ? 'invited' : r.error}</span>
+              <span className={r.ok ? 'ok' : 'err'}>{r.ok ? resultsLabel : r.error}</span>
             </div>
           ))}
         </div>

@@ -59,12 +59,23 @@ export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, o
   const hasImplants = relevantImplants.length > 0;
   const hasVirtue = relevantImplants.some(n => /virtue/i.test(n));
   const hasWrongImplants = hasImplants && !hasVirtue;
+
+  // Queue runs dry in < 10 days. null → not polled yet (don't flag);
+  // "" → polled and empty queue (flag); ISO → flag if within 10 days.
+  const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
+  const queueShort = c.trainingQueueEnd === '' || (
+    typeof c.trainingQueueEnd === 'string'
+    && c.trainingQueueEnd.length > 0
+    && Date.parse(c.trainingQueueEnd) - Date.now() < TEN_DAYS_MS
+  );
+
   const rowClass = [
     'prow',
     c.needsReauth && 'needs-reauth',
     c.isBoss && 'is-boss',
     hasVirtue && 'has-virtue',
     hasWrongImplants && 'has-wrong-implants',
+    queueShort && 'queue-short',
   ].filter(Boolean).join(' ');
 
   return (

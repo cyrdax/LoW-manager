@@ -21,11 +21,14 @@ export interface CharacterStatus {
   trainingSkillName: string | null;
   trainingLevel: number | null;
   trainingFinishDate: string | null;
+  trainingQueueEnd: string | null;
   totalSp: number | null;
   unallocatedSp: number | null;
   implantNames: string[];
   fleetId: number | null;
   fleetRole: 'fleet_commander' | 'wing_commander' | 'squad_commander' | 'squad_member' | null;
+  fleetWingId: number | null;
+  fleetSquadId: number | null;
   isBoss: boolean;
   needsReauth: boolean;
   updatedAt: number;
@@ -85,6 +88,19 @@ export interface FleetStructure {
 export async function fetchFleetStructure(): Promise<FleetStructure> {
   const res = await fetch('/api/fleet/structure');
   if (!res.ok) return { fleet: null, wings: [], error: res.statusText };
+  return res.json();
+}
+
+export async function moveToSquad(
+  characterIds: number[],
+  target: InviteTarget,
+): Promise<{ target?: InviteTarget; results: InviteResult[]; error?: string }> {
+  const res = await fetch('/api/fleet/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ character_ids: characterIds, ...target }),
+  });
+  if (!res.ok) return { results: [], error: (await res.json()).error ?? res.statusText };
   return res.json();
 }
 

@@ -38,3 +38,13 @@ export function currentlyTraining(queue: SkillQueueEntry[]): SkillQueueEntry | n
   }
   return null;
 }
+
+/** Latest finish_date across the queue (ISO string), or "" if queue is empty. */
+export function queueEndIso(queue: SkillQueueEntry[]): string {
+  let max = '';
+  for (const e of queue) {
+    if (!e.finish_date) continue;
+    if (e.finish_date > max) max = e.finish_date;
+  }
+  return max;
+}

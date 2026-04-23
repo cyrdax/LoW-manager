@@ -180,6 +180,10 @@ body {
   background: #2d2517;
   border-color: #9c6b2e;
 }
+.prow.queue-short {
+  outline: 3px solid var(--red);
+  outline-offset: -2px;
+}
 .prow .reauth-line {
   position: absolute;
   bottom: -2px;

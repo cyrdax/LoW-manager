@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db.ts';
 import type { CharacterRow, InviteResult } from '../types.ts';
-import { ensureSquad, getCharacterFleet, getFleetWings, inviteMember } from '../esi/fleet.ts';
+import { ensureSquad, getCharacterFleet, getFleetWings, inviteMember, moveMember, NoSquadError } from '../esi/fleet.ts';
 import { snapshotOne } from '../polling/scheduler.ts';
 
 async function sleep(ms: number) {
@@ -45,6 +45,9 @@ export function registerFleetRoutes(app: FastifyInstance) {
       try {
         target = await ensureSquad(fleet.fleet_id, boss.character_id);
       } catch (err) {
+        if (err instanceof NoSquadError) {
+          return reply.code(409).send({ error: err.message });
+        }
         const e = err as { status?: number; body?: string; message?: string };
         return reply.code(502).send({ error: `Could not resolve a squad: ${describeError(e)}` });
       }
@@ -90,6 +93,55 @@ export function registerFleetRoutes(app: FastifyInstance) {
     return { fleet_id: fleet.fleet_id, role: fleet.role, target, results };
   });
 
+  const moveSchema = z.object({
+    character_ids: z.array(z.number().int()).min(1),
+    wing_id: z.number().int(),
+    squad_id: z.number().int(),
+  });
+
+  // Each pilot self-moves using their own write_fleet-scoped token. This mirrors
+  // the in-client free-move rule: any fleet member can reseat themselves, no boss
+  // involvement needed. Boss role is irrelevant here — the caller is always the
+  // pilot being moved.
+  app.post('/api/fleet/move', async (req, reply) => {
+    const parsed = moveSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
+
+    const results: InviteResult[] = [];
+    for (const id of parsed.data.character_ids) {
+      const charRow = db.prepare('SELECT * FROM characters WHERE character_id = ?').get(id) as CharacterRow | undefined;
+      if (!charRow) {
+        results.push({ characterId: id, name: `#${id}`, ok: false, error: 'character not authed' });
+        continue;
+      }
+      const name = charRow.character_name;
+      if (charRow.needs_reauth) {
+        results.push({ characterId: id, name, ok: false, error: 'needs reauth' });
+        continue;
+      }
+      try {
+        const memberFleet = await getCharacterFleet(id);
+        if (!memberFleet) {
+          results.push({ characterId: id, name, ok: false, error: 'not currently in a fleet' });
+          continue;
+        }
+        await moveMember(memberFleet.fleet_id, id, id, {
+          role: 'squad_member',
+          wing_id: parsed.data.wing_id,
+          squad_id: parsed.data.squad_id,
+        });
+        results.push({ characterId: id, name, ok: true });
+      } catch (err) {
+        const e = err as { status?: number; body?: string; message?: string };
+        app.log.warn({ alt: name, status: e.status, body: e.body }, 'move failed');
+        results.push({ characterId: id, name, ok: false, error: describeError(e) });
+      }
+      await sleep(80);
+    }
+
+    return { target: { wing_id: parsed.data.wing_id, squad_id: parsed.data.squad_id }, results };
+  });
+
   // Fleet structure for the invite-target picker: wings, squads, and the boss's own role.
   app.get('/api/fleet/structure', async (_req, reply) => {
     const boss = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
@@ -103,6 +155,22 @@ export function registerFleetRoutes(app: FastifyInstance) {
     } catch (err) {
       const e = err as { status?: number; body?: string; message?: string };
       return { fleet, wings: [], error: describeError(e) };
+    }
+  });
+
+  // Diagnostic: try reading a fleet's wings via the specified character's token.
+  // Answers: "does a non-FC member's token see fleet structure via ESI?"
+  app.get<{ Params: { id: string } }>('/api/fleet/wings-via/:id', async (req, reply) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'bad id' });
+    const charFleet = await getCharacterFleet(id);
+    if (!charFleet) return { character_id: id, fleet: null, wings: null, error: 'character not in a fleet' };
+    try {
+      const wings = await getFleetWings(charFleet.fleet_id, id);
+      return { character_id: id, fleet: charFleet, wings };
+    } catch (err) {
+      const e = err as { status?: number; body?: string; message?: string };
+      return { character_id: id, fleet: charFleet, wings: null, status: e.status, body: e.body };
     }
   });
 

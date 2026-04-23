@@ -33,7 +33,8 @@ Updates push to the browser via Server-Sent Events as polls complete. No client-
 - **Has any "Virtue" implant**: green tint. (Explorer pods.)
 - **Has implants but none are Virtue**: orange-red tint. Flags alts who need to jump-clone before a scan op.
 - **Needs re-auth**: red border + "Needs re-auth" label. Usually means the refresh token was revoked on CCP's side or scopes changed.
-- Boss tint composes with implant tint (teal = boss with Virtues, amber = boss with wrong pod).
+- **Skill queue under 10 days remaining** (or empty): thick red outline around the row, regardless of other tints. Prompt to top up the queue before the character goes idle.
+- Boss tint composes with implant tint (teal = boss with Virtues, amber = boss with wrong pod); the red queue outline composes with any of them.
 - **AU-79 is ignored by the tint logic.** It's a cosmetic/special implant, so a pod containing only AU-79 counts as "no implants" for coloration. It still shows up in the `N/10` count and the hover tooltip.
 
 ### Sortable, resizable, persistent table
@@ -48,8 +49,12 @@ Updates push to the browser via Server-Sent Events as polls complete. No client-
 - **Add character** — opens a popup to CCP's SSO. Popup closes itself after login; the new character auto-selects.
 - **Set waypoint on all clients** — type a system name (≥ 2 chars). Up to 3 live suggestions populate below. Arrow keys to navigate, Enter to confirm, Esc to dismiss. Selecting a system fires `POST /ui/autopilot/waypoint/` against every *currently-online selected* character (or all online characters when nothing is selected).
 - **Fleet boss status** — shows whose row is starred, whether they're in a fleet, and their role. Invite is only enabled when the boss's role is `fleet_commander` (more on this below).
-- **Invite target** — once the boss is fleet_commander of a real fleet, a dropdown appears listing every `Wing Name / Squad Name` on the fleet plus an "Auto (first wing / first squad)" default. Pick a specific target to route invites into that exact squad; leave on Auto to fall back to first-wing/first-squad (which matches a freshly-formed fleet's "Wing 1 / Squad 1"). ESI does not expose the in-client "Set as Default" marker, so this dropdown is the compensating control.
-- **Invite selected (N)** — sends fleet invites to every selected, non-boss, non-reauth-needed alt into the target chosen above. Reports per-character results (`invited`, `already in fleet`, `CSPA blocked`, specific ESI errors).
+- **Invite / move target dropdown** — two sources of wing/squad options:
+  - *From FC token (authoritative)*: when the boss is fleet_commander, we read `GET /fleets/{id}/wings/` and list every `Wing Name / Squad Name` on the fleet, plus an "Auto (first wing with a squad)" default.
+  - *Known via your pilots*: when the FC read isn't available or doesn't cover a squad, we aggregate each authed pilot's own `wing_id`/`squad_id` from `/characters/{id}/fleet/` and list those too, with an occupant count. Names aren't available via this path (ESI doesn't expose them to non-FC tokens), so entries read as `Wing <id> / Squad <id>  (N of yours here)`.
+  - If the fleet has just been formed and neither source has data yet, the sidebar shows an amber "waiting for ESI" notice with a **Check now** button. The structure poll re-tries every 2.5 s automatically.
+- **Invite selected (N)** — sends fleet invites via the boss's token into the target chosen above (never auto-creates wings or squads — that used to silently land everyone in the wrong place). Reports per-character results (`invited`, `already in fleet`, `CSPA blocked`, specific ESI errors).
+- **Move selected to target (N)** — reassigns selected pilots who are already in *some* fleet to the chosen wing/squad. Uses each pilot's **own** write-fleet token for the PUT call, mirroring the in-client free-move rule. Boss doesn't need to be involved or be fleet_commander for this to work; if the fleet doesn't have free-move, ESI returns the appropriate error per row.
 
 ### Select-all + bulk actions
 
@@ -65,7 +70,8 @@ Several things players expect work differently or not at all through ESI. These 
 - **ESI cannot populate the in-game buddy watchlist.** But once every alt is in the boss's fleet, the Photon UI **Fleet Watchlist** panel auto-populates in every client — same effect, no extra work.
 - **ESI cannot accept invites.** You still click Accept on each client. Once a character joins, their row shows a green ✓ pill and the "Invite selected" button skips them next time.
 - **ESI cannot post to chat or broadcast fleet commands.** Both were removed in 2018 / never existed. Don't waste time looking for them.
-- **Fleet write endpoints require `fleet_commander` role, not just fleet ownership.** This is CCP's rule, not ours — a squad commander who owns the fleet will get a 404 on fleet-level calls. The sidebar nudges you to move to the Fleet Commander slot in-client when needed.
+- **Fleet write endpoints and `GET /fleets/{id}/wings/` require `fleet_commander` role, not just fleet ownership or membership.** This is CCP's rule, not ours — a squad_member or squad_commander token (even the fleet owner if they're sitting in a squad) gets a 404 on these. Empirically verified: `/fleets/{id}/wings/` returns `404 "The fleet does not exist or you don't have access to it!"` for non-FC tokens. The sidebar nudges you to move the boss to the Fleet Commander slot in-client when needed; for the "see my pilots' current squads" case, the app falls back to aggregating each pilot's own `wing_id`/`squad_id`.
+- **ESI's fleet registration has a 10–60 s lag** after a fresh fleet is formed. During that window `/fleets/{id}/wings/` returns 404 even for a legit FC. The app re-polls every 2.5 s and enables invite/move once the structure is readable.
 - **The in-client "Set as Default" wing/squad flag is not exposed via ESI.** `GET /fleets/{id}/` returns `motd`, `is_free_move`, `is_registered`, `is_voice_enabled` and nothing else; `GET /fleets/{id}/wings/` returns `id`, `name`, and `squads[]` per wing. No default marker. That's why the app asks you to pick an invite target explicitly.
 - **CSPA charges** set by a character block fleet invites to them; ESI returns 403 and the UI surfaces it per row.
 - **ESI returns non-ASCII ship names as Python `repr()` strings** like `u'\u30e0 FantasticScans…'`. This app decodes them server-side so you see the real characters.

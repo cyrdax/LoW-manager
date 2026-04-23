@@ -74,6 +74,15 @@ export async function esiPost<T>(path: string, characterId: number, body?: unkno
   });
 }
 
+export async function esiPut<T>(path: string, characterId: number, body: unknown): Promise<EsiResponse<T>> {
+  const token = await getAccessToken(characterId);
+  return esiFetch<T>(path, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function esiGetPublic<T>(path: string): Promise<EsiResponse<T>> {
   return esiFetch<T>(path);
 }

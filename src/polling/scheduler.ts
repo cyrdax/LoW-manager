@@ -2,7 +2,7 @@ import { db } from '../db.ts';
 import type { CharacterRow, CharacterStatus } from '../types.ts';
 import { getLocation, getOnline, getShip } from '../esi/location.ts';
 import { getWallet } from '../esi/wallet.ts';
-import { currentlyTraining, getImplants, getSkillQueue, getSkills } from '../esi/skills.ts';
+import { currentlyTraining, getImplants, getSkillQueue, getSkills, queueEndIso } from '../esi/skills.ts';
 import { getCharacterFleet } from '../esi/fleet.ts';
 import { getCharacterPublic, resolveCorporation, resolveStation, resolveSystem, resolveType, resolveStructure } from '../esi/universe.ts';
 import { bus } from './events.ts';
@@ -112,11 +112,14 @@ function blankStatus(row: CharacterRow): CharacterStatus {
     trainingSkillName: null,
     trainingLevel: null,
     trainingFinishDate: null,
+    trainingQueueEnd: null,
     totalSp: null,
     unallocatedSp: null,
     implantNames: [],
     fleetId: null,
     fleetRole: null,
+    fleetWingId: null,
+    fleetSquadId: null,
     isBoss: row.is_boss === 1,
     needsReauth: row.needs_reauth === 1,
     updatedAt: 0,
@@ -223,6 +226,7 @@ async function tick(id: number) {
       const skillId = training?.skill_id ?? null;
       const level = training?.finished_level ?? null;
       const finish = training?.finish_date ?? null;
+      const queueEnd = queueEndIso(data);
       if (s.cached.trainingSkillId !== skillId
           || s.cached.trainingLevel !== level
           || s.cached.trainingFinishDate !== finish) {
@@ -236,6 +240,11 @@ async function tick(id: number) {
         updates.trainingSkillName = s.cached.trainingSkillName;
         changed = true;
       }
+      if (s.cached.trainingQueueEnd !== queueEnd) {
+        s.cached.trainingQueueEnd = queueEnd;
+        updates.trainingQueueEnd = queueEnd;
+        changed = true;
+      }
     }
 
     if (now >= s.fleet.nextFetchAt) {
@@ -243,6 +252,10 @@ async function tick(id: number) {
       s.fleet.nextFetchAt = now + FALLBACK_TTL.fleet * 1000;
       const fid = fleet?.fleet_id ?? null;
       const role = fleet?.role ?? null;
+      // Only meaningful when the pilot is actually in a wing/squad (role != fleet_commander);
+      // FC role returns -1/-1 which we treat as null.
+      const wing = fleet && fleet.wing_id > 0 ? fleet.wing_id : null;
+      const squad = fleet && fleet.squad_id > 0 ? fleet.squad_id : null;
       if (s.cached.fleetId !== fid) {
         s.cached.fleetId = fid;
         updates.fleetId = fid;
@@ -251,6 +264,16 @@ async function tick(id: number) {
       if (s.cached.fleetRole !== role) {
         s.cached.fleetRole = role;
         updates.fleetRole = role;
+        changed = true;
+      }
+      if (s.cached.fleetWingId !== wing) {
+        s.cached.fleetWingId = wing;
+        updates.fleetWingId = wing;
+        changed = true;
+      }
+      if (s.cached.fleetSquadId !== squad) {
+        s.cached.fleetSquadId = squad;
+        updates.fleetSquadId = squad;
         changed = true;
       }
     }
