@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCharacters } from './hooks/useCharacters.ts';
 import { useTableState, type SortKey, type ColKey } from './hooks/useTableState.ts';
 import { CharacterCard } from './components/CharacterCard.tsx';
@@ -67,20 +67,28 @@ export function App() {
   }, [chars, table.sortKey, table.sortAsc]);
 
   const [selection, setSelection] = useState<Set<number>>(new Set());
+  const knownIdsRef = useRef<Set<number>>(new Set());
 
+  // Auto-select genuinely new characters (never seen before) and drop removed
+  // ones. Comparing against a ref of previously-seen IDs — not the current
+  // selection — so a user's explicit deselect isn't clobbered when the list
+  // re-sorts or a SSE update replaces the map.
   useEffect(() => {
+    const known = knownIdsRef.current;
+    const currentIds = new Set(list.map(c => c.characterId));
+    const added: number[] = [];
+    for (const id of currentIds) if (!known.has(id)) added.push(id);
+    const removed: number[] = [];
+    for (const id of known) if (!currentIds.has(id)) removed.push(id);
+    if (added.length === 0 && removed.length === 0) return;
+
     setSelection(prev => {
       const next = new Set(prev);
-      let changed = false;
-      for (const c of list) {
-        if (!next.has(c.characterId)) { next.add(c.characterId); changed = true; }
-      }
-      const ids = new Set(list.map(c => c.characterId));
-      for (const id of prev) {
-        if (!ids.has(id)) { next.delete(id); changed = true; }
-      }
-      return changed ? next : prev;
+      for (const id of added) next.add(id);
+      for (const id of removed) next.delete(id);
+      return next;
     });
+    knownIdsRef.current = currentIds;
   }, [list]);
 
   const onToggle = (id: number) => {
