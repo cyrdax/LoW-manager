@@ -1,8 +1,16 @@
 # Legion of Wayne Manager (LoW-manager)
 
-Self-hosted single-user web app to monitor a fleet of EVE Online characters you personally own, keep their status visible at a glance, and drive two of the most useful multibox operations from one place: **mass fleet invites** and **mass autopilot waypoints**. Built on CCP's ESI (EVE Swagger Interface).
+Self-hosted single-user web app to monitor a fleet of EVE Online characters you personally own, keep their status visible at a glance, and drive multibox operations from one place: **mass fleet invites**, **mass autopilot waypoints**, and **planetary-interaction monitoring**. Built on CCP's ESI (EVE Swagger Interface).
 
 Designed for ~6–20 alts. Scales comfortably further within ESI's rate limits.
+
+The dashboard has five top-level views, toggled in the sidebar (selection persists in `localStorage.efd.view`):
+
+- **Pilots** — the per-character status table (location, ship, wallet, training, etc.) plus fleet-boss controls and waypoint search.
+- **Planets** — PI dashboard: per-pilot colony health, system scout search, saved systems, per-colony pin drill-down, and fleet-wide inventory roll-up.
+- **Skills** — pilot picker + ship/module search; resolves Mastery I–V skill plans with SP-gap math from a bundled SDE-derived map, plus per-pilot saved plan bookmarks.
+- **Fleet** — full FC-roster view with drag-and-drop wing/squad reassignment. Any authed pilot can be picked as the actor token (so you can drive moves under whichever alt holds the FC role).
+- **Market** — two sub-tabs: **PLEX** (price chart, sell-side calculator with sales-tax / broker fee math) and **Shopping List** (paste a multi-item buy order, get a per-item + total cost quote in Jita or Amarr, walking the order book).
 
 ---
 
@@ -62,6 +70,151 @@ Checkbox at the top of the rows toggles every row at once. The "N/M" counter in 
 
 ---
 
+## Planets view
+
+PI is read-only via ESI (you can't run extractor restarts or install schematics from outside the client), but it exposes enough state for the actually-painful parts of multibox PI: tracking which extractors are about to expire, which alts are sitting on stockpiles, and scouting new systems for resource layouts.
+
+### Pilot table (PI dashboard)
+
+One row per character, sortable by Character / Colonies (count/max) / Next expiry / Status:
+
+- **Colonies count/max** — `colonies.length / (1 + Interplanetary Consolidation level)`. With IPC V → 6 colonies. Underutilized rows (less than max) are highlighted amber so you can spot pilots with unbuilt colony slots.
+- **Next expiry** — earliest extractor expiry across all of that pilot's colonies.
+- **Status pill** — `IDLE` (red, any extractor cycle expired), `expiring soon` (amber, < 6 h), `healthy` (green), or `no colonies` (dim).
+- **Click a character row** to drill into their colonies. Each colony row shows planet type, system, CC level, pin count, soonest expiry. **Click a colony row** to expand its full pin breakdown:
+  - **Extractors** — product name, time-until-expiry countdown, cycle minutes, idle highlight.
+  - **Factories** — resolved schematic name + facility tier (Basic / Advanced / High-Tech).
+  - **Storage / Launchpads / Command Centers** — contents tagged P0 / P1 / P2 / P3+ with amounts.
+
+Status header totals show colony count and idle count across the whole fleet.
+
+### System scout search
+
+Type a system name at the top of the Planets view (≥ 2 chars). Pick from autocomplete and the result block shows:
+
+- System header with security status and a **★ save** button.
+- Type-summary chips (`Temperate 2 · Barren 1 · Lava 4 · …`).
+- A row per planet with the planet's name, its type tag, the **5 P0 → P1 extractables** for that type rendered inline, and any of *your* colonies sitting on that planet (character, CC level, pin count, expiry, idle badge).
+
+Useful for scouting wormholes or low-sec systems before setting up a new colony — you can see at a glance whether a system has the planet types you need without alt-tabbing into the in-game map.
+
+### Saved systems
+
+Click the **★** in any system result header to save the system. The "Saved systems" panel above the search renders each save as a full system block (same layout as a live search result). Saves persist in `data/app.db` (`saved_systems` table).
+
+### Fleet PI inventory roll-up
+
+Collapsible panel above the pilot table. Click ▸ to load (or **↻** to refresh): walks every cached pin's `contents` across every pilot, sums by commodity, and groups by tier (P0 / P1 / P2 / P3+). Header shows totals per tier, and the body lists every commodity with its amount and how many planets it's stockpiled across. Filter buttons restrict to a single tier.
+
+This is the answer to "do I need a hauler run?" without checking 14 in-client PI windows.
+
+---
+
+## Skills view
+
+Targeted skill planning across all your alts without leaving the dashboard.
+
+### Ship Mastery plans
+
+1. **Pick a pilot** from the row of character chips at the top.
+2. **Search a ship** (≥ 2 chars) and select it from the suggestions.
+3. **Pick Mastery level I–V**. The view resolves the EVE Mastery certificate chain server-side and lists every prerequisite skill with:
+   - current level (and SP) on the active pilot,
+   - target level for that mastery,
+   - SP gap (or ✓ if already met),
+   - which certificate(s) require the skill.
+4. **Save plan** with the ★ button — saved plans (per pilot) populate a quick-load bar above the search so you can compare progress across alts at a glance.
+
+The math is pure-server: `src/skills/mastery-data.ts` is a compact SDE-derived JSON (rebuilt by `scripts/build-mastery-data.ts`), and the route at `/api/skills/plan` joins it against the pilot's `read_skills.v1` snapshot.
+
+### Module / item plans
+
+The "Item" search resolves any inventory item (modules, ammo, charges, drones, deployables) to its `requiredSkills` list and shows the same per-pilot gap analysis. Useful for "can I fly this module on this alt?" without alt-tabbing.
+
+### Info / Market window buttons
+
+Each plan row has compact buttons to open the in-game **Info** or **Market** window on the active pilot's client via `POST /ui/openwindow/marketdetails/` (requires `esi-ui.open_window.v1`). If the buttons 403, the pilot's token predates that scope — re-auth fixes it.
+
+### SDE staleness
+
+The view shows a yellow banner when CCP has published a newer EVE Static Data Export than the bundled `mastery-data.ts` was built against. Run `npm run build:mastery` to rebuild from the fresh SDE.
+
+---
+
+## Fleet view
+
+Drag-and-drop control over the active fleet's full wing → squad → member tree.
+
+### Actor token picker
+
+Some operations need the FC token (e.g. reading the full roster, moving members across squads when free-move is off). The Fleet view lets you pick *any* of your authed pilots as the **actor** — so even if the boss row isn't your current FC, you can drive the view under whoever holds the role. The pilot picker defaults to the designated boss (`is_boss`) and falls back gracefully if the picked actor isn't actually in a fleet.
+
+### Roster tree + drag-and-drop
+
+- Wings render as collapsible cards with their squads nested inside, members listed under each squad.
+- Each row shows character + ship + system, resolved server-side via the existing universe-name caches.
+- **Drag a member** onto a different squad to move them. **Drag a squad or wing header** to bulk-move every member inside it to the target.
+- A per-row × button kicks via `DELETE /fleets/{id}/members/{id}/`.
+- Auto-refreshes every 10 s so kicks / accepts from other clients show up without manual reload.
+
+### Endpoints
+
+- `GET /api/fleet/roster?actor=<id>` — full wing→squad→member tree under the chosen actor's token. Character/ship/system names pre-resolved.
+- `POST /api/fleet/move` and `POST /api/fleet/kick` — both accept an optional `actor_character_id` so the Fleet view can drive operations under any authed alt's token (the Pilots-view sidebar still uses the boss's token by default).
+
+---
+
+## Market view
+
+Two sub-tabs, toggled at the top of the view (selection persists in `localStorage.efd.market.tab`):
+
+### PLEX tab
+
+A live tracker for PLEX prices on the Global PLEX Market region (19000001 — *not* The Forge; CCP unified the PLEX market into its own region in 2017).
+
+- **Stats strip** — best ask, best bid, spread (% of bid), day Δ, range Δ, last-day volume + order count.
+- **Range buttons** — 7D / 30D / 90D / 1Y / ALL (persist in `localStorage.efd.market.range`).
+- **Price chart** — hand-rolled SVG. Daily average as a line, high-low band, daily volume as bars below, hover crosshair with a tooltip showing avg / high / low / volume / orders for that day.
+- **Sell calculator** — quantity × price with the *real* EVE fee math:
+  - Sales tax = `8% × (1 − 0.11 × Accounting level)` (3.6% at V)
+  - Broker's fee = `3% − 0.3% × Broker Relations level` (1.5% at V)
+  - Mode toggle: **Instant** (sell into best buy — no broker fee) vs **List** (sell order at best ask — broker fee up front, sales tax on fill)
+  - Price source toggle: **auto** (best buy / best sell depending on mode) vs **manual** override.
+  - Outputs: gross, broker fee, sales tax, net ISK, effective per-PLEX.
+  - All inputs persist in `localStorage.efd.market.calc`.
+
+### Shopping List tab
+
+Paste a multi-item buy list and get an honest cost estimate by walking the cheapest sell orders in the chosen hub.
+
+**Input format** — one item per line, qty first:
+
+```
+2 Cap Recharger II
+4 Multispectrum Energized Membrane II
+2880 Arch Angel EMP XL
+1 Domination Heavy Warp Disruptor
+```
+
+The parser also accepts `2x Cap Recharger II` and EVE's tab-separated in-game copy format (`Cap Recharger II\t2`). Repeated names are de-duplicated by summing their quantities.
+
+**Hub picker** — Jita or Amarr only. Pricing is **in-system**: only sell orders sitting in stations / structures inside the chosen hub system are considered. So "Jita" really means Jita 4-4 and the other Jita stations, not the whole Forge region — which is what you'd actually pay if you flew to Jita to buy.
+
+**Pricing math** — for each item, the server fetches the region's sell orders for that type, filters to the hub system, sorts ascending by price, and **walks the order book**: takes from the cheapest stack first, then the next, until the requested qty is filled. The reported `Subtotal` is the actual ISK you'd pay; `Avg price` is `Subtotal / filledQty`. If supply runs out before the requested qty is reached, the row is flagged **partial** and the shortfall (`−N`) is shown.
+
+**Status pills**:
+
+| Pill          | Meaning                                                                                        |
+|---------------|------------------------------------------------------------------------------------------------|
+| `ok`          | Full qty filled at hub.                                                                        |
+| `partial fill` | Sell side ran out before qty was filled. Subtotal reflects what *did* fill; shortfall shown.   |
+| `no sellers`  | Item resolved to a type_id but no sell orders in the hub system right now. Try the other hub.  |
+| `unknown item` | Name didn't resolve via `POST /universe/ids/`. Check spelling against the in-game item exactly. |
+
+**Endpoint** — `POST /api/market/shopping-list/quote` with `{ hub: "jita" | "amarr", items: [{ name, qty }] }`. Per-item orders requests run with concurrency 8 to stay polite on ESI's error budget. Name → type_id results are cached forever (type names don't change); orders are cached 5 minutes (matches ESI's own cache).
+
+---
+
 ## Important ESI realities (useful background)
 
 Several things players expect work differently or not at all through ESI. These shape how this app behaves:
@@ -75,6 +228,8 @@ Several things players expect work differently or not at all through ESI. These 
 - **The in-client "Set as Default" wing/squad flag is not exposed via ESI.** `GET /fleets/{id}/` returns `motd`, `is_free_move`, `is_registered`, `is_voice_enabled` and nothing else; `GET /fleets/{id}/wings/` returns `id`, `name`, and `squads[]` per wing. No default marker. That's why the app asks you to pick an invite target explicitly.
 - **CSPA charges** set by a character block fleet invites to them; ESI returns 403 and the UI surfaces it per row.
 - **ESI returns non-ASCII ship names as Python `repr()` strings** like `u'\u30e0 FantasticScans…'`. This app decodes them server-side so you see the real characters.
+- **PI is read-only beyond what's already exposed.** ESI lets you read planet layouts, pin contents, extractor timers, factory schematics, and storage. It does **not** expose ways to install / restart extractors, lay routes, or upgrade Command Centers — those still require the client.
+- **PI commodity → tier classification is hard-coded.** ESI doesn't tell you whether `Mechanical Parts` is P2 vs P3, so the app maintains a small static map (`src/esi/pi-data.ts`). P0 and P1 are exhaustive; P2 covers all 23 second-tier commodities; P3 and P4 fall through to "P3+" since they're rarely stockpiled on-planet.
 
 If you want a deeper cheat sheet, see `~/.claude/projects/-Users-cyrdax/memory/reference_eve_esi_capabilities.md` (created during development).
 
@@ -98,7 +253,11 @@ If you want a deeper cheat sheet, see `~/.claude/projects/-Users-cyrdax/memory/r
    - `esi-fleets.read_fleet.v1`
    - `esi-fleets.write_fleet.v1`
    - `esi-ui.write_waypoint.v1`
+   - `esi-ui.open_window.v1`
+   - `esi-planets.manage_planets.v1`
 5. Save and copy the Client ID and Secret.
+
+> If you're upgrading from an earlier version that didn't include `esi-planets.manage_planets.v1` or `esi-ui.open_window.v1`, every existing character must be re-authed (Add character → SSO popup → same alt) before their PI data shows up and the Skills view's per-row Info / Market buttons stop 403-ing. ESI tokens don't retroactively gain new scopes.
 
 ### 2. Configure environment
 
@@ -175,9 +334,13 @@ Key pieces:
 
 - `src/auth/` — SSO code flow, JWKS-based JWT verification, token refresh with automatic `needs_reauth` fallback.
 - `src/esi/client.ts` — shared fetch wrapper that injects auth, tracks `X-Esi-Error-Limit-Remain`, backs off before hitting limits, and handles 204 responses without blowing up on empty bodies.
-- `src/polling/scheduler.ts` — one task per character, fans out across per-endpoint timers (location: 5s, ship: 5s, online: 60s, wallet: 120s, SP: 120s, implants: 120s, fleet: 5s, corp: 3600s), emits diffs over an in-memory event bus.
+- `src/polling/scheduler.ts` — one task per character, fans out across per-endpoint timers (location: 5s, ship: 5s, online: 60s, wallet: 120s, SP: 120s, implants: 120s, fleet: 5s, corp: 3600s, planets: 600s), emits diffs over an in-memory event bus. Full PI pin lists are kept in a separate module-level cache (`pinCache`) keyed by `charId:planetId` so the colony drill-down and inventory roll-up routes can read pins without re-hitting ESI; pin payloads stay *out* of the SSE/snapshot stream to keep updates lean.
 - `src/routes/stream.ts` — SSE endpoint that pipes the event bus to the browser with heartbeats.
-- `src/esi/universe.ts` — bootstraps an 8000+ solar-system cache on first boot via `POST /universe/names/`, backs the in-app waypoint autocomplete.
+- `src/routes/planets.ts` — system search (`/api/planets/system/:id`), per-colony detail (`/api/planets/colony/:charId/:planetId`), inventory roll-up (`/api/planets/inventory`), and saved-systems CRUD (`/api/planets/saved`). The system and saved endpoints share a `buildSystemPlanetList(systemId, overlay)` helper so saved blocks render identically to live search results.
+- `src/esi/pi-data.ts` — static PI metadata: planet-type → P0 list, P0 → P1 mapping, and commodity-name → tier (P0/P1/P2/P3+) classifier. Keyed by name (not type ID) so it survives any commodity ID drift.
+- `src/esi/universe.ts` — bootstraps an 8000+ solar-system cache on first boot via `POST /universe/names/`, backs the in-app waypoint autocomplete and system search. Also caches planet names, schematic names, and corp tickers under categorized keys in `universe_names`.
+- `src/routes/skills.ts` + `src/skills/mastery-data.ts` — ship / item search (`/api/skills/ships`, `/api/skills/items`), Mastery plan resolver (`/api/skills/plan`), item-skill plan resolver (`/api/skills/item-plan`), saved-plan CRUD (`/api/skills/plans`), and the open-window helper (`/api/skills/open-window`). The mastery JSON is bundled (~71 lines of summary indices); the full per-ship skill graph is generated from CCP's SDE by `scripts/build-mastery-data.ts` (run via `npm run build:mastery`). The downloaded SDE zip is cached under `.cache/sde.zip` and gitignored — it's ~100 MB.
+- `src/routes/market.ts` — PLEX history + orders (`/api/market/plex/{history,orders}`) and the shopping-list quoter (`POST /api/market/shopping-list/quote`). Hub constants live at the top of the file (Jita, Amarr); the order book walker filters by `system_id` so "in Jita" really means "in Jita." Type-id resolution caches forever; orders cache 5 min (matches ESI).
 - `web/src/hooks/useTableState.ts` — sort + column-width state persisted to `localStorage`.
 
 ### Adding new ESI fields
@@ -190,7 +353,7 @@ Follow the pattern established in `scheduler.ts`:
 4. Extend `CharacterStatus` in `src/types.ts` and `web/src/api.ts`.
 5. Render it in `CharacterCard.tsx` (and possibly add a sortable column in `App.tsx` + the CSS grid template).
 
-Obvious candidates (all surveyed, none implemented yet): industry job ETAs, PI extractor timers, jump-clone cooldown, fatigue timer, unified notifications feed (low-fuel structure alerts), `POST /ui/openwindow/marketdetails/` to pop a market window on every client.
+Obvious candidates (surveyed, not implemented): industry job ETAs, jump-clone cooldown, fatigue timer, unified notifications feed (low-fuel structure alerts), `POST /ui/openwindow/marketdetails/` to pop a market window on every client. PI extractor timers, factory schedules, and storage roll-up — *implemented* in the Planets view above.
 
 ---
 
@@ -205,6 +368,13 @@ Obvious candidates (all surveyed, none implemented yet): industry job ETAs, PI e
 | Ship name shows `u'\uXXXX …'`                                                        | Old cached value. Server-side decoder is applied on next ship poll (~5s after it changes).    |
 | Card stays in "Needs re-auth" after re-adding                                        | CCP's token endpoint may be slow for a moment. Refresh the page, or check server logs for 401. |
 | Localhost:5173 loads but API calls 404                                              | Backend isn't running. `npm run dev` starts both; check `concurrently` output.                 |
+| Planet rows show `loading` or `0/—` colonies, log spams `401 esi-planets.manage_planets.v1` | The pilot's token predates the PI scope. Re-auth them via Add character.                       |
+| Colony drill-down shows `colony not yet polled — try again in a few seconds`        | Scheduler hasn't completed its first PI tick for that pilot (10-min cycle). Wait or refresh.   |
+| Fleet PI inventory shows lower totals than expected                                  | Inventory only counts what's currently in storage / launchpad / CC pins. Material in transit between pins isn't reported by ESI. |
+| Skills view's Info / Market buttons return 403                                       | Pilot's token predates the `esi-ui.open_window.v1` scope. Re-auth that alt via Add character. |
+| Skills view shows a yellow "SDE outdated" banner                                     | CCP shipped a newer SDE than the bundled mastery data. Run `npm run build:mastery` to rebuild (downloads / caches the SDE under `.cache/`). |
+| Shopping List shows several `unknown item` rows                                      | Names didn't match `POST /universe/ids/`. Check spelling against the in-game item exactly — copy the inventory line if in doubt. ESI name matching is case-sensitive. |
+| Shopping List shows `no sellers` for a popular item                                  | Most likely the chosen hub doesn't currently stock that item in-system. Try the other hub. Subtotal will be 0 ISK for that row. |
 
 ---
 

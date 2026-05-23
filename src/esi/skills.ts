@@ -26,6 +26,13 @@ export interface SkillsResponse {
 
 export const getSkills = (id: number) => esiGet<SkillsResponse>(`/characters/${id}/skills/`, id);
 
+// Skill type IDs we care about beyond aggregate SP.
+export const SKILL_INTERPLANETARY_CONSOLIDATION = 2495;
+
+export function skillLevel(skills: SkillsResponse, typeId: number): number {
+  return skills.skills.find(s => s.skill_id === typeId)?.active_skill_level ?? 0;
+}
+
 export const getImplants = (id: number) => esiGet<number[]>(`/characters/${id}/implants/`, id);
 
 export function currentlyTraining(queue: SkillQueueEntry[]): SkillQueueEntry | null {

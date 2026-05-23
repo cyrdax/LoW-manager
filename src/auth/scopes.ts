@@ -9,6 +9,8 @@ export const SCOPES = [
   'esi-fleets.read_fleet.v1',
   'esi-fleets.write_fleet.v1',
   'esi-ui.write_waypoint.v1',
+  'esi-ui.open_window.v1',
+  'esi-planets.manage_planets.v1',
 ] as const;
 
 export const SCOPE_STRING = SCOPES.join(' ');

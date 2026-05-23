@@ -40,6 +40,25 @@ db.exec(`
     state      TEXT PRIMARY KEY,
     created_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS saved_systems (
+    system_id    INTEGER PRIMARY KEY,
+    system_name  TEXT NOT NULL,
+    saved_at     INTEGER NOT NULL
+  );
+
+  DROP TABLE IF EXISTS saved_planets;
+
+  CREATE TABLE IF NOT EXISTS saved_skill_plans (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    character_id   INTEGER NOT NULL,
+    ship_id        INTEGER NOT NULL,
+    mastery_level  INTEGER NOT NULL,
+    label          TEXT,
+    saved_at       INTEGER NOT NULL,
+    UNIQUE(character_id, ship_id, mastery_level)
+  );
+  CREATE INDEX IF NOT EXISTS idx_saved_skill_plans_char ON saved_skill_plans(character_id);
 `);
 
 // Housekeeping: drop oauth_states entries older than 10 minutes.

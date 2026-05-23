@@ -2,8 +2,19 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db.ts';
 import type { CharacterRow, InviteResult } from '../types.ts';
-import { ensureSquad, getCharacterFleet, getFleetWings, inviteMember, moveMember, NoSquadError } from '../esi/fleet.ts';
+import {
+  ensureSquad,
+  getCharacterFleet,
+  getFleetMembers,
+  getFleetWings,
+  inviteMember,
+  kickMember,
+  moveMember,
+  NoSquadError,
+  type FleetMember,
+} from '../esi/fleet.ts';
 import { snapshotOne } from '../polling/scheduler.ts';
+import { getCharacterPublic, resolveSystem, resolveType } from '../esi/universe.ts';
 
 async function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms));
@@ -97,36 +108,46 @@ export function registerFleetRoutes(app: FastifyInstance) {
     character_ids: z.array(z.number().int()).min(1),
     wing_id: z.number().int(),
     squad_id: z.number().int(),
+    actor_character_id: z.number().int().optional(),
+    role: z.enum(['squad_member', 'squad_commander', 'wing_commander']).optional(),
   });
 
-  // Each pilot self-moves using their own write_fleet-scoped token. This mirrors
-  // the in-client free-move rule: any fleet member can reseat themselves, no boss
-  // involvement needed. Boss role is irrelevant here — the caller is always the
-  // pilot being moved.
+  // ESI's PUT /fleets/{id}/members/{member_id}/ requires command authority on the
+  // *calling* token — it doesn't honor in-client free-move. So we use the boss's
+  // fleet_commander token to move any selected pilot. If the boss isn't FC, fail
+  // fast with a clear message.
   app.post('/api/fleet/move', async (req, reply) => {
     const parsed = moveSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
 
+    // Actor (whose token to call ESI with): explicit override → falls back to boss flag.
+    let actor: CharacterRow | undefined;
+    if (parsed.data.actor_character_id != null) {
+      actor = db.prepare('SELECT * FROM characters WHERE character_id = ?').get(
+        parsed.data.actor_character_id,
+      ) as CharacterRow | undefined;
+      if (!actor) return reply.code(400).send({ error: 'actor_character_id is not an authed character' });
+    } else {
+      actor = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
+      if (!actor) return reply.code(400).send({ error: 'No fleet boss selected' });
+    }
+    if (actor.needs_reauth) return reply.code(400).send({ error: `${actor.character_name} needs to re-authenticate` });
+
+    const fleet = await getCharacterFleet(actor.character_id);
+    if (!fleet) return reply.code(400).send({ error: `${actor.character_name} is not currently in a fleet.` });
+    if (fleet.role !== 'fleet_commander') {
+      return reply.code(400).send({
+        error: `${actor.character_name} is ${fleet.role}, not the fleet commander. Moving via ESI requires the actor to be in the fleet_commander slot.`,
+      });
+    }
+
     const results: InviteResult[] = [];
     for (const id of parsed.data.character_ids) {
       const charRow = db.prepare('SELECT * FROM characters WHERE character_id = ?').get(id) as CharacterRow | undefined;
-      if (!charRow) {
-        results.push({ characterId: id, name: `#${id}`, ok: false, error: 'character not authed' });
-        continue;
-      }
-      const name = charRow.character_name;
-      if (charRow.needs_reauth) {
-        results.push({ characterId: id, name, ok: false, error: 'needs reauth' });
-        continue;
-      }
+      const name = charRow?.character_name ?? `#${id}`;
       try {
-        const memberFleet = await getCharacterFleet(id);
-        if (!memberFleet) {
-          results.push({ characterId: id, name, ok: false, error: 'not currently in a fleet' });
-          continue;
-        }
-        await moveMember(memberFleet.fleet_id, id, id, {
-          role: 'squad_member',
+        await moveMember(fleet.fleet_id, actor.character_id, id, {
+          role: parsed.data.role ?? 'squad_member',
           wing_id: parsed.data.wing_id,
           squad_id: parsed.data.squad_id,
         });
@@ -139,7 +160,122 @@ export function registerFleetRoutes(app: FastifyInstance) {
       await sleep(80);
     }
 
-    return { target: { wing_id: parsed.data.wing_id, squad_id: parsed.data.squad_id }, results };
+    return { fleet_id: fleet.fleet_id, target: { wing_id: parsed.data.wing_id, squad_id: parsed.data.squad_id }, results };
+  });
+
+  // Full fleet roster (FC-only). Resolves character/ship/system names so the UI
+  // can render without N+1 lookups. Uses the actor's token (override or boss).
+  app.get<{ Querystring: { actor?: string } }>('/api/fleet/roster', async (req, reply) => {
+    let actor: CharacterRow | undefined;
+    const actorOverride = Number(req.query.actor);
+    if (Number.isFinite(actorOverride) && actorOverride > 0) {
+      actor = db.prepare('SELECT * FROM characters WHERE character_id = ?').get(actorOverride) as CharacterRow | undefined;
+      if (!actor) return reply.code(400).send({ error: 'actor is not an authed character' });
+    } else {
+      actor = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
+      if (!actor) return reply.code(400).send({ error: 'No actor selected (pick a pilot)' });
+    }
+    if (actor.needs_reauth) return reply.code(400).send({ error: `${actor.character_name} needs to re-authenticate` });
+
+    const fleet = await getCharacterFleet(actor.character_id);
+    if (!fleet) return { actor: pubActor(actor), fleet: null, wings: [], members: [] };
+
+    // Wings + roster require fleet_commander role on the calling token.
+    if (fleet.role !== 'fleet_commander') {
+      return reply.code(403).send({
+        actor: pubActor(actor),
+        fleet,
+        error: `${actor.character_name} is ${fleet.role}, not the fleet commander. ESI gates roster reads on FC role.`,
+      });
+    }
+
+    let wings: Awaited<ReturnType<typeof getFleetWings>>;
+    let raw: FleetMember[];
+    try {
+      [wings, raw] = await Promise.all([
+        getFleetWings(fleet.fleet_id, actor.character_id),
+        getFleetMembers(fleet.fleet_id, actor.character_id),
+      ]);
+    } catch (err) {
+      const e = err as { status?: number; body?: string; message?: string };
+      return reply.code(e.status ?? 500).send({ actor: pubActor(actor), fleet, error: describeError(e) });
+    }
+
+    // Deduplicate name resolutions.
+    const charIds = Array.from(new Set(raw.map(m => m.character_id)));
+    const typeIds = Array.from(new Set(raw.map(m => m.ship_type_id)));
+    const sysIds = Array.from(new Set(raw.map(m => m.solar_system_id)));
+
+    const charNames = new Map<number, string>();
+    await Promise.all(charIds.map(async id => {
+      try {
+        const p = await getCharacterPublic(id);
+        charNames.set(id, p.name);
+      } catch {
+        charNames.set(id, `Character ${id}`);
+      }
+    }));
+
+    const typeNames = new Map<number, string>();
+    await Promise.all(typeIds.map(async id => {
+      try { typeNames.set(id, await resolveType(id)); }
+      catch { typeNames.set(id, `Type ${id}`); }
+    }));
+
+    const sysNames = new Map<number, string>();
+    await Promise.all(sysIds.map(async id => {
+      try { sysNames.set(id, await resolveSystem(id)); }
+      catch { sysNames.set(id, `#${id}`); }
+    }));
+
+    const members = raw.map(m => ({
+      characterId: m.character_id,
+      characterName: charNames.get(m.character_id) ?? `Character ${m.character_id}`,
+      shipTypeId: m.ship_type_id,
+      shipTypeName: typeNames.get(m.ship_type_id) ?? `Type ${m.ship_type_id}`,
+      solarSystemId: m.solar_system_id,
+      solarSystemName: sysNames.get(m.solar_system_id) ?? `#${m.solar_system_id}`,
+      stationId: m.station_id ?? null,
+      takesFleetWarp: m.takes_fleet_warp,
+      role: m.role,
+      roleName: m.role_name,
+      wingId: m.wing_id,
+      squadId: m.squad_id,
+      joinTime: m.join_time,
+    }));
+
+    return {
+      actor: pubActor(actor),
+      fleet,
+      wings,
+      members,
+    };
+  });
+
+  const kickSchema = z.object({
+    character_id: z.number().int(),
+    actor_character_id: z.number().int().optional(),
+  });
+  app.post('/api/fleet/kick', async (req, reply) => {
+    const parsed = kickSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
+    let actor: CharacterRow | undefined;
+    if (parsed.data.actor_character_id != null) {
+      actor = db.prepare('SELECT * FROM characters WHERE character_id = ?').get(parsed.data.actor_character_id) as CharacterRow | undefined;
+    } else {
+      actor = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
+    }
+    if (!actor) return reply.code(400).send({ error: 'no actor' });
+    const fleet = await getCharacterFleet(actor.character_id);
+    if (!fleet) return reply.code(400).send({ error: 'actor not in fleet' });
+    if (fleet.role !== 'fleet_commander') return reply.code(400).send({ error: 'actor must be fleet_commander' });
+    try {
+      await kickMember(fleet.fleet_id, actor.character_id, parsed.data.character_id);
+      return { ok: true };
+    } catch (err) {
+      const e = err as { status?: number; body?: string; message?: string };
+      return reply.code(e.status ?? 500).send({ error: describeError(e) });
+    }
   });
 
   // Fleet structure for the invite-target picker: wings, squads, and the boss's own role.
@@ -213,6 +349,10 @@ export function registerFleetRoutes(app: FastifyInstance) {
     }
     return { boss: boss.character_name, fleet, wings };
   });
+}
+
+function pubActor(row: CharacterRow): { characterId: number; name: string } {
+  return { characterId: row.character_id, name: row.character_name };
 }
 
 function describeError(e: { status?: number; body?: string; message?: string }): string {

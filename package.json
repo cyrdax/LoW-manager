@@ -9,7 +9,8 @@
     "dev:web": "vite --config web/vite.config.ts",
     "build": "tsc && vite build --config web/vite.config.ts",
     "start": "node --loader tsx dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:mastery": "tsx scripts/build-mastery-data.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^9.3.1",
@@ -22,11 +23,13 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.7.5",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
     "concurrently": "^9.0.1",
+    "js-yaml": "^4.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tsx": "^4.19.1",

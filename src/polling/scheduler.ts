@@ -2,7 +2,9 @@ import { db } from '../db.ts';
 import type { CharacterRow, CharacterStatus } from '../types.ts';
 import { getLocation, getOnline, getShip } from '../esi/location.ts';
 import { getWallet } from '../esi/wallet.ts';
-import { currentlyTraining, getImplants, getSkillQueue, getSkills, queueEndIso } from '../esi/skills.ts';
+import { currentlyTraining, getImplants, getSkillQueue, getSkills, queueEndIso, skillLevel, SKILL_INTERPLANETARY_CONSOLIDATION, type SkillsResponse } from '../esi/skills.ts';
+import { getPlanetDetail, getPlanets, hasIdleExtractor, soonestExpiry, type PlanetPin } from '../esi/planets.ts';
+import type { ColonyInfo } from '../types.ts';
 import { getCharacterFleet } from '../esi/fleet.ts';
 import { getCharacterPublic, resolveCorporation, resolveStation, resolveSystem, resolveType, resolveStructure } from '../esi/universe.ts';
 import { bus } from './events.ts';
@@ -21,6 +23,7 @@ const FALLBACK_TTL = {
   implants: 120,
   fleet: 5,
   corp: 3600,
+  planets: 600,
 };
 
 interface FieldState {
@@ -37,11 +40,38 @@ interface CharacterState {
   implants: FieldState;
   fleet: FieldState;
   corp: FieldState;
+  planets: FieldState;
   cached: CharacterStatus;
 }
 
 const state = new Map<number, CharacterState>();
 const timers = new Map<number, NodeJS.Timeout>();
+
+// Pins kept out of the SSE/snapshot payload to keep updates lean.
+// Inventory roll-up + colony drill-down read from here directly.
+interface PinCacheEntry {
+  characterId: number;
+  planetId: number;
+  pins: PlanetPin[];
+  fetchedAt: number;
+}
+const pinCache = new Map<string, PinCacheEntry>();
+const pinKey = (charId: number, planetId: number) => `${charId}:${planetId}`;
+
+export function getColonyPins(charId: number, planetId: number): PinCacheEntry | null {
+  return pinCache.get(pinKey(charId, planetId)) ?? null;
+}
+
+export function allColonyPins(): PinCacheEntry[] {
+  return Array.from(pinCache.values());
+}
+
+// Full skills payload kept here (not in the SSE snapshot) so /api/skills routes
+// can compute SP gaps without hitting ESI per request.
+const skillsCache = new Map<number, SkillsResponse>();
+export function getCharacterSkills(charId: number): SkillsResponse | null {
+  return skillsCache.get(charId) ?? null;
+}
 
 export function snapshot(): CharacterStatus[] {
   return Array.from(state.values()).map(s => s.cached);
@@ -69,6 +99,7 @@ export function ensureCharacter(row: CharacterRow) {
       corp: { nextFetchAt: 0 },
       sp: { nextFetchAt: 0 },
       implants: { nextFetchAt: 0 },
+      planets: { nextFetchAt: 0 },
       cached: blankStatus(row),
     });
     scheduleNext(row.character_id, 0);
@@ -85,6 +116,10 @@ export function forgetCharacter(id: number) {
   const t = timers.get(id);
   if (t) clearTimeout(t);
   timers.delete(id);
+  for (const key of pinCache.keys()) {
+    if (pinCache.get(key)!.characterId === id) pinCache.delete(key);
+  }
+  skillsCache.delete(id);
   bus.emit('removed', { characterId: id });
 }
 
@@ -116,6 +151,10 @@ function blankStatus(row: CharacterRow): CharacterStatus {
     totalSp: null,
     unallocatedSp: null,
     implantNames: [],
+    interplanetaryConsolidation: null,
+    colonies: [],
+    nextPiExpiry: null,
+    hasIdlePi: false,
     fleetId: null,
     fleetRole: null,
     fleetWingId: null,
@@ -281,6 +320,7 @@ async function tick(id: number) {
     if (now >= s.sp.nextFetchAt) {
       const { data, expires } = await getSkills(id);
       s.sp.nextFetchAt = expires ?? now + FALLBACK_TTL.sp * 1000;
+      skillsCache.set(id, data);
       if (s.cached.totalSp !== data.total_sp) {
         s.cached.totalSp = data.total_sp;
         updates.totalSp = data.total_sp;
@@ -290,6 +330,81 @@ async function tick(id: number) {
       if (s.cached.unallocatedSp !== u) {
         s.cached.unallocatedSp = u;
         updates.unallocatedSp = u;
+        changed = true;
+      }
+      const ipc = skillLevel(data, SKILL_INTERPLANETARY_CONSOLIDATION);
+      if (s.cached.interplanetaryConsolidation !== ipc) {
+        s.cached.interplanetaryConsolidation = ipc;
+        updates.interplanetaryConsolidation = ipc;
+        changed = true;
+      }
+    }
+
+    if (now >= s.planets.nextFetchAt) {
+      const { data: list, expires } = await getPlanets(id);
+      s.planets.nextFetchAt = expires ?? now + FALLBACK_TTL.planets * 1000;
+
+      const colonies: ColonyInfo[] = [];
+      let earliest: string | null = null;
+      let anyIdle = false;
+      const seenPlanetIds = new Set<number>();
+      for (const p of list) {
+        let soonest: string | null = null;
+        let idle = false;
+        try {
+          const { data: detail } = await getPlanetDetail(id, p.planet_id);
+          soonest = soonestExpiry(detail.pins);
+          idle = hasIdleExtractor(detail.pins);
+          pinCache.set(pinKey(id, p.planet_id), {
+            characterId: id,
+            planetId: p.planet_id,
+            pins: detail.pins,
+            fetchedAt: Date.now(),
+          });
+          seenPlanetIds.add(p.planet_id);
+        } catch (err) {
+          // Detail fetch failed — keep summary-level info; expiry stays unknown.
+          const e = err as { status?: number; message?: string };
+          console.warn(`[poll ${id}] planet ${p.planet_id} detail ${e.status ?? '?'}: ${e.message}`);
+        }
+        const sysName = await resolveSystem(p.solar_system_id).catch(() => null);
+        colonies.push({
+          planetId: p.planet_id,
+          planetType: p.planet_type,
+          solarSystemId: p.solar_system_id,
+          solarSystemName: sysName,
+          upgradeLevel: p.upgrade_level,
+          numPins: p.num_pins,
+          lastUpdate: p.last_update,
+          soonestExpiry: soonest,
+          hasIdle: idle,
+        });
+        if (soonest && (!earliest || soonest < earliest)) earliest = soonest;
+        if (idle) anyIdle = true;
+      }
+
+      // Drop pin cache entries for colonies the pilot no longer owns
+      for (const key of pinCache.keys()) {
+        const entry = pinCache.get(key)!;
+        if (entry.characterId === id && !seenPlanetIds.has(entry.planetId)) {
+          pinCache.delete(key);
+        }
+      }
+
+      const sameColonies = JSON.stringify(s.cached.colonies) === JSON.stringify(colonies);
+      if (!sameColonies) {
+        s.cached.colonies = colonies;
+        updates.colonies = colonies;
+        changed = true;
+      }
+      if (s.cached.nextPiExpiry !== earliest) {
+        s.cached.nextPiExpiry = earliest;
+        updates.nextPiExpiry = earliest;
+        changed = true;
+      }
+      if (s.cached.hasIdlePi !== anyIdle) {
+        s.cached.hasIdlePi = anyIdle;
+        updates.hasIdlePi = anyIdle;
         changed = true;
       }
     }
@@ -350,6 +465,7 @@ async function tick(id: number) {
     s.implants.nextFetchAt,
     s.fleet.nextFetchAt,
     s.corp.nextFetchAt,
+    s.planets.nextFetchAt,
   );
   const delay = Math.max(MIN_POLL_MS, Math.min(MAX_POLL_MS, next - Date.now()));
   scheduleNext(id, delay);

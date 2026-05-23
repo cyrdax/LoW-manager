@@ -19,3 +19,23 @@ export async function setAutopilotWaypoint(characterId: number, params: Waypoint
   });
   await esiPost(`/ui/autopilot/waypoint/?${qs.toString()}`, characterId);
 }
+
+/**
+ * Pops the in-client "show info" window for a type/character/etc on the running
+ * client. Requires `esi-ui.open_window.v1` scope and the character to be logged
+ * in. Skill type IDs are valid targets (the info card shows the skill).
+ * Returns 204 on success.
+ */
+export async function openInformationWindow(characterId: number, targetId: number): Promise<void> {
+  const qs = new URLSearchParams({ target_id: String(targetId) });
+  await esiPost(`/ui/openwindow/information/?${qs.toString()}`, characterId);
+}
+
+/**
+ * Pops the in-client market details window for a type. Skill books share their
+ * skill's typeID, so the same ID works for both kinds of "show me how to buy this."
+ */
+export async function openMarketDetailsWindow(characterId: number, typeId: number): Promise<void> {
+  const qs = new URLSearchParams({ type_id: String(typeId) });
+  await esiPost(`/ui/openwindow/marketdetails/?${qs.toString()}`, characterId);
+}

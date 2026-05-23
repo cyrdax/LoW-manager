@@ -16,9 +16,11 @@ interface Props {
   chars: CharacterStatus[];
   selection: Set<number>;
   onRefresh: () => void;
+  view: 'pilots' | 'planets' | 'skills' | 'fleet' | 'market';
+  setView: (v: 'pilots' | 'planets' | 'skills' | 'fleet' | 'market') => void;
 }
 
-export function ControlPanel({ chars, selection, onRefresh }: Props) {
+export function ControlPanel({ chars, selection, onRefresh, view, setView }: Props) {
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<InviteResult[] | null>(null);
   const [resultsLabel, setResultsLabel] = useState<'invited' | 'moved' | 'ok'>('ok');
@@ -29,6 +31,11 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
   const boss = chars.find(c => c.isBoss);
   const bossInFleet = boss?.fleetId != null;
   const bossIsFC = boss?.fleetRole === 'fleet_commander';
+  // ESI's `/fleets/{id}/...` writes require the caller to be the fleet_boss_id —
+  // the character who originally formed the fleet — not just to hold the FC role.
+  const fleetBossId = structure?.fleet?.fleet_boss_id;
+  const bossIsFleetOwner = boss != null && fleetBossId != null && boss.characterId === fleetBossId;
+  const bossNotOwner = bossIsFC && fleetBossId != null && fleetBossId !== boss?.characterId;
 
   // Fetch the fleet's wing/squad tree when the boss is FC of a fleet.
   // Fast retry while wings aren't readable (ESI registration lag is 10–60s typical);
@@ -61,13 +68,11 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
     return { wing_id: w, squad_id: s };
   })();
 
-  // Move uses each pilot's own token; no boss involvement required. The only
-  // thing we need is a concrete wing/squad target, which today comes from the
-  // Invite-target dropdown (populated when boss happens to be FC). Once a
-  // target is picked, any selected pilot who is currently in *some* fleet
-  // can self-move if that fleet has free-move enabled.
-  const moveable = selectedCharsNonBoss.filter(c => c.fleetId != null);
-  const canMove = parsedTarget != null && moveable.length > 0;
+  // Move uses the boss's fleet_commander token (ESI doesn't honor in-client
+  // free-move for the PUT call — a member's own token gets 404). So the boss
+  // must be FC of the same fleet as the pilots being moved.
+  const moveable = selectedCharsNonBoss.filter(c => c.fleetId != null && c.fleetId === boss?.fleetId);
+  const canMove = bossIsFC && parsedTarget != null && moveable.length > 0;
 
   const openAuth = () => {
     const w = window.open('/auth/login', '_blank', 'width=560,height=720');
@@ -107,19 +112,46 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
         <small>{chars.length} characters · {selection.size} selected</small>
       </div>
 
+      <div className="view-nav view-nav-5">
+        <button
+          className={`nav-btn${view === 'pilots' ? ' active' : ''}`}
+          onClick={() => setView('pilots')}
+        >Pilots</button>
+        <button
+          className={`nav-btn${view === 'planets' ? ' active' : ''}`}
+          onClick={() => setView('planets')}
+        >Planets</button>
+        <button
+          className={`nav-btn${view === 'skills' ? ' active' : ''}`}
+          onClick={() => setView('skills')}
+        >Skills</button>
+        <button
+          className={`nav-btn${view === 'fleet' ? ' active' : ''}`}
+          onClick={() => setView('fleet')}
+        >Fleet</button>
+        <button
+          className={`nav-btn${view === 'market' ? ' active' : ''}`}
+          onClick={() => setView('market')}
+        >Market</button>
+      </div>
+
       <button className="primary" onClick={openAuth}>Add character</button>
 
-      <AutopilotPanel selectedIds={selectedIds} />
+      {view === 'pilots' && <AutopilotPanel selectedIds={selectedIds} />}
 
+      {view === 'pilots' && <>
       <div>
         <div style={{ fontSize: 12, color: 'var(--dim)', marginBottom: 6 }}>Fleet boss</div>
         <div style={{ fontSize: 14 }}>
           {boss ? boss.name : <span style={{ color: 'var(--dim)' }}>Click ★ on a row →</span>}
         </div>
         {boss && (
-          <div style={{ fontSize: 12, marginTop: 4, color: bossInFleet && bossIsFC ? 'var(--green)' : 'var(--amber)' }}>
+          <div style={{ fontSize: 12, marginTop: 4, color: bossInFleet && bossIsFC && bossIsFleetOwner ? 'var(--green)' : 'var(--amber)' }}>
             {!bossInFleet && 'Not in a fleet — form one in-client.'}
-            {bossInFleet && bossIsFC && `Fleet commander · fleet ${boss!.fleetId}`}
+            {bossInFleet && bossIsFC && bossIsFleetOwner && `Fleet boss · fleet ${boss!.fleetId}`}
+            {bossInFleet && bossIsFC && bossNotOwner && (
+              <>FC role but <b>not the fleet owner</b>. Right-click in the fleet window → <b>Transfer Fleet Boss</b> to {boss!.name}.</>
+            )}
             {bossInFleet && !bossIsFC && (
               <>Currently {boss!.fleetRole ?? 'member'}. Drag this character to the <b>Fleet Commander</b> slot in-client.</>
             )}
@@ -190,9 +222,15 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
               </>
             ) : (
               <div style={{ fontSize: 12, color: 'var(--amber)' }}>
-                <div>
-                  ESI can\u2019t read this fleet\u2019s wings ({structure?.error ?? 'loading'}) and none of your pilots are in it yet. Usually clears within 10\u201360&nbsp;s of forming a fresh fleet.
-                </div>
+                {bossNotOwner ? (
+                  <div>
+                    {boss!.name} is at the Fleet Commander slot but isn't the original fleet boss (someone else formed this fleet). ESI write endpoints check the original boss, not just the FC role. Right-click {boss!.name} in the in-client fleet window → <b>Transfer Fleet Boss</b> to give them ESI authority.
+                  </div>
+                ) : (
+                  <div>
+                    ESI can't read this fleet's wings ({structure?.error ?? 'loading'}) and none of your pilots are in it yet. Usually clears within 10–60 s of forming a fresh fleet.
+                  </div>
+                )}
                 <button
                   style={{ marginTop: 6, padding: '4px 10px', fontSize: 12 }}
                   onClick={() => setPokeNonce(n => n + 1)}
@@ -213,9 +251,10 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
         disabled={!canMove || busy}
         onClick={doMove}
         title={
-          !parsedTarget ? 'Pick a specific wing/squad above (not Auto) to move into'
-          : moveable.length === 0 ? 'No selected characters are currently in any fleet'
-          : `Move ${moveable.length} to the chosen squad (requires free-move or appropriate role)`
+          !bossIsFC ? 'Boss must be in the Fleet Commander slot to move pilots via ESI'
+          : !parsedTarget ? 'Pick a specific wing/squad above (not Auto) to move into'
+          : moveable.length === 0 ? 'No selected characters are in the boss\u2019s fleet'
+          : `Move ${moveable.length} to the chosen squad`
         }
       >
         {busy ? 'Working…' : `Move selected to target (${moveable.length})`}
@@ -234,10 +273,26 @@ export function ControlPanel({ chars, selection, onRefresh }: Props) {
           ))}
         </div>
       )}
+      </>}
+
+      {view === 'planets' && (
+        <div style={{ fontSize: 12, color: 'var(--dim)' }}>
+          PI is read-only via ESI — extractor timers, colony counts, and idle alerts.
+          Re-auth pilots if you see "loading" or "—" in the table (the new <code>manage_planets</code> scope was added recently).
+        </div>
+      )}
+
+      {view === 'market' && (
+        <div style={{ fontSize: 12, color: 'var(--dim)' }}>
+          PLEX trades on its own dedicated global market (since 2017). History is 1-day resolution, ~310 days back. Current spread updates every 5 min.
+        </div>
+      )}
 
       <div style={{ flex: 1 }} />
       <small style={{ color: 'var(--dim)' }}>
-        Watchlists: once every alt is in the boss's fleet, the in-game <b>Fleet Watchlist</b> auto-populates.
+        {view === 'pilots'
+          ? <>Watchlists: once every alt is in the boss's fleet, the in-game <b>Fleet Watchlist</b> auto-populates.</>
+          : <>Max colonies = 1 + Interplanetary Consolidation level (V&nbsp;= 6 colonies).</>}
       </small>
     </aside>
   );

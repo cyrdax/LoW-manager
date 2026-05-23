@@ -1,10 +1,13 @@
-import { esiGet, esiPost, esiPut } from './client.ts';
+import { esiDelete, esiGet, esiPost, esiPut } from './client.ts';
 
 export interface CharacterFleet {
   fleet_id: number;
   role: 'fleet_commander' | 'wing_commander' | 'squad_commander' | 'squad_member';
   squad_id: number;
   wing_id: number;
+  // ESI's true ownership marker. Even with role=fleet_commander, write endpoints
+  // 404 unless this matches the calling character's id.
+  fleet_boss_id?: number;
 }
 
 export interface FleetInvitation {
@@ -103,4 +106,30 @@ export async function moveMember(
   payload: MoveMemberPayload,
 ): Promise<void> {
   await esiPut(`/fleets/${fleetId}/members/${memberCharacterId}/`, bossCharacterId, payload);
+}
+
+export async function kickMember(
+  fleetId: number,
+  bossCharacterId: number,
+  memberCharacterId: number,
+): Promise<void> {
+  await esiDelete(`/fleets/${fleetId}/members/${memberCharacterId}/`, bossCharacterId);
+}
+
+export interface FleetMember {
+  character_id: number;
+  ship_type_id: number;
+  solar_system_id: number;
+  station_id?: number;
+  takes_fleet_warp: boolean;
+  role: 'fleet_commander' | 'wing_commander' | 'squad_commander' | 'squad_member';
+  role_name: string;
+  squad_id: number;
+  wing_id: number;
+  join_time: string;
+}
+
+export async function getFleetMembers(fleetId: number, actorCharacterId: number): Promise<FleetMember[]> {
+  const { data } = await esiGet<FleetMember[]>(`/fleets/${fleetId}/members/`, actorCharacterId);
+  return data;
 }

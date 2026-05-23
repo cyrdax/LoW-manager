@@ -83,6 +83,14 @@ export async function esiPut<T>(path: string, characterId: number, body: unknown
   });
 }
 
+export async function esiDelete<T = void>(path: string, characterId: number): Promise<EsiResponse<T>> {
+  const token = await getAccessToken(characterId);
+  return esiFetch<T>(path, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export async function esiGetPublic<T>(path: string): Promise<EsiResponse<T>> {
   return esiFetch<T>(path);
 }

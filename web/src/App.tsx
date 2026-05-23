@@ -3,7 +3,13 @@ import { useCharacters } from './hooks/useCharacters.ts';
 import { useTableState, type SortKey, type ColKey } from './hooks/useTableState.ts';
 import { CharacterCard } from './components/CharacterCard.tsx';
 import { ControlPanel } from './components/ControlPanel.tsx';
+import { PlanetsView } from './components/PlanetsView.tsx';
+import { SkillsView } from './components/SkillsView.tsx';
+import { FleetView } from './components/FleetView.tsx';
+import { MarketView } from './components/MarketView.tsx';
 import { deleteCharacter, setBoss, type CharacterStatus } from './api.ts';
+
+type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market';
 
 interface HeaderDef {
   key: SortKey;
@@ -57,6 +63,9 @@ export function App() {
   const { chars, loading, refresh } = useCharacters();
   const table = useTableState();
 
+  const [view, setView] = useState<View>(() => (localStorage.getItem('efd.view') as View) || 'pilots');
+  useEffect(() => { localStorage.setItem('efd.view', view); }, [view]);
+
   const list = useMemo(() => {
     const arr = Array.from(chars.values());
     arr.sort((a, b) => {
@@ -69,10 +78,6 @@ export function App() {
   const [selection, setSelection] = useState<Set<number>>(new Set());
   const knownIdsRef = useRef<Set<number>>(new Set());
 
-  // Auto-select genuinely new characters (never seen before) and drop removed
-  // ones. Comparing against a ref of previously-seen IDs — not the current
-  // selection — so a user's explicit deselect isn't clobbered when the list
-  // re-sorts or a SSE update replaces the map.
   useEffect(() => {
     const known = knownIdsRef.current;
     const currentIds = new Set(list.map(c => c.characterId));
@@ -121,45 +126,53 @@ export function App() {
 
   return (
     <div className="layout">
-      <ControlPanel chars={list} selection={selection} onRefresh={refresh} />
-      <main className="rows-wrap">
-        <div className="rows-header" style={table.gridStyle}>
-          <label className="col-select">
-            <input type="checkbox" checked={allSelected} onChange={onToggleAll} aria-label="Select all" />
-          </label>
-          <div className="col-portrait" />
-          {HEADERS.map(h => (
-            <div key={h.col} className={`col-cell header-cell${h.align === 'right' ? ' right' : ''}`}>
-              <button className="sort-btn" onClick={() => table.toggleSort(h.key)}>
-                <span className="label-text">{h.label}</span>
-                {totals[h.key] && <span className="total">{totals[h.key]}</span>}
-                {table.sortKey === h.key && <span className="arrow">{table.sortAsc ? '▲' : '▼'}</span>}
-              </button>
-              <div className="resizer" onMouseDown={e => table.startResize(h.col, e)} />
-            </div>
-          ))}
-          <div className="col-actions">{selection.size}/{list.length}</div>
-        </div>
+      <ControlPanel chars={list} selection={selection} onRefresh={refresh} view={view} setView={setView} />
 
-        {loading && <div className="empty">Loading…</div>}
-        {!loading && list.length === 0 && (
-          <div className="empty">
-            No characters yet. Click <b>Add character</b> in the sidebar to authenticate one via EVE SSO.
+      {view === 'pilots' && (
+        <main className="rows-wrap">
+          <div className="rows-header" style={table.gridStyle}>
+            <label className="col-select">
+              <input type="checkbox" checked={allSelected} onChange={onToggleAll} aria-label="Select all" />
+            </label>
+            <div className="col-portrait" />
+            {HEADERS.map(h => (
+              <div key={h.col} className={`col-cell header-cell${h.align === 'right' ? ' right' : ''}`}>
+                <button className="sort-btn" onClick={() => table.toggleSort(h.key)}>
+                  <span className="label-text">{h.label}</span>
+                  {totals[h.key] && <span className="total">{totals[h.key]}</span>}
+                  {table.sortKey === h.key && <span className="arrow">{table.sortAsc ? '▲' : '▼'}</span>}
+                </button>
+                <div className="resizer" onMouseDown={e => table.startResize(h.col, e)} />
+              </div>
+            ))}
+            <div className="col-actions">{selection.size}/{list.length}</div>
           </div>
-        )}
-        {list.map(c => (
-          <CharacterCard
-            key={c.characterId}
-            c={c}
-            bossFleetId={bossFleetId}
-            selected={selection.has(c.characterId)}
-            gridStyle={table.gridStyle}
-            onToggle={onToggle}
-            onRemove={onRemove}
-            onSetBoss={onSetBoss}
-          />
-        ))}
-      </main>
+
+          {loading && <div className="empty">Loading…</div>}
+          {!loading && list.length === 0 && (
+            <div className="empty">
+              No characters yet. Click <b>Add character</b> in the sidebar to authenticate one via EVE SSO.
+            </div>
+          )}
+          {list.map(c => (
+            <CharacterCard
+              key={c.characterId}
+              c={c}
+              bossFleetId={bossFleetId}
+              selected={selection.has(c.characterId)}
+              gridStyle={table.gridStyle}
+              onToggle={onToggle}
+              onRemove={onRemove}
+              onSetBoss={onSetBoss}
+            />
+          ))}
+        </main>
+      )}
+
+      {view === 'planets' && <PlanetsView chars={list} />}
+      {view === 'skills' && <SkillsView chars={list} />}
+      {view === 'fleet' && <FleetView chars={list} />}
+      {view === 'market' && <MarketView />}
     </div>
   );
 }

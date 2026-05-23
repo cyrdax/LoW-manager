@@ -10,6 +10,9 @@ import { registerFleetRoutes } from './routes/fleet.ts';
 import { registerStreamRoute } from './routes/stream.ts';
 import { registerSearchRoutes } from './routes/search.ts';
 import { registerAutopilotRoutes } from './routes/autopilot.ts';
+import { registerPlanetRoutes } from './routes/planets.ts';
+import { registerSkillsRoutes } from './routes/skills.ts';
+import { registerMarketRoutes } from './routes/market.ts';
 import { startPolling } from './polling/scheduler.ts';
 import { bootstrapSystemsCache } from './esi/universe.ts';
 
@@ -23,6 +26,9 @@ registerFleetRoutes(app);
 registerStreamRoute(app);
 registerSearchRoutes(app);
 registerAutopilotRoutes(app);
+registerPlanetRoutes(app);
+registerSkillsRoutes(app);
+registerMarketRoutes(app);
 
 // In dev, Vite serves the frontend on its own port. In production, serve the built bundle.
 const distDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'web', 'dist');

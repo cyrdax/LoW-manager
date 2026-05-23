@@ -2,5 +2,6 @@ node_modules
 dist
 .env
 data/
+.cache/
 *.log
 .DS_Store

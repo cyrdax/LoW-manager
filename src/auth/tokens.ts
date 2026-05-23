@@ -22,7 +22,14 @@ export async function getAccessToken(characterId: number): Promise<string> {
     `).run(tok.access_token, expiresAt, tok.refresh_token, characterId);
     return tok.access_token;
   } catch (err) {
-    db.prepare('UPDATE characters SET needs_reauth = 1 WHERE character_id = ?').run(characterId);
+    // Only mark reauth on EVE's "token is dead" response (400 + invalid_grant).
+    // Transient failures (5xx, network errors, rate limits) leave needs_reauth=0
+    // so the next polling cycle can retry — otherwise a brief EVE hiccup forces
+    // the user to re-login every character by hand.
+    const msg = String((err as Error).message ?? '');
+    if (/Refresh failed: 400\b/.test(msg) && /invalid_grant/.test(msg)) {
+      db.prepare('UPDATE characters SET needs_reauth = 1 WHERE character_id = ?').run(characterId);
+    }
     throw err;
   }
 }

@@ -87,6 +87,44 @@ export async function resolveType(id: number): Promise<string> {
   return data.name;
 }
 
+export async function resolveSchematic(id: number): Promise<string> {
+  const hit = cached('schematic', id);
+  if (hit) return hit;
+  const { data } = await esiGetPublic<{ schematic_name: string }>(`/universe/schematics/${id}/`);
+  store('schematic', id, data.schematic_name);
+  return data.schematic_name;
+}
+
+export interface SystemInfoPublic {
+  system_id: number;
+  name: string;
+  security_status: number;
+  constellation_id: number;
+  planets?: Array<{ planet_id: number; asteroid_belts?: number[]; moons?: number[] }>;
+}
+
+export async function getSystemInfo(id: number): Promise<SystemInfoPublic> {
+  const { data } = await esiGetPublic<SystemInfoPublic>(`/universe/systems/${id}/`);
+  store('system', id, data.name);
+  return data;
+}
+
+export interface PlanetPublic {
+  planet_id: number;
+  name: string;
+  system_id: number;
+  type_id: number;
+  position: { x: number; y: number; z: number };
+}
+
+export async function getPlanetPublic(id: number): Promise<PlanetPublic> {
+  // Cache the planet's display name under a 'planet' category so repeated lookups stay cheap.
+  const cachedName = cached('planet', id);
+  const { data } = await esiGetPublic<PlanetPublic>(`/universe/planets/${id}/`);
+  if (!cachedName) store('planet', id, data.name);
+  return data;
+}
+
 export async function resolveStation(id: number): Promise<string> {
   const hit = cached('station', id);
   if (hit) return hit;

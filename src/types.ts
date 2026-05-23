@@ -40,6 +40,11 @@ export interface CharacterStatus {
   totalSp: number | null;
   unallocatedSp: number | null;
   implantNames: string[];
+  // Planetary Interaction
+  interplanetaryConsolidation: number | null; // 0–5; null = not polled yet
+  colonies: ColonyInfo[];
+  nextPiExpiry: string | null;
+  hasIdlePi: boolean;
   fleetId: number | null;
   fleetRole: 'fleet_commander' | 'wing_commander' | 'squad_commander' | 'squad_member' | null;
   fleetWingId: number | null;
@@ -47,6 +52,18 @@ export interface CharacterStatus {
   isBoss: boolean;
   needsReauth: boolean;
   updatedAt: number;
+}
+
+export interface ColonyInfo {
+  planetId: number;
+  planetType: string;
+  solarSystemId: number;
+  solarSystemName: string | null;
+  upgradeLevel: number;
+  numPins: number;
+  lastUpdate: string;
+  soonestExpiry: string | null;
+  hasIdle: boolean;
 }
 
 export interface InviteResult {
