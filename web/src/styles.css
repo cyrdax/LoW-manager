@@ -1241,6 +1241,21 @@ body {
 .mk-calc-line-sub { font-size: 11px; margin-top: 2px; }
 .mk-calc-warn { margin-top: 8px; font-size: 12px; }
 
+/* Sell calculator: solve-for toggle */
+.mk-calc-solve {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.mk-calc-solve-label {
+  font-size: 11px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.mk-calc-solve .mk-calc-mode { flex: 0 1 auto; }
+
 /* Market sub-tabs (PLEX | Shopping List) */
 .mk-tabs { display: flex; gap: 4px; margin-bottom: 4px; }
 .mk-tab {

@@ -179,8 +179,9 @@ A live tracker for PLEX prices on the Global PLEX Market region (19000001 — *n
   - Sales tax = `8% × (1 − 0.11 × Accounting level)` (3.6% at V)
   - Broker's fee = `3% − 0.3% × Broker Relations level` (1.5% at V)
   - Mode toggle: **Instant** (sell into best buy — no broker fee) vs **List** (sell order at best ask — broker fee up front, sales tax on fill)
+  - Solve-for toggle: **Quantity → ISK** (forward: how much do I net?) or **Target ISK → PLEX** (reverse: how many PLEX do I need to sell to hit a target net amount?). Target mode ceilings the qty to a whole PLEX and reports the small overshoot.
   - Price source toggle: **auto** (best buy / best sell depending on mode) vs **manual** override.
-  - Outputs: gross, broker fee, sales tax, net ISK, effective per-PLEX.
+  - Outputs: gross, broker fee, sales tax, net ISK, effective per-PLEX. In Target mode the "PLEX to sell" line becomes the headline.
   - All inputs persist in `localStorage.efd.market.calc`.
 
 ### Shopping List tab

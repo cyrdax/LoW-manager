@@ -592,7 +592,9 @@ function PriceChart({ data }: { data: PlexHistoryEntry[] }) {
 // standings. The fee % field is editable so you can match a citadel's tariff.
 
 interface CalcState {
+  solveFor: 'qty' | 'target';
   quantity: string;
+  target: string;            // target net ISK, used when solveFor === 'target'
   mode: 'instant' | 'list';
   accounting: number;        // 0–5
   brokerRelations: number;   // 0–5
@@ -608,7 +610,9 @@ function loadCalcState(): CalcState {
     if (!raw) throw 0;
     const p = JSON.parse(raw) as Partial<CalcState>;
     return {
+      solveFor: p.solveFor ?? 'qty',
       quantity: p.quantity ?? '1',
+      target: p.target ?? '',
       mode: p.mode ?? 'instant',
       accounting: clamp(p.accounting ?? 5, 0, 5),
       brokerRelations: clamp(p.brokerRelations ?? 5, 0, 5),
@@ -616,7 +620,16 @@ function loadCalcState(): CalcState {
       manualPrice: p.manualPrice ?? '',
     };
   } catch {
-    return { quantity: '1', mode: 'instant', accounting: 5, brokerRelations: 5, customPriceMode: 'auto', manualPrice: '' };
+    return {
+      solveFor: 'qty',
+      quantity: '1',
+      target: '',
+      mode: 'instant',
+      accounting: 5,
+      brokerRelations: 5,
+      customPriceMode: 'auto',
+      manualPrice: '',
+    };
   }
 }
 
@@ -636,9 +649,11 @@ function SellCalculator({ orders }: { orders: PlexOrders | null }) {
   const [s, setS] = useState<CalcState>(loadCalcState);
   useEffect(() => { localStorage.setItem(CALC_STORE_KEY, JSON.stringify(s)); }, [s]);
 
-  const qty = Math.max(0, Number(s.quantity) || 0);
   const taxRate = salesTaxRate(s.accounting);
   const brokerRate = s.mode === 'list' ? brokerFeeRate(s.brokerRelations) : 0;
+  // Fraction of gross you keep after fees. Used in target-ISK mode to invert
+  // the math: qty = ceil(targetNet / (price × keepRate)).
+  const keepRate = 1 - taxRate - brokerRate;
 
   // Auto price: instant = best buy (you sell into it); list = best sell (you'd at least match it).
   const autoPrice = s.mode === 'instant'
@@ -648,27 +663,66 @@ function SellCalculator({ orders }: { orders: PlexOrders | null }) {
     ? (Number(s.manualPrice) || 0)
     : (autoPrice ?? 0);
 
+  const targetIsk = Math.max(0, Number(s.target) || 0);
+  const qty = s.solveFor === 'target'
+    ? (price > 0 && keepRate > 0 ? Math.ceil(targetIsk / (price * keepRate)) : 0)
+    : Math.max(0, Number(s.quantity) || 0);
+
   const gross = qty * price;
   const brokerFee = gross * brokerRate;
   const salesTax = gross * taxRate;
   const net = gross - brokerFee - salesTax;
   const perPlexAfter = qty > 0 ? net / qty : 0;
+  const overshoot = s.solveFor === 'target' ? Math.max(0, net - targetIsk) : 0;
 
   return (
     <div className="mk-calc">
       <div className="mk-calc-h">Sell calculator</div>
 
-      <div className="mk-calc-grid">
-        <div className="mk-calc-field">
-          <label>Quantity (PLEX)</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={s.quantity}
-            onChange={e => setS({ ...s, quantity: e.target.value })}
-          />
+      <div className="mk-calc-solve">
+        <span className="mk-calc-solve-label">Solve for</span>
+        <div className="mk-calc-mode">
+          <button
+            className={s.solveFor === 'qty' ? 'active' : ''}
+            onClick={() => setS({ ...s, solveFor: 'qty' })}
+            title="Enter PLEX quantity, get net ISK"
+          >Quantity → ISK</button>
+          <button
+            className={s.solveFor === 'target' ? 'active' : ''}
+            onClick={() => setS({ ...s, solveFor: 'target' })}
+            title="Enter target net ISK, get how many PLEX to sell"
+          >Target ISK → PLEX</button>
         </div>
+      </div>
+
+      <div className="mk-calc-grid">
+        {s.solveFor === 'qty' ? (
+          <div className="mk-calc-field">
+            <label>Quantity (PLEX)</label>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={s.quantity}
+              onChange={e => setS({ ...s, quantity: e.target.value })}
+            />
+          </div>
+        ) : (
+          <div className="mk-calc-field">
+            <label>Target net ISK</label>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={s.target}
+              placeholder="e.g. 2000000000"
+              onChange={e => setS({ ...s, target: e.target.value })}
+            />
+            <span className="mk-calc-derived">
+              {targetIsk > 0 ? formatIsk(targetIsk) + ' ISK target' : 'enter a target'}
+            </span>
+          </div>
+        )}
 
         <div className="mk-calc-field">
           <label>Sell mode</label>
@@ -740,12 +794,32 @@ function SellCalculator({ orders }: { orders: PlexOrders | null }) {
       </div>
 
       <div className="mk-calc-out">
+        {s.solveFor === 'target' && (
+          <Line
+            label="PLEX to sell"
+            value={qty}
+            unit="PLEX"
+            cls="ok"
+            big
+            sub={qty > 0
+              ? `at ${formatIsk(price)} ISK/PLEX, fees ${((1 - keepRate) * 100).toFixed(2)}%`
+              : (targetIsk === 0 ? 'enter a target above' : 'price unavailable')}
+          />
+        )}
         <Line label="Gross" value={gross} sub={`${qty.toLocaleString()} × ${formatIsk(price)} ISK`} />
         {s.mode === 'list' && (
           <Line label="Broker's fee" value={-brokerFee} sub={`${(brokerRate * 100).toFixed(2)}% up front`} cls="err" />
         )}
         <Line label="Sales tax" value={-salesTax} sub={`${(taxRate * 100).toFixed(2)}%`} cls="err" />
-        <Line label="Net ISK" value={net} cls="ok" big />
+        <Line
+          label="Net ISK"
+          value={net}
+          cls="ok"
+          big={s.solveFor === 'qty'}
+          sub={s.solveFor === 'target' && overshoot > 0
+            ? `target +${formatIsk(overshoot)} ISK (integer-PLEX rounding)`
+            : undefined}
+        />
         <Line
           label="Effective per PLEX"
           value={perPlexAfter}
@@ -760,18 +834,19 @@ function SellCalculator({ orders }: { orders: PlexOrders | null }) {
   );
 }
 
-function Line({ label, value, sub, cls, big }: {
+function Line({ label, value, sub, cls, big, unit = 'ISK' }: {
   label: string;
   value: number;
   sub?: string;
   cls?: string;
   big?: boolean;
+  unit?: string;
 }) {
   return (
     <div className={`mk-calc-line${big ? ' big' : ''}`}>
       <div className="mk-calc-line-label">{label}</div>
       <div className={`mk-calc-line-val${cls ? ` ${cls}` : ''}`}>
-        {value < 0 ? '−' : ''}{value === 0 ? '0' : Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: 0 })} ISK
+        {value < 0 ? '−' : ''}{value === 0 ? '0' : Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: 0 })} {unit}
       </div>
       {sub && <div className="mk-calc-line-sub dim">{sub}</div>}
     </div>
