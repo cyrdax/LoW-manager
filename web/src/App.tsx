@@ -172,7 +172,7 @@ export function App() {
       {view === 'planets' && <PlanetsView chars={list} />}
       {view === 'skills' && <SkillsView chars={list} />}
       {view === 'fleet' && <FleetView chars={list} />}
-      {view === 'market' && <MarketView />}
+      {view === 'market' && <MarketView chars={list} />}
     </div>
   );
 }

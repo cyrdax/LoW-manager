@@ -214,6 +214,10 @@ The parser also accepts `2x Cap Recharger II` and EVE's tab-separated in-game co
 
 **Endpoint** — `POST /api/market/shopping-list/quote` with `{ hub: "jita" | "amarr", items: [{ name, qty }] }`. Per-item orders requests run with concurrency 8 to stay polite on ESI's error budget. Name → type_id results are cached forever (type names don't change); orders are cached 5 minutes (matches ESI's own cache).
 
+**Send to pilot (EVEmail)** — once a quote is calculated, a dropdown of authed pilots + a **Send as EVEmail** button appears above the results table. Pick the alt that's actually going to buy the items and hit Send. The server re-prices the list at send-time (in case prices shifted), then posts an EVEmail to that pilot via `POST /characters/{id}/mail/`. The mail body renders each item as `<a href="showinfo:TYPE_ID">Item Name</a>` — clickable in-game links that open the showinfo window, which has a "View Market Details" button. Effectively a navigable in-game shopping list.
+
+Requires `esi-mail.send_mail.v1` (added in this scope set; existing pilots must re-auth). If the pilot's token predates the scope, the Send button surfaces a 401 with a "needs re-auth" hint. The mail is a self-mail (the chosen pilot is both sender and recipient — lands in their personal mail tab as From: themself). The endpoint is `POST /api/market/shopping-list/send` with `{ hub, items, recipientCharacterId }`.
+
 ---
 
 ## Important ESI realities (useful background)
@@ -256,9 +260,10 @@ If you want a deeper cheat sheet, see `~/.claude/projects/-Users-cyrdax/memory/r
    - `esi-ui.write_waypoint.v1`
    - `esi-ui.open_window.v1`
    - `esi-planets.manage_planets.v1`
+   - `esi-mail.send_mail.v1`
 5. Save and copy the Client ID and Secret.
 
-> If you're upgrading from an earlier version that didn't include `esi-planets.manage_planets.v1` or `esi-ui.open_window.v1`, every existing character must be re-authed (Add character → SSO popup → same alt) before their PI data shows up and the Skills view's per-row Info / Market buttons stop 403-ing. ESI tokens don't retroactively gain new scopes.
+> If you're upgrading from an earlier version that didn't include `esi-planets.manage_planets.v1`, `esi-ui.open_window.v1`, or `esi-mail.send_mail.v1`, every existing character must be re-authed (Add character → SSO popup → same alt) before their PI data shows up, the Skills view's per-row Info / Market buttons stop 403-ing, and the Shopping List "Send as EVEmail" button stops 401-ing. ESI tokens don't retroactively gain new scopes.
 
 ### 2. Configure environment
 
@@ -341,7 +346,7 @@ Key pieces:
 - `src/esi/pi-data.ts` — static PI metadata: planet-type → P0 list, P0 → P1 mapping, and commodity-name → tier (P0/P1/P2/P3+) classifier. Keyed by name (not type ID) so it survives any commodity ID drift.
 - `src/esi/universe.ts` — bootstraps an 8000+ solar-system cache on first boot via `POST /universe/names/`, backs the in-app waypoint autocomplete and system search. Also caches planet names, schematic names, and corp tickers under categorized keys in `universe_names`.
 - `src/routes/skills.ts` + `src/skills/mastery-data.ts` — ship / item search (`/api/skills/ships`, `/api/skills/items`), Mastery plan resolver (`/api/skills/plan`), item-skill plan resolver (`/api/skills/item-plan`), saved-plan CRUD (`/api/skills/plans`), and the open-window helper (`/api/skills/open-window`). The mastery JSON is bundled (~71 lines of summary indices); the full per-ship skill graph is generated from CCP's SDE by `scripts/build-mastery-data.ts` (run via `npm run build:mastery`). The downloaded SDE zip is cached under `.cache/sde.zip` and gitignored — it's ~100 MB.
-- `src/routes/market.ts` — PLEX history + orders (`/api/market/plex/{history,orders}`) and the shopping-list quoter (`POST /api/market/shopping-list/quote`). Hub constants live at the top of the file (Jita, Amarr); the order book walker filters by `system_id` so "in Jita" really means "in Jita." Type-id resolution caches forever; orders cache 5 min (matches ESI).
+- `src/routes/market.ts` — PLEX history + orders (`/api/market/plex/{history,orders}`), the shopping-list quoter (`POST /api/market/shopping-list/quote`), and the EVEmail sender (`POST /api/market/shopping-list/send`). Hub constants live at the top of the file (Jita, Amarr); the order-book walker filters by `system_id` so "in Jita" really means "in Jita." `runQuote(hubKey, items, log)` is the shared pricing path both endpoints use. The mail sender re-prices at send-time and formats the body with `<a href="showinfo:TYPE_ID">` links per item. Type-id resolution caches forever; orders cache 5 min (matches ESI).
 - `web/src/hooks/useTableState.ts` — sort + column-width state persisted to `localStorage`.
 
 ### Adding new ESI fields
@@ -376,6 +381,7 @@ Obvious candidates (surveyed, not implemented): industry job ETAs, jump-clone co
 | Skills view shows a yellow "SDE outdated" banner                                     | CCP shipped a newer SDE than the bundled mastery data. Run `npm run build:mastery` to rebuild (downloads / caches the SDE under `.cache/`). |
 | Shopping List shows several `unknown item` rows                                      | Names didn't match `POST /universe/ids/`. Check spelling against the in-game item exactly — copy the inventory line if in doubt. ESI name matching is case-sensitive. |
 | Shopping List shows `no sellers` for a popular item                                  | Most likely the chosen hub doesn't currently stock that item in-system. Try the other hub. Subtotal will be 0 ISK for that row. |
+| Shopping List **Send as EVEmail** returns 401 / "needs re-auth"                      | Pilot's token predates the `esi-mail.send_mail.v1` scope. Click **Add character** on that alt in the sidebar to re-auth. |
 
 ---
 

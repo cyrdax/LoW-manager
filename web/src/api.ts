@@ -569,3 +569,26 @@ export async function quoteShoppingList(
   if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
   return res.json();
 }
+
+export interface ShoppingListSendResult {
+  ok: true;
+  mailId: number | null;
+  quote: ShoppingListQuote;
+}
+
+export async function sendShoppingList(
+  hub: ShoppingHub,
+  items: Array<{ name: string; qty: number }>,
+  recipientCharacterId: number,
+): Promise<ShoppingListSendResult | { error: string; reauthHint?: string | null }> {
+  const res = await fetch('/api/market/shopping-list/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hub, items, recipientCharacterId }),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    return { error: j.error ?? res.statusText, reauthHint: j.reauthHint ?? null };
+  }
+  return res.json();
+}

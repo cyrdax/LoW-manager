@@ -1351,3 +1351,33 @@ body {
 .mk-shop-pill.warn { color: var(--amber, #f59e0b); }
 .mk-shop-pill.err { color: var(--red); }
 
+/* Send-to-pilot row above the results table */
+.mk-shop-send {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.mk-shop-send-label {
+  font-size: 11px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.mk-shop-pilot-select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  min-width: 180px;
+}
+.mk-shop-pilot-select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.mk-shop-send-ok { color: var(--green); font-size: 12px; }
+.mk-shop-send-err { color: var(--red); font-size: 12px; }
+

@@ -1,5 +1,5 @@
-import type { FastifyInstance } from 'fastify';
-import { esiGetPublic, esiPostPublic } from '../esi/client.ts';
+import type { FastifyInstance, FastifyBaseLogger } from 'fastify';
+import { esiGetPublic, esiPost, esiPostPublic } from '../esi/client.ts';
 
 // PLEX trades on its own dedicated global region (since 2017, when CCP unified
 // the PLEX market). Region 19000001 is the only one that holds PLEX orders +
@@ -118,6 +118,160 @@ function walkOrderBook(orders: MarketOrder[], systemId: number, qty: number): Or
   return { totalCost: cost, filledQty: qty - remaining, shortfall: remaining };
 }
 
+type QuoteStatus = 'ok' | 'partial' | 'no-orders' | 'unknown-item';
+
+interface QuotedItem {
+  inputName: string;
+  resolvedName: string | null;
+  typeId: number | null;
+  requestedQty: number;
+  filledQty: number;
+  totalCost: number;
+  avgPrice: number | null;
+  shortfall: number;
+  status: QuoteStatus;
+}
+
+interface QuoteResult {
+  hub: HubKey;
+  systemName: string;
+  regionName: string;
+  items: QuotedItem[];
+  totalCost: number;
+  counts: { ok: number; partial: number; noOrders: number; unknown: number };
+  fetchedAt: number;
+}
+
+// Parses + validates request items, dedupes by name, resolves type_ids, walks
+// each book under the chosen hub. Used by both the `/quote` and `/send`
+// endpoints so they always price the same way.
+async function runQuote(
+  hubKey: HubKey,
+  rawItems: Array<{ name?: string; qty?: number }>,
+  log?: FastifyBaseLogger,
+): Promise<QuoteResult> {
+  const hub = HUBS[hubKey];
+  const reqByName = new Map<string, number>();
+  for (const it of rawItems) {
+    const name = (it?.name ?? '').trim();
+    const qty = Math.max(0, Math.floor(Number(it?.qty) || 0));
+    if (!name || qty === 0) continue;
+    reqByName.set(name, (reqByName.get(name) ?? 0) + qty);
+  }
+  const names = [...reqByName.keys()];
+  const ids = await resolveTypeIds(names);
+
+  const concurrency = 8;
+  const results: QuotedItem[] = new Array(names.length);
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= names.length) return;
+      const inputName = names[idx];
+      const requestedQty = reqByName.get(inputName)!;
+      const typeId = ids.get(inputName) ?? null;
+      if (typeId == null) {
+        results[idx] = {
+          inputName, resolvedName: null, typeId: null, requestedQty,
+          filledQty: 0, totalCost: 0, avgPrice: null, shortfall: requestedQty,
+          status: 'unknown-item',
+        };
+        continue;
+      }
+      try {
+        const orders = await getOrders(hub.regionId, typeId);
+        const fill = walkOrderBook(orders, hub.systemId, requestedQty);
+        let status: QuoteStatus;
+        if (fill.filledQty === 0) status = 'no-orders';
+        else if (fill.shortfall > 0) status = 'partial';
+        else status = 'ok';
+        results[idx] = {
+          inputName, resolvedName: inputName, typeId, requestedQty,
+          filledQty: fill.filledQty, totalCost: fill.totalCost,
+          avgPrice: fill.filledQty > 0 ? fill.totalCost / fill.filledQty : null,
+          shortfall: fill.shortfall, status,
+        };
+      } catch (err) {
+        const e = err as { message?: string };
+        results[idx] = {
+          inputName, resolvedName: inputName, typeId, requestedQty,
+          filledQty: 0, totalCost: 0, avgPrice: null, shortfall: requestedQty,
+          status: 'no-orders',
+        };
+        log?.warn?.({ err: e.message }, `orders fetch failed for ${inputName} (${typeId})`);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, names.length) }, () => worker()));
+
+  let totalCost = 0;
+  let ok = 0, partial = 0, noOrders = 0, unknown = 0;
+  for (const r of results) {
+    totalCost += r.totalCost;
+    if (r.status === 'ok') ok++;
+    else if (r.status === 'partial') partial++;
+    else if (r.status === 'no-orders') noOrders++;
+    else unknown++;
+  }
+
+  return {
+    hub: hubKey,
+    systemName: hub.systemName,
+    regionName: hub.regionName,
+    items: results,
+    totalCost,
+    counts: { ok, partial, noOrders, unknown },
+    fetchedAt: Date.now(),
+  };
+}
+
+function formatIskShort(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return Math.round(n).toString();
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Builds the EVEmail HTML body for a shopping-list quote. EVE in-game mail
+// renders a restricted HTML subset; `<a href="showinfo:TYPE_ID">Name</a>`
+// produces clickable item refs that open the in-game showinfo window with
+// a "View Market Details" button.
+function formatShoppingMailBody(quote: QuoteResult): string {
+  const lines: string[] = [];
+  lines.push(`<font size="14"><b>Shopping List - ${quote.systemName}</b></font>`);
+  lines.push('');
+  for (const it of quote.items) {
+    const name = escapeHtml(it.resolvedName ?? it.inputName);
+    const link = it.typeId != null ? `<a href="showinfo:${it.typeId}">${name}</a>` : name;
+    const qty = it.requestedQty.toLocaleString();
+    const segments: string[] = [`${link} x ${qty}`];
+    if (it.status === 'ok' || it.status === 'partial') {
+      const avg = it.avgPrice != null ? `${formatIskShort(it.avgPrice)} ISK/ea` : '';
+      const total = it.totalCost > 0 ? `= ${formatIskShort(it.totalCost)} ISK` : '';
+      if (avg) segments.push(avg);
+      if (total) segments.push(total);
+    }
+    if (it.status === 'partial') segments.push(`(partial: ${it.filledQty}/${it.requestedQty})`);
+    if (it.status === 'no-orders') segments.push('(no sellers in system)');
+    if (it.status === 'unknown-item') segments.push('[unmatched name]');
+    lines.push(segments.join(' · '));
+  }
+  lines.push('');
+  lines.push(`<b>Total: ${formatIskShort(quote.totalCost)} ISK</b> (${quote.systemName}, ${quote.regionName})`);
+  const flags: string[] = [];
+  if (quote.counts.partial > 0) flags.push(`${quote.counts.partial} partial`);
+  if (quote.counts.noOrders > 0) flags.push(`${quote.counts.noOrders} no sellers`);
+  if (quote.counts.unknown > 0) flags.push(`${quote.counts.unknown} unmatched`);
+  if (flags.length > 0) lines.push(`<i>Flags: ${flags.join(', ')}</i>`);
+  lines.push('<i>Walk-the-book pricing, cheapest stacks first.</i>');
+  return lines.join('<br>');
+}
+
 export function registerMarketRoutes(app: FastifyInstance) {
   app.get('/api/market/plex/history', async (_req, reply) => {
     try {
@@ -137,106 +291,67 @@ export function registerMarketRoutes(app: FastifyInstance) {
   app.post('/api/market/shopping-list/quote', async (req, reply) => {
     const body = req.body as { hub?: string; items?: Array<{ name?: string; qty?: number }> } | undefined;
     const hubKey = (body?.hub ?? '').toLowerCase() as HubKey;
-    const hub = HUBS[hubKey];
-    if (!hub) return reply.code(400).send({ error: 'hub must be "jita" or "amarr"' });
+    if (!HUBS[hubKey]) return reply.code(400).send({ error: 'hub must be "jita" or "amarr"' });
     const rawItems = Array.isArray(body?.items) ? body!.items : [];
     if (rawItems.length === 0) return reply.code(400).send({ error: 'items list is empty' });
-
-    // De-dupe input names while preserving the user's intent for repeats:
-    // sum quantities if the same item appears twice in the paste.
-    const reqByName = new Map<string, number>();
-    for (const it of rawItems) {
-      const name = (it?.name ?? '').trim();
-      const qty = Math.max(0, Math.floor(Number(it?.qty) || 0));
-      if (!name || qty === 0) continue;
-      reqByName.set(name, (reqByName.get(name) ?? 0) + qty);
-    }
-    const names = [...reqByName.keys()];
-    if (names.length === 0) return reply.code(400).send({ error: 'no valid items in list' });
-
     try {
-      const ids = await resolveTypeIds(names);
-
-      // Fetch orders in parallel per resolved type. Concurrency capped so we
-      // don't trip ESI's error budget on huge lists.
-      const concurrency = 8;
-      type QuotedItem = {
-        inputName: string;
-        resolvedName: string | null;
-        typeId: number | null;
-        requestedQty: number;
-        filledQty: number;
-        totalCost: number;
-        avgPrice: number | null;
-        shortfall: number;
-        status: 'ok' | 'partial' | 'no-orders' | 'unknown-item';
-      };
-      const results: QuotedItem[] = new Array(names.length);
-
-      let cursor = 0;
-      async function worker() {
-        while (true) {
-          const idx = cursor++;
-          if (idx >= names.length) return;
-          const inputName = names[idx];
-          const requestedQty = reqByName.get(inputName)!;
-          const typeId = ids.get(inputName) ?? null;
-          if (typeId == null) {
-            results[idx] = {
-              inputName, resolvedName: null, typeId: null, requestedQty,
-              filledQty: 0, totalCost: 0, avgPrice: null, shortfall: requestedQty,
-              status: 'unknown-item',
-            };
-            continue;
-          }
-          try {
-            const orders = await getOrders(hub.regionId, typeId);
-            const fill = walkOrderBook(orders, hub.systemId, requestedQty);
-            let status: QuotedItem['status'];
-            if (fill.filledQty === 0) status = 'no-orders';
-            else if (fill.shortfall > 0) status = 'partial';
-            else status = 'ok';
-            results[idx] = {
-              inputName, resolvedName: inputName, typeId, requestedQty,
-              filledQty: fill.filledQty, totalCost: fill.totalCost,
-              avgPrice: fill.filledQty > 0 ? fill.totalCost / fill.filledQty : null,
-              shortfall: fill.shortfall, status,
-            };
-          } catch (err) {
-            const e = err as { message?: string };
-            results[idx] = {
-              inputName, resolvedName: inputName, typeId, requestedQty,
-              filledQty: 0, totalCost: 0, avgPrice: null, shortfall: requestedQty,
-              status: 'no-orders',
-            };
-            req.log?.warn?.({ err: e.message }, `orders fetch failed for ${inputName} (${typeId})`);
-          }
-        }
-      }
-      await Promise.all(Array.from({ length: Math.min(concurrency, names.length) }, () => worker()));
-
-      let totalCost = 0;
-      let okCount = 0, partialCount = 0, noOrdersCount = 0, unknownCount = 0;
-      for (const r of results) {
-        totalCost += r.totalCost;
-        if (r.status === 'ok') okCount++;
-        else if (r.status === 'partial') partialCount++;
-        else if (r.status === 'no-orders') noOrdersCount++;
-        else unknownCount++;
-      }
-
-      return {
-        hub: hubKey,
-        systemName: hub.systemName,
-        regionName: hub.regionName,
-        items: results,
-        totalCost,
-        counts: { ok: okCount, partial: partialCount, noOrders: noOrdersCount, unknown: unknownCount },
-        fetchedAt: Date.now(),
-      };
+      const quote = await runQuote(hubKey, rawItems, req.log);
+      if (quote.items.length === 0) return reply.code(400).send({ error: 'no valid items in list' });
+      return quote;
     } catch (err) {
       const e = err as { status?: number; message?: string };
       return reply.code(e.status ?? 500).send({ error: e.message ?? 'failed to quote shopping list' });
+    }
+  });
+
+  app.post('/api/market/shopping-list/send', async (req, reply) => {
+    const body = req.body as {
+      hub?: string;
+      items?: Array<{ name?: string; qty?: number }>;
+      recipientCharacterId?: number;
+    } | undefined;
+    const hubKey = (body?.hub ?? '').toLowerCase() as HubKey;
+    if (!HUBS[hubKey]) return reply.code(400).send({ error: 'hub must be "jita" or "amarr"' });
+    const rawItems = Array.isArray(body?.items) ? body!.items : [];
+    if (rawItems.length === 0) return reply.code(400).send({ error: 'items list is empty' });
+    const recipientId = Number(body?.recipientCharacterId);
+    if (!Number.isFinite(recipientId) || recipientId <= 0) {
+      return reply.code(400).send({ error: 'recipientCharacterId required' });
+    }
+
+    try {
+      const quote = await runQuote(hubKey, rawItems, req.log);
+      if (quote.items.length === 0) return reply.code(400).send({ error: 'no valid items in list' });
+
+      const subject = `Shopping list - ${quote.systemName} - ${formatIskShort(quote.totalCost)} ISK`.slice(0, 60);
+      const mailBody = formatShoppingMailBody(quote);
+
+      // Self-mail: recipient is also the sender so we use their own token.
+      // ESI accepts character → character mail including the same character_id;
+      // the message lands in their personal mail tab as "From: <self>".
+      const { data } = await esiPost<number | { mail_id?: number }>(
+        `/characters/${recipientId}/mail/`,
+        recipientId,
+        {
+          approved_cost: 0,
+          subject,
+          body: mailBody,
+          recipients: [{ recipient_id: recipientId, recipient_type: 'character' }],
+        },
+      );
+      const mailId = typeof data === 'number' ? data : (data?.mail_id ?? null);
+      return { ok: true, mailId, quote };
+    } catch (err) {
+      const e = err as { status?: number; message?: string; body?: string };
+      const status = e.status ?? 500;
+      // ESI 403 with this scope-missing message is the "needs re-auth" path.
+      const reauthHint = status === 403 || (e.body ?? '').includes('esi-mail.send_mail')
+        ? 'Pilot is missing the esi-mail.send_mail.v1 scope. Click Add character on that alt to re-auth.'
+        : null;
+      return reply.code(status).send({
+        error: e.message ?? 'failed to send shopping list mail',
+        reauthHint,
+      });
     }
   });
 
