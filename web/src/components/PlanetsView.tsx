@@ -21,7 +21,7 @@ import {
 
 interface Props { chars: CharacterStatus[] }
 
-type SortKey = 'name' | 'colonies' | 'expiry' | 'status';
+type SortKey = 'name' | 'colonies' | 'available' | 'expiry' | 'status';
 
 function timeUntil(iso: string | null): string {
   if (!iso) return '—';
@@ -62,6 +62,12 @@ export function PlanetsView({ chars }: Props) {
       switch (sortKey) {
         case 'name': cmp = a.name.localeCompare(b.name); break;
         case 'colonies': cmp = a.colonies.length - b.colonies.length; break;
+        case 'available': {
+          const av = maxColonies(a.interplanetaryConsolidation) - a.colonies.length;
+          const bv = maxColonies(b.interplanetaryConsolidation) - b.colonies.length;
+          cmp = av - bv;
+          break;
+        }
         case 'expiry': {
           const ax = a.nextPiExpiry ? Date.parse(a.nextPiExpiry) : Number.POSITIVE_INFINITY;
           const bx = b.nextPiExpiry ? Date.parse(b.nextPiExpiry) : Number.POSITIVE_INFINITY;
@@ -94,6 +100,10 @@ export function PlanetsView({ chars }: Props) {
 
   // Totals across all pilots
   const totalColonies = chars.reduce((n, c) => n + c.colonies.length, 0);
+  const totalAvailable = chars.reduce(
+    (n, c) => n + Math.max(0, maxColonies(c.interplanetaryConsolidation) - c.colonies.length),
+    0,
+  );
   const totalIdle = chars.reduce((n, c) => n + (c.hasIdlePi ? 1 : 0), 0);
 
   return (
@@ -115,6 +125,10 @@ export function PlanetsView({ chars }: Props) {
         <button className="sort-btn" onClick={() => onSort('colonies')}>
           Colonies <span className="total">{totalColonies}</span>
           {sortKey === 'colonies' && <span className="arrow">{sortAsc ? '▲' : '▼'}</span>}
+        </button>
+        <button className="sort-btn" onClick={() => onSort('available')}>
+          Available {totalAvailable > 0 && <span className="total">{totalAvailable}</span>}
+          {sortKey === 'available' && <span className="arrow">{sortAsc ? '▲' : '▼'}</span>}
         </button>
         <button className="sort-btn" onClick={() => onSort('expiry')}>
           Next expiry {sortKey === 'expiry' && <span className="arrow">{sortAsc ? '▲' : '▼'}</span>}
@@ -143,6 +157,9 @@ export function PlanetsView({ chars }: Props) {
               <div className={`planet-colonies${underutilized ? ' under' : ''}`}>
                 {c.colonies.length}/{max}
                 {c.interplanetaryConsolidation === null && <span className="dim"> (loading)</span>}
+              </div>
+              <div className={`planet-available${underutilized ? ' under' : ''}`}>
+                {c.interplanetaryConsolidation === null ? <span className="dim">—</span> : max - c.colonies.length}
               </div>
               <div className="planet-expiry">{timeUntil(c.nextPiExpiry)}</div>
               <div className={`planet-status ${status.cls}`}>{status.label}</div>
