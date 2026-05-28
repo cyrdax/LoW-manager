@@ -47,7 +47,7 @@ bootstrapSystemsCache()
   .then(count => app.log.info(`[systems] cache has ${count} solar systems`))
   .catch(err => app.log.warn(`[systems] bootstrap failed: ${err.message}`));
 
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT ?? 3100);
 app.listen({ port, host: '127.0.0.1' }).catch(err => {
   app.log.error(err);
   process.exit(1);
