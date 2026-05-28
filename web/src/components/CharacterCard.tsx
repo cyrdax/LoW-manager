@@ -124,11 +124,15 @@ export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, o
 
       <div className="col-cell right">
         <div className="label">SP</div>
+        <div className="value">{formatSp(c.totalSp)}</div>
+      </div>
+
+      <div className="col-cell right">
+        <div className="label">Free</div>
         <div className="value">
-          {formatSp(c.totalSp)}
-          {c.unallocatedSp != null && c.unallocatedSp > 0 && (
-            <span className="free"> +{formatSp(c.unallocatedSp)}</span>
-          )}
+          {c.unallocatedSp != null && c.unallocatedSp > 0
+            ? <span className="free">{formatSp(c.unallocatedSp)}</span>
+            : <span className="dim">—</span>}
         </div>
       </div>
 

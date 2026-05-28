@@ -96,7 +96,8 @@ body {
     var(--col-ship, 200px)
     var(--col-wallet, 100px)
     var(--col-training, 200px)
-    var(--col-sp, 110px)
+    var(--col-sp, 90px)
+    var(--col-unallocated, 80px)
     var(--col-implants, 90px)
     1fr                              /* flexible spacer — pushes actions to the right edge */
     var(--col-actions, 140px);

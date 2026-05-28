@@ -25,6 +25,7 @@ const HEADERS: HeaderDef[] = [
   { key: 'wallet', col: 'wallet', label: 'Wallet', align: 'right' },
   { key: 'training', col: 'training', label: 'Training' },
   { key: 'sp', col: 'sp', label: 'SP', align: 'right' },
+  { key: 'unallocated', col: 'unallocated', label: 'Free', align: 'right' },
   { key: 'implants', col: 'implants', label: 'Implants', align: 'right' },
 ];
 
@@ -55,6 +56,7 @@ function compare(a: CharacterStatus, b: CharacterStatus, key: SortKey): number {
       return at - bt;
     }
     case 'sp': return (a.totalSp ?? -1) - (b.totalSp ?? -1);
+    case 'unallocated': return (a.unallocatedSp ?? -1) - (b.unallocatedSp ?? -1);
     case 'implants': return a.implantNames.length - b.implantNames.length;
   }
 }
@@ -118,10 +120,12 @@ export function App() {
 
   const totalWallet = list.reduce((n, c) => n + (c.walletBalance ?? 0), 0);
   const totalSp = list.reduce((n, c) => n + (c.totalSp ?? 0), 0);
+  const totalUnalloc = list.reduce((n, c) => n + (c.unallocatedSp ?? 0), 0);
 
   const totals: Partial<Record<SortKey, string>> = {
     wallet: list.length ? formatShortIsk(totalWallet) : undefined,
     sp: list.length ? formatShortSp(totalSp) : undefined,
+    unallocated: list.length && totalUnalloc > 0 ? formatShortSp(totalUnalloc) : undefined,
   };
 
   return (

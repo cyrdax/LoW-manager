@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type SortKey = 'name' | 'location' | 'ship' | 'wallet' | 'training' | 'sp' | 'implants';
+export type SortKey = 'name' | 'location' | 'ship' | 'wallet' | 'training' | 'sp' | 'unallocated' | 'implants';
 
 export type ColKey =
   | 'select' | 'portrait'
-  | 'name' | 'location' | 'ship' | 'wallet' | 'training' | 'sp' | 'implants'
+  | 'name' | 'location' | 'ship' | 'wallet' | 'training' | 'sp' | 'unallocated' | 'implants'
   | 'actions';
 
 const DEFAULT_WIDTHS: Record<ColKey, number> = {
@@ -15,13 +15,14 @@ const DEFAULT_WIDTHS: Record<ColKey, number> = {
   ship: 200,
   wallet: 100,
   training: 200,
-  sp: 110,
+  sp: 90,
+  unallocated: 80,
   implants: 90,
   actions: 140,
 };
 
 const MIN_WIDTH: Partial<Record<ColKey, number>> = {
-  name: 140, location: 90, ship: 120, wallet: 70, training: 120, sp: 70, implants: 60,
+  name: 140, location: 90, ship: 120, wallet: 70, training: 120, sp: 60, unallocated: 50, implants: 60,
 };
 
 const STORE_KEY = 'efd.table.v2';
