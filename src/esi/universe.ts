@@ -1,5 +1,5 @@
 import { db } from '../db.ts';
-import { esiGetPublic, esiPostPublic } from './client.ts';
+import { esiGet, esiGetPublic, esiPostPublic } from './client.ts';
 
 function cached(category: string, id: number): string | null {
   const row = db.prepare('SELECT name FROM universe_names WHERE category = ? AND id = ?').get(category, id) as { name: string } | undefined;
@@ -133,10 +133,26 @@ export async function resolveStation(id: number): Promise<string> {
   return data.name;
 }
 
-// Structures (player-owned) require an authed character with esi-universe.read_structures.v1.
-// We don't request that scope, so we just show the ID. This keeps the scope list minimal.
-export async function resolveStructure(id: number, _characterId: number): Promise<string> {
-  return `Structure ${id}`;
+// Structures (player-owned citadels) are private: the name only resolves for a character
+// with esi-universe.read_structures.v1 AND docking/grid access to that structure. ESI returns
+// the citadel's own name (by player convention usually system-prefixed, e.g. "J155720 - Home").
+// Names are cached permanently — they rarely change and a 403 elsewhere shouldn't lose a known one.
+// Returns null when the structure can't be resolved (no scope, no access, or transient error) so
+// the caller can fall back to the system/wormhole label it already has.
+export async function resolveStructure(id: number, characterId: number): Promise<string | null> {
+  const hit = cached('structure', id);
+  if (hit) return hit;
+  try {
+    const { data } = await esiGet<{ name: string }>(`/universe/structures/${id}/`, characterId);
+    if (data?.name) {
+      store('structure', id, data.name);
+      return data.name;
+    }
+    return null;
+  } catch {
+    // 401 (token predates scope), 403 (no docking access), or transient ESI error — fall back.
+    return null;
+  }
 }
 
 export interface CharacterPublic {

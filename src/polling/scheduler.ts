@@ -224,7 +224,11 @@ async function tick(id: number) {
         s.cached.locationStructureId = structureId;
         updates.locationStructureId = structureId;
         if (structureId) {
-          s.cached.locationStationName = await resolveStructure(structureId, id);
+          const structName = await resolveStructure(structureId, id);
+          // Fall back to the wormhole/system we already resolved this tick when the citadel
+          // name is private to us (no scope / no docking access).
+          s.cached.locationStationName = structName
+            ?? (s.cached.locationSystemName ? `Citadel in ${s.cached.locationSystemName}` : `Structure ${structureId}`);
           updates.locationStationName = s.cached.locationStationName;
         }
         changed = true;
