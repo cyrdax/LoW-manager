@@ -81,6 +81,12 @@ body {
 .rows-wrap {
   padding: 12px 16px;
   overflow-y: auto;
+  /* Contain the fixed-width grid inside the 1fr layout cell instead of letting
+     it expand the cell and force the whole page to scroll (which clipped the
+     left columns). min-width:0 lets the cell shrink to its track; overflow-x
+     gives the wide table its own scrollbar. Header + rows scroll together. */
+  min-width: 0;
+  overflow-x: auto;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -103,6 +109,10 @@ body {
     var(--col-actions, 140px);
   gap: 12px;
   align-items: center;
+  /* Grow to the full table width (so row backgrounds extend under horizontally
+     scrolled content) but never shrink below the visible pane. */
+  width: max-content;
+  min-width: 100%;
 }
 
 .rows-header {
