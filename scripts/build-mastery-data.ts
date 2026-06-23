@@ -1,10 +1,12 @@
 /**
- * Build script: extracts ship/cert/skill data from CCP's SDE into a single
- * compact JSON the app loads at runtime. Run after each CCP release.
+ * Build script: extracts ship/cert/skill/industry data into a single compact
+ * JSON the app loads at runtime. CCP's YAML SDE currently carries the mastery
+ * certificate graph; Fuzzwork's latest CSV dump overlays current type, dogma,
+ * and industry tables so new hulls/blueprints show up promptly.
  *
  *   npm run build:mastery
  *
- * Output: data/eve-mastery.json (~250KB).
+ * Output: data/eve-mastery.json (~4MB).
  */
 
 import { execSync } from 'node:child_process';
@@ -17,8 +19,10 @@ import yaml from 'js-yaml';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const SDE_URL = 'https://eve-static-data-export.s3-eu-west-1.amazonaws.com/tranquility/sde.zip';
+const FUZZWORK_CSV_BASE = 'https://www.fuzzwork.co.uk/dump/latest/csv';
 const CACHE_DIR = resolve(ROOT, '.cache');
 const SDE_ZIP = resolve(CACHE_DIR, 'sde.zip');
+const FUZZWORK_CACHE_DIR = resolve(CACHE_DIR, 'fuzzwork');
 const OUT_PATH = resolve(ROOT, 'data', 'eve-mastery.json');
 
 // Dogma attribute IDs (well-known, stable across SDE releases)
@@ -54,6 +58,29 @@ interface SdeGroup {
 
 interface DogmaAttr { attributeID: number; value: number }
 interface SdeTypeDogma { dogmaAttributes: DogmaAttr[] }
+
+interface FuzzworkStamp {
+  files: Record<string, { lastModified: string | null; contentLength: string | null }>;
+}
+
+interface FuzzType {
+  typeId: number;
+  groupId: number;
+  name: string;
+  published: boolean;
+}
+
+interface FuzzGroup {
+  groupId: number;
+  categoryId: number;
+  name: string;
+  published: boolean;
+}
+
+interface FuzzCategory {
+  categoryId: number;
+  name: string;
+}
 
 interface SdeBlueprintActivityMaterial {
   typeID: number;
@@ -148,6 +175,48 @@ async function fetchSdeIfNeeded(): Promise<{ etag: string | null; lastModified: 
   return { etag, lastModified };
 }
 
+async function fetchFuzzworkCsvIfNeeded(files: string[]): Promise<FuzzworkStamp> {
+  if (!existsSync(FUZZWORK_CACHE_DIR)) mkdirSync(FUZZWORK_CACHE_DIR, { recursive: true });
+
+  const stampPath = resolve(FUZZWORK_CACHE_DIR, 'stamp.json');
+  const cachedStamp: FuzzworkStamp = existsSync(stampPath)
+    ? JSON.parse(readFileSync(stampPath, 'utf8')) as FuzzworkStamp
+    : { files: {} };
+  const nextStamp: FuzzworkStamp = { files: {} };
+
+  for (const file of files) {
+    const url = `${FUZZWORK_CSV_BASE}/${file}`;
+    const out = resolve(FUZZWORK_CACHE_DIR, file);
+    console.log(`[fuzzwork] HEAD ${url}`);
+    const head = await fetch(url, { method: 'HEAD' });
+    if (!head.ok) throw new Error(`Fuzzwork HEAD failed for ${file}: ${head.status}`);
+    const current = {
+      lastModified: head.headers.get('last-modified'),
+      contentLength: head.headers.get('content-length'),
+    };
+    const cached = cachedStamp.files[file];
+    nextStamp.files[file] = current;
+
+    if (
+      existsSync(out) &&
+      cached &&
+      cached.lastModified === current.lastModified &&
+      cached.contentLength === current.contentLength
+    ) {
+      console.log(`[fuzzwork] cache hit ${file}`);
+      continue;
+    }
+
+    console.log(`[fuzzwork] downloading ${file}`);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fuzzwork GET failed for ${file}: ${res.status}`);
+    writeFileSync(out, Buffer.from(await res.arrayBuffer()));
+  }
+
+  writeFileSync(stampPath, JSON.stringify(nextStamp, null, 2));
+  return nextStamp;
+}
+
 function unzipToString(zipPath: string, member: string): string {
   // System unzip handles the 153MB types.yaml without needing a JS zip lib.
   return execSync(`unzip -p "${zipPath}" "${member}"`, { maxBuffer: 256 * 1024 * 1024 }).toString('utf8');
@@ -157,6 +226,81 @@ function loadYaml<T>(zipPath: string, member: string): T {
   console.log(`[parse] ${member}`);
   const text = unzipToString(zipPath, member);
   return yaml.load(text) as T;
+}
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let quoted = false;
+  let atStart = true;
+
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          quoted = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+
+    if (ch === '"' && atStart) {
+      quoted = true;
+      atStart = false;
+    } else if (ch === ',') {
+      row.push(field);
+      field = '';
+      atStart = true;
+    } else if (ch === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      atStart = true;
+    } else if (ch === '\r') {
+      // Ignore CR in CRLF; bare CR is not expected from Fuzzwork.
+    } else {
+      field += ch;
+      atStart = false;
+    }
+  }
+
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function loadCsv(file: string): Array<Record<string, string>> {
+  console.log(`[parse] fuzzwork/${file}`);
+  const text = readFileSync(resolve(FUZZWORK_CACHE_DIR, file), 'utf8');
+  const [headers, ...rows] = parseCsv(text);
+  return rows.filter(r => r.length > 1).map(row => {
+    const out: Record<string, string> = {};
+    for (let i = 0; i < headers.length; i++) out[headers[i]] = row[i] ?? '';
+    return out;
+  });
+}
+
+function csvBool(value: string | undefined): boolean {
+  return value === '1' || value?.toLowerCase() === 'true';
+}
+
+function csvNumber(value: string | undefined): number | null {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 function extractRequiredSkills(d: SdeTypeDogma | undefined): Array<{ skillId: number; level: number }> {
@@ -189,8 +333,230 @@ function skillRank(skillId: number, typeDogma: Record<string, SdeTypeDogma>): nu
   return Math.round(attrs.get(ATTR_SKILL_RANK) ?? 1);
 }
 
+function skillRankFromAttrs(skillId: number, attrsByType: Map<number, Map<number, number>>): number {
+  return Math.round(attrsByType.get(skillId)?.get(ATTR_SKILL_RANK) ?? 1);
+}
+
+function extractRequiredSkillsFromAttrs(attrs: Map<number, number> | undefined): Array<{ skillId: number; level: number }> {
+  if (!attrs) return [];
+  const out: Array<{ skillId: number; level: number }> = [];
+  for (let i = 0; i < ATTR_REQUIRED_SKILL.length; i++) {
+    const sid = attrs.get(ATTR_REQUIRED_SKILL[i]);
+    const lvl = attrs.get(ATTR_REQUIRED_LEVEL[i]);
+    if (sid && lvl != null) out.push({ skillId: Math.round(sid), level: Math.round(lvl) });
+  }
+  return out;
+}
+
+function overlayFuzzworkData(
+  ships: Record<string, OutShip>,
+  items: Record<string, OutItem>,
+  industryBlueprints: Record<string, OutIndustryBlueprint>,
+  skillsOut: Record<string, OutSkill>,
+  usedSkillIds: Set<number>,
+) {
+  const fuzzFiles = [
+    'invCategories.csv',
+    'invGroups.csv',
+    'invTypes.csv',
+    'dgmTypeAttributes.csv',
+    'industryActivity.csv',
+    'industryActivityProducts.csv',
+    'industryActivityMaterials.csv',
+    'industryActivitySkills.csv',
+  ];
+
+  const categories = new Map<number, FuzzCategory>();
+  for (const row of loadCsv('invCategories.csv')) {
+    const categoryId = csvNumber(row.categoryID);
+    if (categoryId == null) continue;
+    categories.set(categoryId, { categoryId, name: row.categoryName || `Category ${categoryId}` });
+  }
+
+  const groups = new Map<number, FuzzGroup>();
+  const shipGroupIds = new Set<number>();
+  for (const row of loadCsv('invGroups.csv')) {
+    const groupId = csvNumber(row.groupID);
+    const categoryId = csvNumber(row.categoryID);
+    if (groupId == null || categoryId == null) continue;
+    const group = {
+      groupId,
+      categoryId,
+      name: row.groupName || `Group ${groupId}`,
+      published: csvBool(row.published),
+    };
+    groups.set(groupId, group);
+    if (categoryId === SHIP_CATEGORY_ID && group.published) shipGroupIds.add(groupId);
+  }
+
+  const types = new Map<number, FuzzType>();
+  for (const row of loadCsv('invTypes.csv')) {
+    const typeId = csvNumber(row.typeID);
+    const groupId = csvNumber(row.groupID);
+    if (typeId == null || groupId == null) continue;
+    types.set(typeId, {
+      typeId,
+      groupId,
+      name: row.typeName || `Type ${typeId}`,
+      published: csvBool(row.published),
+    });
+  }
+
+  const attrsByType = new Map<number, Map<number, number>>();
+  for (const row of loadCsv('dgmTypeAttributes.csv')) {
+    const typeId = csvNumber(row.typeID);
+    const attrId = csvNumber(row.attributeID);
+    const value = csvNumber(row.valueInt) ?? csvNumber(row.valueFloat);
+    if (typeId == null || attrId == null || value == null) continue;
+    let attrs = attrsByType.get(typeId);
+    if (!attrs) {
+      attrs = new Map();
+      attrsByType.set(typeId, attrs);
+    }
+    attrs.set(attrId, value);
+  }
+
+  const itemExcludeCategories = new Set<number>([6, 9, 16, 91, 1, 2, 3, 4, 5, 10, 11, 14, 19, 26, 27, 29, 30]);
+  for (const type of types.values()) {
+    if (!type.published) continue;
+    const group = groups.get(type.groupId);
+    const categoryId = group?.categoryId;
+    const required = extractRequiredSkillsFromAttrs(attrsByType.get(type.typeId));
+
+    if (shipGroupIds.has(type.groupId)) {
+      const existing = ships[String(type.typeId)];
+      if (required.length === 0 && !existing) continue;
+      ships[String(type.typeId)] = {
+        name: type.name,
+        groupId: type.groupId,
+        groupName: group?.name ?? `Group ${type.groupId}`,
+        requiredSkills: required,
+        masteries: existing?.masteries ?? [[], [], [], [], []],
+      };
+      for (const r of required) usedSkillIds.add(r.skillId);
+      continue;
+    }
+
+    if (required.length === 0) continue;
+    if (categoryId == null || itemExcludeCategories.has(categoryId)) continue;
+    items[String(type.typeId)] = {
+      name: type.name,
+      groupId: type.groupId,
+      groupName: group?.name ?? `Group ${type.groupId}`,
+      categoryId,
+      categoryName: categories.get(categoryId)?.name ?? `Category ${categoryId}`,
+      requiredSkills: required,
+    };
+    for (const r of required) usedSkillIds.add(r.skillId);
+  }
+
+  const times = new Map<number, number>();
+  for (const row of loadCsv('industryActivity.csv')) {
+    if (row.activityID !== '1') continue;
+    const typeId = csvNumber(row.typeID);
+    const time = csvNumber(row.time);
+    if (typeId != null && time != null) times.set(typeId, Math.round(time));
+  }
+
+  const productsByBlueprint = new Map<number, Array<{ typeId: number; quantity: number }>>();
+  for (const row of loadCsv('industryActivityProducts.csv')) {
+    if (row.activityID !== '1') continue;
+    const blueprintId = csvNumber(row.typeID);
+    const typeId = csvNumber(row.productTypeID);
+    const quantity = csvNumber(row.quantity);
+    if (blueprintId == null || typeId == null || quantity == null) continue;
+    const list = productsByBlueprint.get(blueprintId) ?? [];
+    list.push({ typeId, quantity: Math.round(quantity) });
+    productsByBlueprint.set(blueprintId, list);
+  }
+
+  const materialsByBlueprint = new Map<number, Array<{ typeId: number; quantity: number }>>();
+  for (const row of loadCsv('industryActivityMaterials.csv')) {
+    if (row.activityID !== '1') continue;
+    const blueprintId = csvNumber(row.typeID);
+    const typeId = csvNumber(row.materialTypeID);
+    const quantity = csvNumber(row.quantity);
+    if (blueprintId == null || typeId == null || quantity == null) continue;
+    const list = materialsByBlueprint.get(blueprintId) ?? [];
+    list.push({ typeId, quantity: Math.round(quantity) });
+    materialsByBlueprint.set(blueprintId, list);
+  }
+
+  const skillsByBlueprint = new Map<number, Array<{ skillId: number; level: number }>>();
+  for (const row of loadCsv('industryActivitySkills.csv')) {
+    if (row.activityID !== '1') continue;
+    const blueprintId = csvNumber(row.typeID);
+    const skillId = csvNumber(row.skillID);
+    const level = csvNumber(row.level);
+    if (blueprintId == null || skillId == null || level == null) continue;
+    const list = skillsByBlueprint.get(blueprintId) ?? [];
+    list.push({ skillId, level: Math.round(level) });
+    skillsByBlueprint.set(blueprintId, list);
+  }
+
+  for (const [blueprintId, products] of productsByBlueprint) {
+    const blueprintType = types.get(blueprintId);
+    if (!blueprintType?.published) continue;
+    const product = products.find(p => types.get(p.typeId)?.published);
+    if (!product) continue;
+    const productType = types.get(product.typeId);
+    const time = times.get(blueprintId);
+    if (time == null) continue;
+
+    const requiredSkills = (skillsByBlueprint.get(blueprintId) ?? []).map(skill => {
+      const skillType = types.get(skill.skillId);
+      usedSkillIds.add(skill.skillId);
+      return {
+        skillId: skill.skillId,
+        name: skillType?.name ?? `Skill ${skill.skillId}`,
+        level: skill.level,
+        rank: skillRankFromAttrs(skill.skillId, attrsByType),
+      };
+    });
+
+    industryBlueprints[String(blueprintId)] = {
+      blueprintId,
+      blueprintName: blueprintType.name,
+      productTypeId: product.typeId,
+      productName: productType?.name ?? `Type ${product.typeId}`,
+      productQuantity: product.quantity,
+      baseTimeSeconds: time,
+      materials: (materialsByBlueprint.get(blueprintId) ?? []).map(material => ({
+        typeId: material.typeId,
+        name: types.get(material.typeId)?.name ?? `Type ${material.typeId}`,
+        quantity: material.quantity,
+      })),
+      requiredSkills,
+    };
+  }
+
+  for (const sid of usedSkillIds) {
+    const type = types.get(sid);
+    const attrs = attrsByType.get(sid);
+    if (!type || !attrs) continue;
+    skillsOut[String(sid)] = {
+      name: type.name,
+      rank: Math.round(attrs.get(ATTR_SKILL_RANK) ?? 1),
+      primary: attrs.has(ATTR_PRIMARY) ? Math.round(attrs.get(ATTR_PRIMARY)!) : null,
+      secondary: attrs.has(ATTR_SECONDARY) ? Math.round(attrs.get(ATTR_SECONDARY)!) : null,
+    };
+  }
+
+  return { fuzzFiles };
+}
+
 async function main() {
   const stamp = await fetchSdeIfNeeded();
+  const fuzzStamp = await fetchFuzzworkCsvIfNeeded([
+    'invCategories.csv',
+    'invGroups.csv',
+    'invTypes.csv',
+    'dgmTypeAttributes.csv',
+    'industryActivity.csv',
+    'industryActivityProducts.csv',
+    'industryActivityMaterials.csv',
+    'industryActivitySkills.csv',
+  ]);
 
   const categories = loadYaml<Record<string, { name: { en: string }; published?: boolean }>>(
     SDE_ZIP, 'fsd/categories.yaml',
@@ -342,12 +708,21 @@ async function main() {
   }
   console.log(`[skills]  ${Object.keys(skillsOut).length} referenced skills`);
 
+  const { fuzzFiles } = overlayFuzzworkData(ships, items, industryBlueprints, skillsOut, usedSkillIds);
+  console.log(`[fuzzwork] overlaid ${fuzzFiles.length} current CSV tables`);
+  console.log(`[ships]   ${Object.keys(ships).length} current ships after overlay`);
+  console.log(`[items]   ${Object.keys(items).length} current items after overlay`);
+  console.log(`[industry] ${Object.keys(industryBlueprints).length} current manufacturing blueprints after overlay`);
+  console.log(`[skills]  ${Object.keys(skillsOut).length} current referenced skills after overlay`);
+
   const out = {
     _meta: {
       built_at: new Date().toISOString(),
       sde_etag: stamp.etag,
       sde_last_modified: stamp.lastModified,
       sde_url: SDE_URL,
+      fuzzwork_csv_url: FUZZWORK_CSV_BASE,
+      fuzzwork_last_modified: fuzzStamp.files['invTypes.csv']?.lastModified ?? null,
       counts: {
         ships: Object.keys(ships).length,
         items: Object.keys(items).length,

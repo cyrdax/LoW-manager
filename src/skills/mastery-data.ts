@@ -52,6 +52,8 @@ export interface MasteryData {
     sde_etag: string | null;
     sde_last_modified: string | null;
     sde_url: string;
+    fuzzwork_csv_url?: string;
+    fuzzwork_last_modified?: string | null;
     counts: { ships: number; items?: number; industryBlueprints?: number; certificates: number; skills: number };
   };
   ships: Record<string, MasteryShip>;
