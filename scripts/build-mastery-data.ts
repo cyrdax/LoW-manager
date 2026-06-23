@@ -55,6 +55,32 @@ interface SdeGroup {
 interface DogmaAttr { attributeID: number; value: number }
 interface SdeTypeDogma { dogmaAttributes: DogmaAttr[] }
 
+interface SdeBlueprintActivityMaterial {
+  typeID: number;
+  quantity: number;
+}
+
+interface SdeBlueprintActivityProduct {
+  typeID: number;
+  quantity: number;
+}
+
+interface SdeBlueprintActivitySkill {
+  typeID: number;
+  level: number;
+}
+
+interface SdeBlueprint {
+  activities?: {
+    manufacturing?: {
+      materials?: SdeBlueprintActivityMaterial[];
+      products?: SdeBlueprintActivityProduct[];
+      skills?: SdeBlueprintActivitySkill[];
+      time?: number;
+    };
+  };
+}
+
 interface OutShip {
   name: string;
   groupId: number;
@@ -82,6 +108,17 @@ interface OutSkill {
   rank: number;
   primary: number | null;
   secondary: number | null;
+}
+
+interface OutIndustryBlueprint {
+  blueprintId: number;
+  blueprintName: string;
+  productTypeId: number;
+  productName: string;
+  productQuantity: number;
+  baseTimeSeconds: number;
+  materials: Array<{ typeId: number; name: string; quantity: number }>;
+  requiredSkills: Array<{ skillId: number; name: string; level: number; rank: number }>;
 }
 
 async function fetchSdeIfNeeded(): Promise<{ etag: string | null; lastModified: string | null }> {
@@ -146,6 +183,12 @@ function shapeMasteries(raw: Record<string, number[]> | undefined): number[][] {
   return out;
 }
 
+function skillRank(skillId: number, typeDogma: Record<string, SdeTypeDogma>): number {
+  const attrs = new Map<number, number>();
+  for (const a of typeDogma[String(skillId)]?.dogmaAttributes ?? []) attrs.set(a.attributeID, a.value);
+  return Math.round(attrs.get(ATTR_SKILL_RANK) ?? 1);
+}
+
 async function main() {
   const stamp = await fetchSdeIfNeeded();
 
@@ -172,6 +215,7 @@ async function main() {
   const types = loadYaml<Record<string, SdeType>>(SDE_ZIP, 'fsd/types.yaml');
   const typeDogma = loadYaml<Record<string, SdeTypeDogma>>(SDE_ZIP, 'fsd/typeDogma.yaml');
   const certificates = loadYaml<Record<string, Cert>>(SDE_ZIP, 'fsd/certificates.yaml');
+  const blueprints = loadYaml<Record<string, SdeBlueprint>>(SDE_ZIP, 'fsd/blueprints.yaml');
 
   // 1) Ships (with masteries) and 2) Items (modules/drones/charges/etc. — direct skill prereqs only)
   const ships: Record<string, OutShip> = {};
@@ -220,6 +264,46 @@ async function main() {
   console.log(`[ships]   ${Object.keys(ships).length} published ships`);
   console.log(`[items]   ${Object.keys(items).length} published items`);
 
+  // 3) Manufacturing blueprints: compact product/material/skill data for Industry tab.
+  const industryBlueprints: Record<string, OutIndustryBlueprint> = {};
+  for (const [bid, bp] of Object.entries(blueprints)) {
+    const blueprintType = types[bid];
+    if (!blueprintType?.published) continue;
+    const manufacturing = bp.activities?.manufacturing;
+    if (!manufacturing?.products?.length || manufacturing.time == null) continue;
+
+    const product = manufacturing.products.find(p => types[String(p.typeID)]?.published);
+    if (!product) continue;
+
+    const requiredSkills = (manufacturing.skills ?? []).map(s => {
+      const skillType = types[String(s.typeID)];
+      const skillId = Number(s.typeID);
+      usedSkillIds.add(skillId);
+      return {
+        skillId,
+        name: skillType?.name?.en ?? `Skill ${skillId}`,
+        level: Math.round(s.level),
+        rank: skillRank(skillId, typeDogma),
+      };
+    });
+
+    industryBlueprints[bid] = {
+      blueprintId: Number(bid),
+      blueprintName: blueprintType.name?.en ?? `Blueprint ${bid}`,
+      productTypeId: Number(product.typeID),
+      productName: types[String(product.typeID)]?.name?.en ?? `Type ${product.typeID}`,
+      productQuantity: Math.round(product.quantity),
+      baseTimeSeconds: Math.round(manufacturing.time),
+      materials: (manufacturing.materials ?? []).map(m => ({
+        typeId: Number(m.typeID),
+        name: types[String(m.typeID)]?.name?.en ?? `Type ${m.typeID}`,
+        quantity: Math.round(m.quantity),
+      })),
+      requiredSkills,
+    };
+  }
+  console.log(`[industry] ${Object.keys(industryBlueprints).length} manufacturing blueprints`);
+
   // 2) Certificates (only those referenced by any ship's masteries — keeps file lean)
   const referencedCertIds = new Set<number>();
   for (const ship of Object.values(ships)) {
@@ -267,12 +351,14 @@ async function main() {
       counts: {
         ships: Object.keys(ships).length,
         items: Object.keys(items).length,
+        industryBlueprints: Object.keys(industryBlueprints).length,
         certificates: Object.keys(certs).length,
         skills: Object.keys(skillsOut).length,
       },
     },
     ships,
     items,
+    industry: { blueprints: industryBlueprints },
     certificates: certs,
     skills: skillsOut,
   };

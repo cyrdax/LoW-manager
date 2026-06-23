@@ -35,16 +35,30 @@ export interface MasterySkill {
   secondary: number | null;
 }
 
+export interface IndustryBlueprintData {
+  blueprintId: number;
+  blueprintName: string;
+  productTypeId: number;
+  productName: string;
+  productQuantity: number;
+  baseTimeSeconds: number;
+  materials: Array<{ typeId: number; name: string; quantity: number }>;
+  requiredSkills: Array<{ skillId: number; name: string; level: number; rank: number }>;
+}
+
 export interface MasteryData {
   _meta: {
     built_at: string;
     sde_etag: string | null;
     sde_last_modified: string | null;
     sde_url: string;
-    counts: { ships: number; items?: number; certificates: number; skills: number };
+    counts: { ships: number; items?: number; industryBlueprints?: number; certificates: number; skills: number };
   };
   ships: Record<string, MasteryShip>;
   items: Record<string, MasteryItem>;
+  industry?: {
+    blueprints: Record<string, IndustryBlueprintData>;
+  };
   certificates: Record<string, MasteryCert>;
   skills: Record<string, MasterySkill>;
 }
