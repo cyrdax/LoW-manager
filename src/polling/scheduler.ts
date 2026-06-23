@@ -2,9 +2,10 @@ import { db } from '../db.ts';
 import type { CharacterRow, CharacterStatus } from '../types.ts';
 import { getLocation, getOnline, getShip } from '../esi/location.ts';
 import { getWallet } from '../esi/wallet.ts';
-import { currentlyTraining, getImplants, getSkillQueue, getSkills, queueEndIso, skillLevel, SKILL_INTERPLANETARY_CONSOLIDATION, type SkillsResponse } from '../esi/skills.ts';
+import { currentlyTraining, getAttributes, getImplants, getSkillQueue, getSkills, queueEndIso, skillLevel, SKILL_INTERPLANETARY_CONSOLIDATION, type SkillsResponse } from '../esi/skills.ts';
 import { getPlanetDetail, getPlanets, hasIdleExtractor, soonestExpiry, type PlanetPin } from '../esi/planets.ts';
 import type { ColonyInfo } from '../types.ts';
+import type { CharacterAttributes } from '../skills/training-time.ts';
 import { getCharacterFleet } from '../esi/fleet.ts';
 import { getCharacterPublic, resolveCorporation, resolveStation, resolveSystem, resolveType, resolveStructure } from '../esi/universe.ts';
 import { bus } from './events.ts';
@@ -20,6 +21,7 @@ const FALLBACK_TTL = {
   wallet: 120,
   skills: 120,
   sp: 120,
+  attributes: 3600,
   implants: 120,
   fleet: 5,
   corp: 3600,
@@ -37,6 +39,7 @@ interface CharacterState {
   wallet: FieldState;
   skills: FieldState;
   sp: FieldState;
+  attributes: FieldState;
   implants: FieldState;
   fleet: FieldState;
   corp: FieldState;
@@ -73,6 +76,11 @@ export function getCharacterSkills(charId: number): SkillsResponse | null {
   return skillsCache.get(charId) ?? null;
 }
 
+const attributesCache = new Map<number, CharacterAttributes>();
+export function getCharacterAttributes(charId: number): CharacterAttributes | null {
+  return attributesCache.get(charId) ?? null;
+}
+
 export function snapshot(): CharacterStatus[] {
   return Array.from(state.values()).map(s => s.cached);
 }
@@ -95,6 +103,7 @@ export function ensureCharacter(row: CharacterRow) {
       online: { nextFetchAt: 0 },
       wallet: { nextFetchAt: 0 },
       skills: { nextFetchAt: 0 },
+      attributes: { nextFetchAt: 0 },
       fleet: { nextFetchAt: 0 },
       corp: { nextFetchAt: 0 },
       sp: { nextFetchAt: 0 },
@@ -120,6 +129,7 @@ export function forgetCharacter(id: number) {
     if (pinCache.get(key)!.characterId === id) pinCache.delete(key);
   }
   skillsCache.delete(id);
+  attributesCache.delete(id);
   bus.emit('removed', { characterId: id });
 }
 
@@ -344,6 +354,12 @@ async function tick(id: number) {
       }
     }
 
+    if (now >= s.attributes.nextFetchAt) {
+      const { data, expires } = await getAttributes(id);
+      s.attributes.nextFetchAt = expires ?? now + FALLBACK_TTL.attributes * 1000;
+      attributesCache.set(id, data);
+    }
+
     if (now >= s.planets.nextFetchAt) {
       const { data: list, expires } = await getPlanets(id);
       s.planets.nextFetchAt = expires ?? now + FALLBACK_TTL.planets * 1000;
@@ -466,6 +482,7 @@ async function tick(id: number) {
     s.wallet.nextFetchAt,
     s.skills.nextFetchAt,
     s.sp.nextFetchAt,
+    s.attributes.nextFetchAt,
     s.implants.nextFetchAt,
     s.fleet.nextFetchAt,
     s.corp.nextFetchAt,

@@ -14,7 +14,7 @@ const rifter: IndustryBlueprint = {
     { typeId: 35, name: 'Pyerite', quantity: 6000 },
   ],
   requiredSkills: [
-    { skillId: 3380, name: 'Industry', level: 1, rank: 1 },
+    { skillId: 3380, name: 'Industry', level: 1, rank: 1, primary: 166, secondary: 165 },
   ],
 };
 
@@ -74,6 +74,13 @@ test('calculateIndustryQuote reports skill gaps for real pilots', () => {
       kind: 'character',
       skillLevels: new Map([[3380, 0], [3388, 0]]),
       skillpoints: new Map([[3380, 0]]),
+      attributes: {
+        charisma: 19,
+        intelligence: 20,
+        memory: 20,
+        perception: 20,
+        willpower: 20,
+      },
     },
   });
 
@@ -82,6 +89,8 @@ test('calculateIndustryQuote reports skill gaps for real pilots', () => {
   assert.equal(quote.skills[0].requiredLevel, 1);
   assert.equal(quote.skills[0].currentLevel, 0);
   assert.equal(quote.skills[0].spGap, 250);
+  assert.equal(quote.skills[0].trainingSeconds, 500);
   assert.equal(quote.totals.totalSpGap, 250);
+  assert.equal(quote.totals.totalTrainingSeconds, 500);
   assert.equal(quote.totals.missingSkills, 1);
 });

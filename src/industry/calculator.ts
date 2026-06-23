@@ -1,3 +1,5 @@
+import { trainingSecondsForSp, type CharacterAttributes } from '../skills/training-time.ts';
+
 export interface IndustryMaterial {
   typeId: number;
   name: string;
@@ -9,6 +11,8 @@ export interface IndustryRequiredSkill {
   name: string;
   level: number;
   rank: number;
+  primary?: number | null;
+  secondary?: number | null;
 }
 
 export interface IndustryBlueprint {
@@ -26,6 +30,7 @@ export interface IndustryPilotSkills {
   kind: 'max' | 'character';
   skillLevels: Map<number, number>;
   skillpoints: Map<number, number>;
+  attributes?: CharacterAttributes | null;
 }
 
 export interface IndustryQuoteInput {
@@ -58,9 +63,10 @@ export interface IndustryQuote {
     currentSp: number;
     targetSp: number;
     spGap: number;
+    trainingSeconds: number;
     met: boolean;
   }>;
-  totals: { totalSpGap: number; missingSkills: number; totalSkills: number };
+  totals: { totalSpGap: number; totalTrainingSeconds: number; missingSkills: number; totalSkills: number };
 }
 
 const INDUSTRY_SKILL_ID = 3380;
@@ -89,6 +95,9 @@ export function calculateIndustryQuote(input: IndustryQuoteInput): IndustryQuote
       : (pilot.skillpoints.get(skill.skillId) ?? skillPointsForLevel(skill.rank, currentLevel));
     const targetSp = skillPointsForLevel(skill.rank, skill.level);
     const spGap = Math.max(0, targetSp - currentSp);
+    const trainingSeconds = pilot.kind === 'max'
+      ? 0
+      : trainingSecondsForSp(spGap, skill.primary, skill.secondary, pilot.attributes);
     return {
       skillId: skill.skillId,
       name: skill.name,
@@ -98,6 +107,7 @@ export function calculateIndustryQuote(input: IndustryQuoteInput): IndustryQuote
       currentSp,
       targetSp,
       spGap,
+      trainingSeconds,
       met: currentLevel >= skill.level,
     };
   }).sort((a, b) => Number(a.met) - Number(b.met) || b.spGap - a.spGap || a.name.localeCompare(b.name));
@@ -130,6 +140,7 @@ export function calculateIndustryQuote(input: IndustryQuoteInput): IndustryQuote
     skills,
     totals: {
       totalSpGap: skills.reduce((n, s) => n + s.spGap, 0),
+      totalTrainingSeconds: skills.reduce((n, s) => n + s.trainingSeconds, 0),
       missingSkills: skills.filter(s => !s.met).length,
       totalSkills: skills.length,
     },

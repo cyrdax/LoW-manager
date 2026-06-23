@@ -24,6 +24,8 @@ function formatSp(sp: number): string {
 
 function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds)) return '—';
+  if (seconds <= 0) return '—';
+  if (seconds < 60) return '<1m';
   const days = Math.floor(seconds / 86_400);
   const hours = Math.floor((seconds % 86_400) / 3_600);
   const minutes = Math.floor((seconds % 3_600) / 60);
@@ -251,7 +253,11 @@ function IndustryQuotePanel({ quote, pilot }: { quote: IndustryQuote; pilot: Pil
         <div className={missing > 0 ? 'warn' : 'ok'}>
           <span className="label">Skills</span>
           <strong>{missing > 0 ? `${missing} missing` : 'Ready'}</strong>
-          <small>{pilot === 'max' ? 'Max skills' : `${formatSp(quote.totals.totalSpGap)} SP gap`}</small>
+          <small>
+            {pilot === 'max'
+              ? 'Max skills'
+              : `${formatSp(quote.totals.totalSpGap)} SP · ${formatDuration(quote.totals.totalTrainingSeconds)}`}
+          </small>
         </div>
       </div>
 
@@ -273,7 +279,7 @@ function IndustryQuotePanel({ quote, pilot }: { quote: IndustryQuote; pilot: Pil
         <div className="ind-panel">
           <h2>Required skills</h2>
           <div className="ind-table ind-skills">
-            <div className="ind-head"><span>Skill</span><span>Current</span><span>Required</span><span>SP gap</span></div>
+            <div className="ind-head"><span>Skill</span><span>Current</span><span>Required</span><span>SP gap</span><span>Training</span></div>
             {quote.skills.length === 0 && <div className="ind-none">No manufacturing skills required.</div>}
             {quote.skills.map(s => (
               <div key={s.skillId} className={`ind-row${s.met ? ' met' : ' missing'}`}>
@@ -281,6 +287,7 @@ function IndustryQuotePanel({ quote, pilot }: { quote: IndustryQuote; pilot: Pil
                 <span>{s.currentLevel}</span>
                 <span>{s.requiredLevel}</span>
                 <span>{s.spGap > 0 ? formatSp(s.spGap) : 'met'}</span>
+                <span>{s.spGap > 0 ? formatDuration(s.trainingSeconds) : 'met'}</span>
               </div>
             ))}
           </div>

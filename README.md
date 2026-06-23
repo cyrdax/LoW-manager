@@ -8,10 +8,10 @@ The dashboard has six top-level views, toggled in the sidebar (selection persist
 
 - **Pilots** — the per-character status table (location, ship, wallet, training, etc.) plus fleet-boss controls and waypoint search.
 - **Planets** — PI dashboard: per-pilot colony health, system scout search, saved systems, per-colony pin drill-down, and fleet-wide inventory roll-up.
-- **Skills** — pilot picker + ship/module search; resolves Mastery I–V skill plans with SP-gap math from a bundled SDE-derived map, plus per-pilot saved plan bookmarks.
+- **Skills** — pilot picker + ship/module search; resolves Mastery I–V skill plans with SP-gap and train-time math from a bundled SDE-derived map, plus per-pilot saved plan bookmarks.
 - **Fleet** — full FC-roster view with drag-and-drop wing/squad reassignment. Any authed pilot can be picked as the actor token (so you can drive moves under whichever alt holds the FC role).
 - **Market** — two sub-tabs: **PLEX** (price chart, sell-side calculator with sales-tax / broker fee math) and **Shopping List** (paste a multi-item buy order, get a per-item + total cost quote in Jita or Amarr, walking the order book).
-- **Industry** — manufacturing-only blueprint calculator: search any bundled manufacturing blueprint, compare max skills vs one of your pilots, and see output quantity, adjusted materials, adjusted job time, and missing skill/SP gaps.
+- **Industry** — manufacturing-only blueprint calculator: search any bundled manufacturing blueprint, compare max skills vs one of your pilots, and see output quantity, adjusted materials, adjusted job time, and missing skill/SP/time gaps.
 
 ---
 
@@ -122,11 +122,11 @@ Targeted skill planning across all your alts without leaving the dashboard.
 3. **Pick Mastery level I–V**. The view resolves the EVE Mastery certificate chain server-side and lists every prerequisite skill with:
    - current level (and SP) on the active pilot,
    - target level for that mastery,
-   - SP gap (or ✓ if already met),
+   - SP gap and estimated training time (or ✓ if already met),
    - which certificate(s) require the skill.
 4. **Save plan** with the ★ button — saved plans (per pilot) populate a quick-load bar above the search so you can compare progress across alts at a glance.
 
-The math is pure-server: `src/skills/mastery-data.ts` is a compact SDE-derived JSON (rebuilt by `scripts/build-mastery-data.ts`), and the route at `/api/skills/plan` joins it against the pilot's `read_skills.v1` snapshot.
+The math is pure-server: `src/skills/mastery-data.ts` is a compact SDE-derived JSON (rebuilt by `scripts/build-mastery-data.ts`), and the route at `/api/skills/plan` joins it against the pilot's `read_skills.v1` snapshot plus cached character attributes for train-time estimates.
 
 ### Module / item plans
 
@@ -230,12 +230,12 @@ Manufacturing-only v1 for answering "what will this blueprint cost this pilot to
 - **Inputs** — runs, ME (0-10), and TE (0-20).
 - **Quote summary** — output quantity, total adjusted time, per-run adjusted time, number of material lines, and skill readiness.
 - **Materials table** — base quantity for the chosen run count and adjusted quantity after ME.
-- **Required skills table** — current level, required level, rank, and SP gap for the selected pilot. Max skills always shows as ready.
+- **Required skills table** — current level, required level, rank, SP gap, and estimated training time for the selected pilot. Max skills always shows as ready.
 
 The backend routes are:
 
 - `GET /api/industry/blueprints?q=<text>` — prefix-first blueprint/product search, capped at 25 hits.
-- `GET /api/industry/quote?blueprintId=<id>&characterId=max|<id>&runs=<n>&me=<0-10>&te=<0-20>` — returns output, materials, time, and skill gaps.
+- `GET /api/industry/quote?blueprintId=<id>&characterId=max|<id>&runs=<n>&me=<0-10>&te=<0-20>` — returns output, materials, job time, skill gaps, and training-time estimates.
 
 The calculator currently models blueprint manufacturing materials/time plus `Industry` and `Advanced Industry` time bonuses. It deliberately does **not** yet model structure rigs, facility bonuses, system cost index, job install fees, invention, reactions, copying, or ME/TE research. Those are the next Industry version.
 
@@ -375,8 +375,8 @@ Key pieces:
 - `src/routes/planets.ts` — system search (`/api/planets/system/:id`), per-colony detail (`/api/planets/colony/:charId/:planetId`), inventory roll-up (`/api/planets/inventory`), and saved-systems CRUD (`/api/planets/saved`). The system and saved endpoints share a `buildSystemPlanetList(systemId, overlay)` helper so saved blocks render identically to live search results.
 - `src/esi/pi-data.ts` — static PI metadata: planet-type → P0 list, P0 → P1 mapping, and commodity-name → tier (P0/P1/P2/P3+) classifier. Keyed by name (not type ID) so it survives any commodity ID drift.
 - `src/esi/universe.ts` — bootstraps an 8000+ solar-system cache on first boot via `POST /universe/names/`, backs the in-app waypoint autocomplete and system search. Also caches planet names, schematic names, and corp tickers under categorized keys in `universe_names`.
-- `src/routes/skills.ts` + `src/skills/mastery-data.ts` — ship / item search (`/api/skills/ships`, `/api/skills/items`), Mastery plan resolver (`/api/skills/plan`), item-skill plan resolver (`/api/skills/item-plan`), saved-plan CRUD (`/api/skills/plans`), and the open-window helper (`/api/skills/open-window`). The mastery JSON is generated by `scripts/build-mastery-data.ts` (run via `npm run build:mastery`): CCP's YAML SDE supplies mastery certificates, and Fuzzwork's latest CSV dump supplies current type/dogma/industry tables. The same generated file also contains manufacturing blueprint data for the Industry tab. The downloaded caches live under `.cache/` and are gitignored.
-- `src/routes/industry.ts` + `src/industry/calculator.ts` — manufacturing blueprint search (`/api/industry/blueprints`) and quote calculation (`/api/industry/quote`). Quotes support Max skills or real pilot skill snapshots, runs, ME, and TE. Facility/rig/system-cost/job-fee/invention/reaction/copy/research modeling is intentionally reserved for the next Industry version.
+- `src/routes/skills.ts` + `src/skills/mastery-data.ts` — ship / item search (`/api/skills/ships`, `/api/skills/items`), Mastery plan resolver (`/api/skills/plan`), item-skill plan resolver (`/api/skills/item-plan`), saved-plan CRUD (`/api/skills/plans`), and the open-window helper (`/api/skills/open-window`). The mastery JSON is generated by `scripts/build-mastery-data.ts` (run via `npm run build:mastery`): CCP's YAML SDE supplies mastery certificates, and Fuzzwork's latest CSV dump supplies current type/dogma/industry tables. The same generated file also contains manufacturing blueprint data for the Industry tab. Training-time estimates use SDE primary/secondary skill attributes plus cached `/characters/{id}/attributes/` values. The downloaded caches live under `.cache/` and are gitignored.
+- `src/routes/industry.ts` + `src/industry/calculator.ts` — manufacturing blueprint search (`/api/industry/blueprints`) and quote calculation (`/api/industry/quote`). Quotes support Max skills or real pilot skill snapshots, runs, ME, TE, SP gaps, and train-time estimates. Facility/rig/system-cost/job-fee/invention/reaction/copy/research modeling is intentionally reserved for the next Industry version.
 - `src/routes/market.ts` — PLEX history + orders (`/api/market/plex/{history,orders}`), the shopping-list quoter (`POST /api/market/shopping-list/quote`), and the EVEmail sender (`POST /api/market/shopping-list/send`). Hub constants live at the top of the file (Jita, Amarr); the order-book walker filters by `system_id` so "in Jita" really means "in Jita." `runQuote(hubKey, items, log)` is the shared pricing path both endpoints use. The mail sender re-prices at send-time and formats the body with `<a href="showinfo:TYPE_ID">` links per item. Type-id resolution caches forever; orders cache 5 min (matches ESI).
 - `web/src/hooks/useTableState.ts` — sort + column-width state persisted to `localStorage`.
 

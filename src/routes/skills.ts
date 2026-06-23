@@ -2,8 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db.ts';
 import { openInformationWindow, openMarketDetailsWindow } from '../esi/ui.ts';
-import { getCharacterSkills } from '../polling/scheduler.ts';
+import { getCharacterAttributes, getCharacterSkills } from '../polling/scheduler.ts';
 import { loadMasteryData, type MasteryData, type MasteryItem, type MasteryShip } from '../skills/mastery-data.ts';
+import { trainingSecondsForSp, type CharacterAttributes } from '../skills/training-time.ts';
 
 interface SavedPlanRow {
   id: number;
@@ -33,6 +34,7 @@ interface PlannedSkill {
   targetLevel: number;
   targetSp: number;
   spGap: number;
+  trainingSeconds: number;
   // Why this skill is in the plan — preferred sources first.
   sources: Array<{ kind: 'ship-prereq' } | { kind: 'mastery'; certId: number; certName: string }>;
 }
@@ -53,7 +55,13 @@ function unionTargets(target: Map<number, { level: number; sources: PlannedSkill
   if (!dup) existing.sources.push(source);
 }
 
-function buildPlan(data: MasteryData, ship: MasteryShip, masteryLevel: number, charSkills: ReturnType<typeof getCharacterSkills>) {
+function buildPlan(
+  data: MasteryData,
+  ship: MasteryShip,
+  masteryLevel: number,
+  charSkills: ReturnType<typeof getCharacterSkills>,
+  attributes: CharacterAttributes | null,
+) {
   const targets = new Map<number, { level: number; sources: PlannedSkill['sources'] }>();
 
   // Ship's direct prerequisites are always part of the plan (level 0 = untargeted but listed).
@@ -85,6 +93,8 @@ function buildPlan(data: MasteryData, ship: MasteryShip, masteryLevel: number, c
   for (const [skillId, { level, sources }] of targets) {
     const meta = data.skills[String(skillId)];
     const rank = meta?.rank ?? 1;
+    const primary = meta?.primary ?? null;
+    const secondary = meta?.secondary ?? null;
     const cur = charSkillById.get(skillId);
     const currentLevel = cur?.level ?? 0;
     const currentSp = cur?.sp ?? 0;
@@ -99,6 +109,7 @@ function buildPlan(data: MasteryData, ship: MasteryShip, masteryLevel: number, c
       targetLevel: level,
       targetSp,
       spGap,
+      trainingSeconds: trainingSecondsForSp(spGap, primary, secondary, attributes),
       sources,
     });
   }
@@ -113,6 +124,7 @@ function buildPlan(data: MasteryData, ship: MasteryShip, masteryLevel: number, c
   });
 
   const totalSpGap = planned.reduce((n, s) => n + s.spGap, 0);
+  const totalTrainingSeconds = planned.reduce((n, s) => n + s.trainingSeconds, 0);
   const skillsToTrain = planned.filter(s => s.currentLevel < s.targetLevel).length;
   const skillsMet = planned.length - skillsToTrain;
 
@@ -120,11 +132,16 @@ function buildPlan(data: MasteryData, ship: MasteryShip, masteryLevel: number, c
     ship: { id: 0, name: ship.name, groupName: ship.groupName },
     masteryLevel,
     skills: planned,
-    totals: { totalSpGap, skillsToTrain, skillsMet, totalSkills: planned.length },
+    totals: { totalSpGap, totalTrainingSeconds, skillsToTrain, skillsMet, totalSkills: planned.length },
   };
 }
 
-function buildItemPlan(data: MasteryData, item: MasteryItem, charSkills: ReturnType<typeof getCharacterSkills>) {
+function buildItemPlan(
+  data: MasteryData,
+  item: MasteryItem,
+  charSkills: ReturnType<typeof getCharacterSkills>,
+  attributes: CharacterAttributes | null,
+) {
   const targets = new Map<number, { level: number; sources: PlannedSkill['sources'] }>();
   for (const r of item.requiredSkills) {
     if (r.level > 0) unionTargets(targets, r.skillId, r.level, { kind: 'ship-prereq' });
@@ -139,10 +156,13 @@ function buildItemPlan(data: MasteryData, item: MasteryItem, charSkills: ReturnT
   for (const [skillId, { level, sources }] of targets) {
     const meta = data.skills[String(skillId)];
     const rank = meta?.rank ?? 1;
+    const primary = meta?.primary ?? null;
+    const secondary = meta?.secondary ?? null;
     const cur = charSkillById.get(skillId);
     const currentLevel = cur?.level ?? 0;
     const currentSp = cur?.sp ?? 0;
     const targetSp = spForLevel(level, rank);
+    const spGap = Math.max(0, targetSp - currentSp);
     planned.push({
       skillId,
       name: meta?.name ?? `Skill ${skillId}`,
@@ -151,7 +171,8 @@ function buildItemPlan(data: MasteryData, item: MasteryItem, charSkills: ReturnT
       currentSp,
       targetLevel: level,
       targetSp,
-      spGap: Math.max(0, targetSp - currentSp),
+      spGap,
+      trainingSeconds: trainingSecondsForSp(spGap, primary, secondary, attributes),
       sources,
     });
   }
@@ -165,10 +186,11 @@ function buildItemPlan(data: MasteryData, item: MasteryItem, charSkills: ReturnT
   });
 
   const totalSpGap = planned.reduce((n, s) => n + s.spGap, 0);
+  const totalTrainingSeconds = planned.reduce((n, s) => n + s.trainingSeconds, 0);
   const skillsToTrain = planned.filter(s => s.currentLevel < s.targetLevel).length;
   const skillsMet = planned.length - skillsToTrain;
 
-  return { skills: planned, totals: { totalSpGap, skillsToTrain, skillsMet, totalSkills: planned.length } };
+  return { skills: planned, totals: { totalSpGap, totalTrainingSeconds, skillsToTrain, skillsMet, totalSkills: planned.length } };
 }
 
 export function registerSkillsRoutes(app: FastifyInstance) {
@@ -238,7 +260,7 @@ export function registerSkillsRoutes(app: FastifyInstance) {
         return reply.code(409).send({ error: 'character skills not yet polled — try again in a moment' });
       }
 
-      const result = buildItemPlan(data, item, charSkills);
+      const result = buildItemPlan(data, item, charSkills, getCharacterAttributes(charId));
       return {
         ...result,
         item: {
@@ -283,7 +305,7 @@ export function registerSkillsRoutes(app: FastifyInstance) {
         });
       }
 
-      const result = buildPlan(data, ship, masteryLevel, charSkills);
+      const result = buildPlan(data, ship, masteryLevel, charSkills, getCharacterAttributes(charId));
       return {
         ...result,
         ship: { id: shipId, name: ship.name, groupName: ship.groupName },

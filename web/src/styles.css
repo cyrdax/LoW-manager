@@ -892,7 +892,7 @@ body {
 .sk-table { display: flex; flex-direction: column; margin-top: 8px; }
 .sk-row {
   display: grid;
-  grid-template-columns: 1.6fr 50px 70px 70px 100px 1.2fr 130px;
+  grid-template-columns: minmax(150px, 1.5fr) 50px 70px 70px 100px 105px minmax(120px, 1.1fr) 130px;
   gap: 10px;
   align-items: center;
   padding: 5px 4px;
@@ -1543,7 +1543,7 @@ body {
 .ind-materials .ind-head,
 .ind-materials .ind-row { grid-template-columns: minmax(160px, 1fr) 110px 110px; }
 .ind-skills .ind-head,
-.ind-skills .ind-row { grid-template-columns: minmax(160px, 1fr) 72px 80px 90px; }
+.ind-skills .ind-row { grid-template-columns: minmax(150px, 1fr) 72px 80px 90px 100px; }
 .ind-row:last-child { border-bottom: 0; }
 .ind-row span:not(:first-child),
 .ind-head span:not(:first-child) { text-align: right; }

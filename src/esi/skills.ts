@@ -1,4 +1,5 @@
 import { esiGet } from './client.ts';
+import type { CharacterAttributes } from '../skills/training-time.ts';
 
 export interface SkillQueueEntry {
   skill_id: number;
@@ -25,6 +26,8 @@ export interface SkillsResponse {
 }
 
 export const getSkills = (id: number) => esiGet<SkillsResponse>(`/characters/${id}/skills/`, id);
+
+export const getAttributes = (id: number) => esiGet<CharacterAttributes>(`/characters/${id}/attributes/`, id);
 
 // Skill type IDs we care about beyond aggregate SP.
 export const SKILL_INTERPLANETARY_CONSOLIDATION = 2495;

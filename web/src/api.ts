@@ -352,6 +352,7 @@ export interface PlanSkill {
   targetLevel: number;
   targetSp: number;
   spGap: number;
+  trainingSeconds: number;
   sources: PlanSkillSource[];
 }
 
@@ -361,7 +362,7 @@ export interface SkillPlan {
   characterId: number;
   characterTotalSp: number;
   skills: PlanSkill[];
-  totals: { totalSpGap: number; skillsToTrain: number; skillsMet: number; totalSkills: number };
+  totals: { totalSpGap: number; totalTrainingSeconds: number; skillsToTrain: number; skillsMet: number; totalSkills: number };
 }
 
 export async function fetchSkillPlan(
@@ -379,7 +380,7 @@ export interface ItemPlan {
   characterId: number;
   characterTotalSp: number;
   skills: PlanSkill[];
-  totals: { totalSpGap: number; skillsToTrain: number; skillsMet: number; totalSkills: number };
+  totals: { totalSpGap: number; totalTrainingSeconds: number; skillsToTrain: number; skillsMet: number; totalSkills: number };
 }
 
 export async function fetchItemPlan(
@@ -622,9 +623,10 @@ export interface IndustryQuote {
     currentSp: number;
     targetSp: number;
     spGap: number;
+    trainingSeconds: number;
     met: boolean;
   }>;
-  totals: { totalSpGap: number; missingSkills: number; totalSkills: number };
+  totals: { totalSpGap: number; totalTrainingSeconds: number; missingSkills: number; totalSkills: number };
 }
 
 export async function searchIndustryBlueprints(q: string, signal?: AbortSignal): Promise<IndustryBlueprintHit[]> {

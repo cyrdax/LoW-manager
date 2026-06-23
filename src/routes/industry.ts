@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { getCharacterSkills } from '../polling/scheduler.ts';
-import { calculateIndustryQuote, type IndustryPilotSkills } from '../industry/calculator.ts';
-import { loadMasteryData, type IndustryBlueprintData } from '../skills/mastery-data.ts';
+import { getCharacterAttributes, getCharacterSkills } from '../polling/scheduler.ts';
+import { calculateIndustryQuote, type IndustryBlueprint, type IndustryPilotSkills } from '../industry/calculator.ts';
+import { loadMasteryData, type IndustryBlueprintData, type MasteryData } from '../skills/mastery-data.ts';
 
 const searchQuery = z.object({
   q: z.string().optional(),
@@ -56,6 +56,7 @@ function pilotSkills(characterId: 'max' | number): IndustryPilotSkills | null {
       kind: 'max',
       skillLevels: new Map(),
       skillpoints: new Map(),
+      attributes: null,
     };
   }
 
@@ -66,6 +67,21 @@ function pilotSkills(characterId: 'max' | number): IndustryPilotSkills | null {
     kind: 'character',
     skillLevels: new Map(skills.skills.map(s => [s.skill_id, s.active_skill_level])),
     skillpoints: new Map(skills.skills.map(s => [s.skill_id, s.skillpoints_in_skill])),
+    attributes: getCharacterAttributes(characterId),
+  };
+}
+
+function enrichBlueprintSkills(blueprint: IndustryBlueprintData, data: MasteryData): IndustryBlueprint {
+  return {
+    ...blueprint,
+    requiredSkills: blueprint.requiredSkills.map(skill => {
+      const meta = data.skills[String(skill.skillId)];
+      return {
+        ...skill,
+        primary: meta?.primary ?? null,
+        secondary: meta?.secondary ?? null,
+      };
+    }),
   };
 }
 
@@ -82,8 +98,8 @@ export function registerIndustryRoutes(app: FastifyInstance) {
     const parsed = quoteQuery.safeParse(req.query);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
 
-    const data = blueprints();
-    const blueprint = data[String(parsed.data.blueprintId)];
+    const masteryData = loadMasteryData();
+    const blueprint = masteryData.industry?.blueprints[String(parsed.data.blueprintId)];
     if (!blueprint) return reply.code(404).send({ error: 'Blueprint not found' });
 
     const characterId = parsed.data.characterId === 'max' ? 'max' : Number(parsed.data.characterId);
@@ -97,7 +113,7 @@ export function registerIndustryRoutes(app: FastifyInstance) {
     }
 
     return calculateIndustryQuote({
-      blueprint,
+      blueprint: enrichBlueprintSkills(blueprint, masteryData),
       runs: parsed.data.runs,
       me: parsed.data.me,
       te: parsed.data.te,

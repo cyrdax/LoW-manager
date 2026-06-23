@@ -30,6 +30,18 @@ function formatSp(sp: number): string {
   return String(sp);
 }
 
+function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds)) return '—';
+  if (seconds <= 0) return '—';
+  if (seconds < 60) return '<1m';
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  if (days) return `${days}d ${hours}h ${minutes}m`;
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 export function SkillsView({ chars }: Props) {
   const [characterId, setCharacterId] = useState<number | null>(() => {
     const stored = Number(localStorage.getItem('efd.skills.charId'));
@@ -311,6 +323,7 @@ function PlanResults({ plan, character, isSaved, onToggleSave }: {
           <span><b>{plan.totals.skillsToTrain}</b> skills to train</span>
           <span><b>{plan.totals.skillsMet}</b> already met</span>
           <span className="sk-total-sp">SP needed: <b>{plan.totals.totalSpGap.toLocaleString()}</b></span>
+          <span>Training time: <b>{formatDuration(plan.totals.totalTrainingSeconds)}</b></span>
         </div>
       </div>
 
@@ -327,6 +340,7 @@ function PlanResults({ plan, character, isSaved, onToggleSave }: {
           <div className="c">Current</div>
           <div className="c">Target</div>
           <div className="r">SP gap</div>
+          <div className="r">Training</div>
           <div>Source</div>
           <div className="c">Actions</div>
         </div>
@@ -360,6 +374,9 @@ function PlanRow({ skill: s, characterId }: { skill: PlanSkill; characterId: num
       <div className="c"><b>{s.targetLevel}</b></div>
       <div className="r">
         {met ? <span className="dim">—</span> : <b>{s.spGap.toLocaleString()}</b>}
+      </div>
+      <div className="r">
+        {met ? <span className="dim">—</span> : <b>{formatDuration(s.trainingSeconds)}</b>}
       </div>
       <div className="sk-sources">
         {s.sources.map((src, i) => (
@@ -457,6 +474,7 @@ function ItemPlanResults({ plan }: { plan: ItemPlan }) {
           <span><b>{plan.totals.skillsToTrain}</b> skills to train</span>
           <span><b>{plan.totals.skillsMet}</b> already met</span>
           <span className="sk-total-sp">SP needed: <b>{plan.totals.totalSpGap.toLocaleString()}</b></span>
+          <span>Training time: <b>{formatDuration(plan.totals.totalTrainingSeconds)}</b></span>
         </div>
       </div>
       <div className="sk-table">
@@ -466,6 +484,7 @@ function ItemPlanResults({ plan }: { plan: ItemPlan }) {
           <div className="c">Current</div>
           <div className="c">Target</div>
           <div className="r">SP gap</div>
+          <div className="r">Training</div>
           <div>Source</div>
           <div className="c">Actions</div>
         </div>
