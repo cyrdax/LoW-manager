@@ -10,6 +10,7 @@
     "build": "tsc && vite build --config web/vite.config.ts",
     "start": "node --loader tsx dist/server.js",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "build:mastery": "tsx scripts/build-mastery-data.ts"
   },
   "dependencies": {
