@@ -3,5 +3,6 @@ dist
 .env
 data/
 .cache/
+.worktrees/
 *.log
 .DS_Store
