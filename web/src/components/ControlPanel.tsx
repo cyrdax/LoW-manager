@@ -16,8 +16,8 @@ interface Props {
   chars: CharacterStatus[];
   selection: Set<number>;
   onRefresh: () => void;
-  view: 'pilots' | 'planets' | 'skills' | 'fleet' | 'market';
-  setView: (v: 'pilots' | 'planets' | 'skills' | 'fleet' | 'market') => void;
+  view: 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry';
+  setView: (v: 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry') => void;
 }
 
 export function ControlPanel({ chars, selection, onRefresh, view, setView }: Props) {
@@ -112,7 +112,7 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView }: Pro
         <small>{chars.length} characters · {selection.size} selected</small>
       </div>
 
-      <div className="view-nav view-nav-5">
+      <div className="view-nav view-nav-6">
         <button
           className={`nav-btn${view === 'pilots' ? ' active' : ''}`}
           onClick={() => setView('pilots')}
@@ -133,6 +133,10 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView }: Pro
           className={`nav-btn${view === 'market' ? ' active' : ''}`}
           onClick={() => setView('market')}
         >Market</button>
+        <button
+          className={`nav-btn${view === 'industry' ? ' active' : ''}`}
+          onClick={() => setView('industry')}
+        >Industry</button>
       </div>
 
       <button className="primary" onClick={openAuth}>Add character</button>
@@ -285,6 +289,12 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView }: Pro
       {view === 'market' && (
         <div style={{ fontSize: 12, color: 'var(--dim)' }}>
           PLEX trades on its own dedicated global market (since 2017). History is 1-day resolution, ~310 days back. Current spread updates every 5 min.
+        </div>
+      )}
+
+      {view === 'industry' && (
+        <div style={{ fontSize: 12, color: 'var(--dim)' }}>
+          Manufacturing-only v1. Max skills is a virtual pilot; real pilots use the cached ESI skills poll.
         </div>
       )}
 

@@ -592,3 +592,63 @@ export async function sendShoppingList(
   }
   return res.json();
 }
+
+export interface IndustryBlueprintHit {
+  blueprintId: number;
+  blueprintName: string;
+  productTypeId: number;
+  productName: string;
+  productQuantity: number;
+}
+
+export interface IndustryQuote {
+  blueprint: {
+    blueprintId: number;
+    blueprintName: string;
+    productTypeId: number;
+    productName: string;
+    productQuantity: number;
+  };
+  inputs: { runs: number; me: number; te: number; characterId: 'max' | number };
+  output: { typeId: number; name: string; quantity: number };
+  time: { baseSeconds: number; adjustedSeconds: number; perRunSeconds: number };
+  materials: Array<{ typeId: number; name: string; baseQuantity: number; adjustedQuantity: number }>;
+  skills: Array<{
+    skillId: number;
+    name: string;
+    rank: number;
+    requiredLevel: number;
+    currentLevel: number;
+    currentSp: number;
+    targetSp: number;
+    spGap: number;
+    met: boolean;
+  }>;
+  totals: { totalSpGap: number; missingSkills: number; totalSkills: number };
+}
+
+export async function searchIndustryBlueprints(q: string, signal?: AbortSignal): Promise<IndustryBlueprintHit[]> {
+  if (q.trim().length < 2) return [];
+  const res = await fetch(`/api/industry/blueprints?q=${encodeURIComponent(q)}`, { signal });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchIndustryQuote(params: {
+  blueprintId: number;
+  characterId: 'max' | number;
+  runs: number;
+  me: number;
+  te: number;
+}): Promise<IndustryQuote | { error: string }> {
+  const qs = new URLSearchParams({
+    blueprintId: String(params.blueprintId),
+    characterId: String(params.characterId),
+    runs: String(params.runs),
+    me: String(params.me),
+    te: String(params.te),
+  });
+  const res = await fetch(`/api/industry/quote?${qs.toString()}`);
+  if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
+  return res.json();
+}
