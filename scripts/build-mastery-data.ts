@@ -135,6 +135,22 @@ interface OutSkill {
   rank: number;
   primary: number | null;
   secondary: number | null;
+  requiredSkills: Array<{ skillId: number; level: number }>;
+}
+
+interface OutIndustryActivityProduct {
+  typeId: number;
+  name: string;
+  quantity: number;
+  probability?: number;
+}
+
+interface OutIndustryActivity {
+  activityId: number;
+  timeSeconds: number;
+  materials: Array<{ typeId: number; name: string; quantity: number }>;
+  products: OutIndustryActivityProduct[];
+  requiredSkills: Array<{ skillId: number; name: string; level: number; rank: number }>;
 }
 
 interface OutIndustryBlueprint {
@@ -146,6 +162,7 @@ interface OutIndustryBlueprint {
   baseTimeSeconds: number;
   materials: Array<{ typeId: number; name: string; quantity: number }>;
   requiredSkills: Array<{ skillId: number; name: string; level: number; rank: number }>;
+  activities?: Record<string, OutIndustryActivity>;
 }
 
 async function fetchSdeIfNeeded(): Promise<{ etag: string | null; lastModified: string | null }> {
@@ -348,6 +365,10 @@ function extractRequiredSkillsFromAttrs(attrs: Map<number, number> | undefined):
   return out;
 }
 
+function activityKey(blueprintId: number, activityId: number): string {
+  return `${blueprintId}:${activityId}`;
+}
+
 function overlayFuzzworkData(
   ships: Record<string, OutShip>,
   items: Record<string, OutItem>,
@@ -364,6 +385,7 @@ function overlayFuzzworkData(
     'industryActivityProducts.csv',
     'industryActivityMaterials.csv',
     'industryActivitySkills.csv',
+    'industryActivityProbabilities.csv',
   ];
 
   const categories = new Map<number, FuzzCategory>();
@@ -450,60 +472,123 @@ function overlayFuzzworkData(
     for (const r of required) usedSkillIds.add(r.skillId);
   }
 
-  const times = new Map<number, number>();
+  const activityIdsByBlueprint = new Map<number, Set<number>>();
+  const noteActivity = (blueprintId: number, activityId: number) => {
+    const set = activityIdsByBlueprint.get(blueprintId) ?? new Set<number>();
+    set.add(activityId);
+    activityIdsByBlueprint.set(blueprintId, set);
+  };
+
+  const times = new Map<string, number>();
   for (const row of loadCsv('industryActivity.csv')) {
-    if (row.activityID !== '1') continue;
     const typeId = csvNumber(row.typeID);
+    const activityId = csvNumber(row.activityID);
     const time = csvNumber(row.time);
-    if (typeId != null && time != null) times.set(typeId, Math.round(time));
+    if (typeId != null && activityId != null && time != null) {
+      times.set(activityKey(typeId, activityId), Math.round(time));
+      noteActivity(typeId, activityId);
+    }
   }
 
-  const productsByBlueprint = new Map<number, Array<{ typeId: number; quantity: number }>>();
-  for (const row of loadCsv('industryActivityProducts.csv')) {
-    if (row.activityID !== '1') continue;
+  const probabilities = new Map<string, number>();
+  for (const row of loadCsv('industryActivityProbabilities.csv')) {
     const blueprintId = csvNumber(row.typeID);
+    const activityId = csvNumber(row.activityID);
+    const productTypeId = csvNumber(row.productTypeID);
+    const probability = csvNumber(row.probability);
+    if (blueprintId == null || activityId == null || productTypeId == null || probability == null) continue;
+    probabilities.set(`${blueprintId}:${activityId}:${productTypeId}`, probability);
+  }
+
+  const productsByActivity = new Map<string, Array<{ typeId: number; quantity: number; probability?: number }>>();
+  for (const row of loadCsv('industryActivityProducts.csv')) {
+    const blueprintId = csvNumber(row.typeID);
+    const activityId = csvNumber(row.activityID);
     const typeId = csvNumber(row.productTypeID);
     const quantity = csvNumber(row.quantity);
-    if (blueprintId == null || typeId == null || quantity == null) continue;
-    const list = productsByBlueprint.get(blueprintId) ?? [];
-    list.push({ typeId, quantity: Math.round(quantity) });
-    productsByBlueprint.set(blueprintId, list);
+    if (blueprintId == null || activityId == null || typeId == null || quantity == null) continue;
+    const key = activityKey(blueprintId, activityId);
+    const probability = probabilities.get(`${blueprintId}:${activityId}:${typeId}`);
+    const list = productsByActivity.get(key) ?? [];
+    list.push({ typeId, quantity: Math.round(quantity), ...(probability != null ? { probability } : {}) });
+    productsByActivity.set(key, list);
+    noteActivity(blueprintId, activityId);
   }
 
-  const materialsByBlueprint = new Map<number, Array<{ typeId: number; quantity: number }>>();
+  const materialsByActivity = new Map<string, Array<{ typeId: number; quantity: number }>>();
   for (const row of loadCsv('industryActivityMaterials.csv')) {
-    if (row.activityID !== '1') continue;
     const blueprintId = csvNumber(row.typeID);
+    const activityId = csvNumber(row.activityID);
     const typeId = csvNumber(row.materialTypeID);
     const quantity = csvNumber(row.quantity);
-    if (blueprintId == null || typeId == null || quantity == null) continue;
-    const list = materialsByBlueprint.get(blueprintId) ?? [];
+    if (blueprintId == null || activityId == null || typeId == null || quantity == null) continue;
+    const key = activityKey(blueprintId, activityId);
+    const list = materialsByActivity.get(key) ?? [];
     list.push({ typeId, quantity: Math.round(quantity) });
-    materialsByBlueprint.set(blueprintId, list);
+    materialsByActivity.set(key, list);
+    noteActivity(blueprintId, activityId);
   }
 
-  const skillsByBlueprint = new Map<number, Array<{ skillId: number; level: number }>>();
+  const skillsByActivity = new Map<string, Array<{ skillId: number; level: number }>>();
   for (const row of loadCsv('industryActivitySkills.csv')) {
-    if (row.activityID !== '1') continue;
     const blueprintId = csvNumber(row.typeID);
+    const activityId = csvNumber(row.activityID);
     const skillId = csvNumber(row.skillID);
     const level = csvNumber(row.level);
-    if (blueprintId == null || skillId == null || level == null) continue;
-    const list = skillsByBlueprint.get(blueprintId) ?? [];
+    if (blueprintId == null || activityId == null || skillId == null || level == null) continue;
+    const key = activityKey(blueprintId, activityId);
+    const list = skillsByActivity.get(key) ?? [];
     list.push({ skillId, level: Math.round(level) });
-    skillsByBlueprint.set(blueprintId, list);
+    skillsByActivity.set(key, list);
+    noteActivity(blueprintId, activityId);
   }
 
-  for (const [blueprintId, products] of productsByBlueprint) {
+  function activityFor(blueprintId: number, activityId: number): OutIndustryActivity | null {
+    const key = activityKey(blueprintId, activityId);
+    const time = times.get(key);
+    if (time == null) return null;
+    const requiredSkills = (skillsByActivity.get(key) ?? []).map(skill => {
+      const skillType = types.get(skill.skillId);
+      usedSkillIds.add(skill.skillId);
+      return {
+        skillId: skill.skillId,
+        name: skillType?.name ?? `Skill ${skill.skillId}`,
+        level: skill.level,
+        rank: skillRankFromAttrs(skill.skillId, attrsByType),
+      };
+    });
+    return {
+      activityId,
+      timeSeconds: time,
+      materials: (materialsByActivity.get(key) ?? []).map(material => ({
+        typeId: material.typeId,
+        name: types.get(material.typeId)?.name ?? `Type ${material.typeId}`,
+        quantity: material.quantity,
+      })),
+      products: (productsByActivity.get(key) ?? []).map(product => ({
+        typeId: product.typeId,
+        name: types.get(product.typeId)?.name ?? `Type ${product.typeId}`,
+        quantity: product.quantity,
+        ...(product.probability != null ? { probability: product.probability } : {}),
+      })),
+      requiredSkills,
+    };
+  }
+
+  for (const [key, products] of productsByActivity) {
+    const [blueprintIdText, activityIdText] = key.split(':');
+    const blueprintId = Number(blueprintIdText);
+    const activityId = Number(activityIdText);
+    if (activityId !== 1) continue;
     const blueprintType = types.get(blueprintId);
     if (!blueprintType?.published) continue;
     const product = products.find(p => types.get(p.typeId)?.published);
     if (!product) continue;
     const productType = types.get(product.typeId);
-    const time = times.get(blueprintId);
+    const time = times.get(activityKey(blueprintId, 1));
     if (time == null) continue;
 
-    const requiredSkills = (skillsByBlueprint.get(blueprintId) ?? []).map(skill => {
+    const requiredSkills = (skillsByActivity.get(activityKey(blueprintId, 1)) ?? []).map(skill => {
       const skillType = types.get(skill.skillId);
       usedSkillIds.add(skill.skillId);
       return {
@@ -521,13 +606,34 @@ function overlayFuzzworkData(
       productName: productType?.name ?? `Type ${product.typeId}`,
       productQuantity: product.quantity,
       baseTimeSeconds: time,
-      materials: (materialsByBlueprint.get(blueprintId) ?? []).map(material => ({
+      materials: (materialsByActivity.get(activityKey(blueprintId, 1)) ?? []).map(material => ({
         typeId: material.typeId,
         name: types.get(material.typeId)?.name ?? `Type ${material.typeId}`,
         quantity: material.quantity,
       })),
       requiredSkills,
     };
+  }
+
+  for (const [blueprintId, activityIds] of activityIdsByBlueprint) {
+    const existing = industryBlueprints[String(blueprintId)];
+    if (!existing) continue;
+    const activities: Record<string, OutIndustryActivity> = {};
+    for (const activityId of Array.from(activityIds).sort((a, b) => a - b)) {
+      const activity = activityFor(blueprintId, activityId);
+      if (activity) activities[String(activityId)] = activity;
+    }
+    existing.activities = activities;
+  }
+
+  const skillQueue = Array.from(usedSkillIds);
+  for (let i = 0; i < skillQueue.length; i++) {
+    const skillId = skillQueue[i];
+    for (const required of extractRequiredSkillsFromAttrs(attrsByType.get(skillId))) {
+      if (usedSkillIds.has(required.skillId)) continue;
+      usedSkillIds.add(required.skillId);
+      skillQueue.push(required.skillId);
+    }
   }
 
   for (const sid of usedSkillIds) {
@@ -539,6 +645,7 @@ function overlayFuzzworkData(
       rank: Math.round(attrs.get(ATTR_SKILL_RANK) ?? 1),
       primary: attrs.has(ATTR_PRIMARY) ? Math.round(attrs.get(ATTR_PRIMARY)!) : null,
       secondary: attrs.has(ATTR_SECONDARY) ? Math.round(attrs.get(ATTR_SECONDARY)!) : null,
+      requiredSkills: extractRequiredSkillsFromAttrs(attrs),
     };
   }
 
@@ -556,6 +663,7 @@ async function main() {
     'industryActivityProducts.csv',
     'industryActivityMaterials.csv',
     'industryActivitySkills.csv',
+    'industryActivityProbabilities.csv',
   ]);
 
   const categories = loadYaml<Record<string, { name: { en: string }; published?: boolean }>>(
@@ -704,6 +812,7 @@ async function main() {
       rank: Math.round(attrs.get(ATTR_SKILL_RANK) ?? 1),
       primary: attrs.has(ATTR_PRIMARY) ? Math.round(attrs.get(ATTR_PRIMARY)!) : null,
       secondary: attrs.has(ATTR_SECONDARY) ? Math.round(attrs.get(ATTR_SECONDARY)!) : null,
+      requiredSkills: extractRequiredSkills(typeDogma[String(sid)]),
     };
   }
   console.log(`[skills]  ${Object.keys(skillsOut).length} referenced skills`);

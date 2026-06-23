@@ -31,3 +31,23 @@ test('bundled SDE data includes current command carrier hulls and blueprints', (
   assert.ok(simurghBlueprint.materials.length > 0);
   assert.ok(simurghBlueprint.requiredSkills.some(s => s.name === 'Advanced Capital Ship Construction'));
 });
+
+test('bundled industry data includes Simurgh invention chain activity data', () => {
+  const data = loadMasteryData();
+  const chimeraBlueprint = data.industry?.blueprints['23916'];
+  const simurghBlueprint = data.industry?.blueprints['94073'];
+
+  assert.ok(chimeraBlueprint?.activities?.['5']);
+  assert.ok(chimeraBlueprint.activities['8']);
+  assert.ok(simurghBlueprint?.activities?.['1']);
+
+  const inventionProduct = chimeraBlueprint.activities['8'].products.find(p => p.typeId === 94073);
+  assert.ok(inventionProduct);
+  assert.equal(inventionProduct.name, 'Simurgh Blueprint');
+  assert.equal(inventionProduct.probability, 0.18);
+  assert.ok(chimeraBlueprint.activities['8'].materials.some(m => m.name === 'Datacore - Caldari Starship Engineering'));
+  assert.ok(chimeraBlueprint.activities['8'].requiredSkills.some(s => s.name === 'Caldari Encryption Methods'));
+
+  const encryption = data.skills['21790'];
+  assert.ok(encryption?.requiredSkills?.length);
+});

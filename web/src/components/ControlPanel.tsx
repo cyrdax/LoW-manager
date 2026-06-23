@@ -294,7 +294,7 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView }: Pro
 
       {view === 'industry' && (
         <div style={{ fontSize: 12, color: 'var(--dim)' }}>
-          Manufacturing-only v1. Max skills is a virtual pilot; real pilots use the cached ESI skills poll.
+          Manufacturing quotes plus build-chain planning. Max skills is a virtual pilot; real pilots use the cached ESI skills poll.
         </div>
       )}
 

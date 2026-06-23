@@ -629,6 +629,84 @@ export interface IndustryQuote {
   totals: { totalSpGap: number; totalTrainingSeconds: number; missingSkills: number; totalSkills: number };
 }
 
+export interface IndustryPlanBonuses {
+  manufacturingTimeBonus: number;
+  manufacturingMaterialBonus: number;
+  inventionTimeBonus: number;
+  copyingTimeBonus: number;
+  reactionTimeBonus: number;
+  reactionMaterialBonus: number;
+  jobFeeBonus: number;
+  facilityTax: number;
+}
+
+export interface IndustryPlan {
+  target: { blueprintId: number; blueprintName: string; productTypeId: number; productName: string; quantity: number };
+  assumptions: {
+    buildInputs: boolean;
+    supportMe: number;
+    supportTe: number;
+    decryptor: {
+      key: string;
+      name: string;
+      probabilityMultiplier: number;
+      runModifier: number;
+      meModifier: number;
+      teModifier: number;
+    };
+    inventionOutput: { me: number; te: number; runsPerSuccessfulBpc: number } | null;
+    bonuses: IndustryPlanBonuses;
+  };
+  invention: {
+    sourceBlueprintId: number;
+    sourceBlueprintName: string;
+    chance: number;
+    successfulBpcsNeeded: number;
+    expectedAttempts: number;
+    copyRunsNeeded: number;
+    materialsPerAttempt: Array<{ typeId: number; name: string; quantity: number }>;
+    expectedMaterials: Array<{ typeId: number; name: string; quantity: number }>;
+  } | null;
+  jobs: Array<{
+    activityId: number;
+    activityName: string;
+    blueprintId: number;
+    blueprintName: string;
+    productTypeId: number | null;
+    productName: string;
+    runs: number;
+    baseSeconds: number;
+    adjustedSeconds: number;
+    systemCostIndex: number | null;
+    estimatedInstallFee: number | null;
+  }>;
+  materials: {
+    final: Array<{ typeId: number; name: string; quantity: number }>;
+    raw: Array<{ typeId: number; name: string; quantity: number }>;
+  };
+  skills: Array<{
+    skillId: number;
+    name: string;
+    rank: number;
+    requiredLevel: number;
+    currentLevel: number;
+    currentSp: number;
+    targetSp: number;
+    spGap: number;
+    trainingSeconds: number;
+    met: boolean;
+  }>;
+  totals: {
+    jobSeconds: number;
+    skillTrainingSeconds: number;
+    totalSerialSeconds: number;
+    estimatedInstallFees: number | null;
+    rawMaterialLines: number;
+    jobs: number;
+  };
+  system: { systemId: number; systemName: string; costIndices: Array<{ activity: string; cost_index: number }> } | null;
+}
+
 export async function searchIndustryBlueprints(q: string, signal?: AbortSignal): Promise<IndustryBlueprintHit[]> {
   if (q.trim().length < 2) return [];
   const res = await fetch(`/api/industry/blueprints?q=${encodeURIComponent(q)}`, { signal });
@@ -651,6 +729,40 @@ export async function fetchIndustryQuote(params: {
     te: String(params.te),
   });
   const res = await fetch(`/api/industry/quote?${qs.toString()}`);
+  if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
+  return res.json();
+}
+
+export async function fetchIndustryPlan(params: {
+  blueprintId: number;
+  characterId: 'max' | number;
+  runs: number;
+  systemId?: number | null;
+  buildInputs: boolean;
+  supportMe: number;
+  supportTe: number;
+  decryptor: string;
+  bonuses: IndustryPlanBonuses;
+}): Promise<IndustryPlan | { error: string }> {
+  const qs = new URLSearchParams({
+    blueprintId: String(params.blueprintId),
+    characterId: String(params.characterId),
+    runs: String(params.runs),
+    buildInputs: String(params.buildInputs),
+    supportMe: String(params.supportMe),
+    supportTe: String(params.supportTe),
+    decryptor: params.decryptor,
+    manufacturingTimeBonus: String(params.bonuses.manufacturingTimeBonus),
+    manufacturingMaterialBonus: String(params.bonuses.manufacturingMaterialBonus),
+    inventionTimeBonus: String(params.bonuses.inventionTimeBonus),
+    copyingTimeBonus: String(params.bonuses.copyingTimeBonus),
+    reactionTimeBonus: String(params.bonuses.reactionTimeBonus),
+    reactionMaterialBonus: String(params.bonuses.reactionMaterialBonus),
+    jobFeeBonus: String(params.bonuses.jobFeeBonus),
+    facilityTax: String(params.bonuses.facilityTax),
+  });
+  if (params.systemId) qs.set('systemId', String(params.systemId));
+  const res = await fetch(`/api/industry/plan?${qs.toString()}`);
   if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
   return res.json();
 }

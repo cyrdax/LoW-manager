@@ -33,6 +33,15 @@ export interface MasterySkill {
   rank: number;
   primary: number | null;
   secondary: number | null;
+  requiredSkills?: Array<{ skillId: number; level: number }>;
+}
+
+export interface IndustryActivityData {
+  activityId: number;
+  timeSeconds: number;
+  materials: Array<{ typeId: number; name: string; quantity: number }>;
+  products: Array<{ typeId: number; name: string; quantity: number; probability?: number }>;
+  requiredSkills: Array<{ skillId: number; name: string; level: number; rank: number }>;
 }
 
 export interface IndustryBlueprintData {
@@ -44,6 +53,7 @@ export interface IndustryBlueprintData {
   baseTimeSeconds: number;
   materials: Array<{ typeId: number; name: string; quantity: number }>;
   requiredSkills: Array<{ skillId: number; name: string; level: number; rank: number }>;
+  activities?: Record<string, IndustryActivityData>;
 }
 
 export interface MasteryData {

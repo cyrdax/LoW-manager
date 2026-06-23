@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { getAdjustedPrices, getSystemCostIndex } from '../esi/industry.ts';
+import { resolveSystem } from '../esi/universe.ts';
 import { getCharacterAttributes, getCharacterSkills } from '../polling/scheduler.ts';
 import { calculateIndustryQuote, type IndustryBlueprint, type IndustryPilotSkills } from '../industry/calculator.ts';
+import { calculateIndustryPlan, DECRYPTORS, type IndustryPlanBonuses } from '../industry/planner.ts';
 import { loadMasteryData, type IndustryBlueprintData, type MasteryData } from '../skills/mastery-data.ts';
 
 const searchQuery = z.object({
@@ -14,6 +17,29 @@ const quoteQuery = z.object({
   runs: z.coerce.number().int().min(1).max(1_000_000).default(1),
   me: z.coerce.number().int().min(0).max(10).default(0),
   te: z.coerce.number().int().min(0).max(20).default(0),
+});
+
+const planQuery = z.object({
+  blueprintId: z.coerce.number().int().positive(),
+  characterId: z.string().min(1),
+  runs: z.coerce.number().int().min(1).max(1_000_000).default(1),
+  systemId: z.coerce.number().int().positive().optional(),
+  buildInputs: z.coerce.boolean().default(true),
+  supportMe: z.coerce.number().int().min(0).max(10).default(10),
+  supportTe: z.coerce.number().int().min(0).max(20).default(20),
+  decryptor: z.string().default('none'),
+  manufacturingTimeBonus: z.coerce.number().min(0).max(100).default(0),
+  manufacturingMaterialBonus: z.coerce.number().min(0).max(100).default(0),
+  inventionTimeBonus: z.coerce.number().min(0).max(100).default(0),
+  copyingTimeBonus: z.coerce.number().min(0).max(100).default(0),
+  reactionTimeBonus: z.coerce.number().min(0).max(100).default(0),
+  reactionMaterialBonus: z.coerce.number().min(0).max(100).default(0),
+  jobFeeBonus: z.coerce.number().min(0).max(100).default(0),
+  facilityTax: z.coerce.number().min(0).max(100).default(0),
+});
+
+const systemCostQuery = z.object({
+  systemId: z.coerce.number().int().positive(),
 });
 
 function blueprints(): Record<string, IndustryBlueprintData> {
@@ -120,5 +146,78 @@ export function registerIndustryRoutes(app: FastifyInstance) {
       characterId,
       pilot,
     });
+  });
+
+  app.get<{ Querystring: Record<string, string | undefined> }>('/api/industry/plan', async (req, reply) => {
+    const parsed = planQuery.safeParse(req.query);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
+
+    const masteryData = loadMasteryData();
+    const blueprint = masteryData.industry?.blueprints[String(parsed.data.blueprintId)];
+    if (!blueprint) return reply.code(404).send({ error: 'Blueprint not found' });
+
+    const characterId = parsed.data.characterId === 'max' ? 'max' : Number(parsed.data.characterId);
+    if (characterId !== 'max' && !Number.isFinite(characterId)) {
+      return reply.code(400).send({ error: 'characterId must be "max" or a numeric character id' });
+    }
+
+    const pilot = pilotSkills(characterId);
+    if (!pilot) {
+      return reply.code(409).send({ error: 'Character skills not yet polled. Wait for the next skill poll and try again.' });
+    }
+
+    const bonuses: IndustryPlanBonuses = {
+      manufacturingTimeBonus: parsed.data.manufacturingTimeBonus,
+      manufacturingMaterialBonus: parsed.data.manufacturingMaterialBonus,
+      inventionTimeBonus: parsed.data.inventionTimeBonus,
+      copyingTimeBonus: parsed.data.copyingTimeBonus,
+      reactionTimeBonus: parsed.data.reactionTimeBonus,
+      reactionMaterialBonus: parsed.data.reactionMaterialBonus,
+      jobFeeBonus: parsed.data.jobFeeBonus,
+      facilityTax: parsed.data.facilityTax,
+    };
+
+    try {
+      const systemCostIndex = parsed.data.systemId ? await getSystemCostIndex(parsed.data.systemId) : null;
+      const adjustedPrices = parsed.data.systemId ? await getAdjustedPrices() : null;
+      const plan = calculateIndustryPlan({
+        data: masteryData,
+        blueprint,
+        runs: parsed.data.runs,
+        characterId,
+        pilot,
+        buildInputs: parsed.data.buildInputs,
+        supportMe: parsed.data.supportMe,
+        supportTe: parsed.data.supportTe,
+        decryptorKey: DECRYPTORS.some(d => d.key === parsed.data.decryptor) ? parsed.data.decryptor : 'none',
+        bonuses,
+        systemCostIndex,
+        adjustedPrices,
+      });
+      return {
+        ...plan,
+        system: parsed.data.systemId
+          ? {
+              systemId: parsed.data.systemId,
+              systemName: await resolveSystem(parsed.data.systemId).catch(() => `System ${parsed.data.systemId}`),
+              costIndices: systemCostIndex?.cost_indices ?? [],
+            }
+          : null,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to calculate industry plan';
+      return reply.code(500).send({ error: message });
+    }
+  });
+
+  app.get<{ Querystring: { systemId?: string } }>('/api/industry/system-costs', async (req, reply) => {
+    const parsed = systemCostQuery.safeParse(req.query);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
+    const costIndex = await getSystemCostIndex(parsed.data.systemId);
+    return {
+      systemId: parsed.data.systemId,
+      systemName: await resolveSystem(parsed.data.systemId).catch(() => `System ${parsed.data.systemId}`),
+      costIndices: costIndex?.cost_indices ?? [],
+    };
   });
 }
