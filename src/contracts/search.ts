@@ -113,20 +113,30 @@ export async function runContractSearch(
   const fetchRegionContracts = deps.fetchRegionContracts ?? getPublicContracts;
   const fetchContractItems = deps.fetchContractItems ?? getPublicContractItems;
   const warnings: ContractWarning[] = [];
+  const regionFailures = new Map<number, { name: string; count: number }>();
+  const deferredPages: DeferredRegionPage[] = [];
 
   const contracts: Array<{ contract: PublicContractSummary; regionId: number; regionName: string }> = [];
   await runPool(regions, 3, async region => {
     try {
       const first = await fetchRegionContracts(region.id, 1);
       for (const c of first.data) contracts.push({ contract: c, regionId: region.id, regionName: region.name });
-      for (let page = 2; page <= first.pages; page++) {
-        const next = await fetchRegionContracts(region.id, page);
-        for (const c of next.data) contracts.push({ contract: c, regionId: region.id, regionName: region.name });
-      }
+      for (let page = 2; page <= first.pages; page++) deferredPages.push({ regionId: region.id, regionName: region.name, page });
     } catch {
-      warnings.push({ code: 'region_contracts_failed', message: `Failed to load public contracts for ${region.name}`, count: 1 });
+      incrementRegionFailure(regionFailures, region.id, region.name);
     }
   });
+  await runPool(deferredPages, 3, async ({ regionId, regionName, page }) => {
+    try {
+      const next = await fetchRegionContracts(regionId, page);
+      for (const c of next.data) contracts.push({ contract: c, regionId, regionName });
+    } catch {
+      incrementRegionFailure(regionFailures, regionId, regionName);
+    }
+  });
+  for (const { name, count } of regionFailures.values()) {
+    warnings.push({ code: 'region_contracts_failed', message: `Failed to load public contracts for ${name}`, count });
+  }
 
   const candidates = contracts.filter(({ contract }) => (
     CONTRACT_TYPES.has(contract.type)
@@ -150,7 +160,8 @@ export async function runContractSearch(
     const locationId = contract.start_location_id ?? contract.end_location_id ?? null;
     const location = locationForId(topology, locationId);
     const systemId = location?.systemId ?? null;
-    const jumps = systemId == null ? null : distances.get(systemId) ?? null;
+    if (systemId != null && !distances.has(systemId)) return;
+    const jumps = systemId == null ? null : distances.get(systemId)!;
     const systemName = systemId == null
       ? null
       : topology.systems.get(systemId)?.name ?? await resolveSystemName(systemId).catch(() => `System ${systemId}`);
@@ -194,6 +205,26 @@ export async function runContractSearch(
     results: sortContractResults(results),
     warnings,
   };
+}
+
+interface DeferredRegionPage {
+  regionId: number;
+  regionName: string;
+  page: number;
+}
+
+function incrementRegionFailure(
+  regionFailures: Map<number, { name: string; count: number }>,
+  regionId: number,
+  regionName: string,
+): void {
+  const existing = regionFailures.get(regionId);
+  if (existing) {
+    existing.count += 1;
+    return;
+  }
+
+  regionFailures.set(regionId, { name: regionName, count: 1 });
 }
 
 async function runPool<T>(items: T[], concurrency: number, fn: (item: T) => Promise<void>): Promise<void> {

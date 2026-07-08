@@ -133,6 +133,84 @@ test('runContractSearch keeps unknown-location matches after known-distance matc
   assert.equal(response.results[1].jumps, null);
 });
 
+test('runContractSearch excludes known-location matches outside the selected radius', async () => {
+  const response = await runContractSearch({
+    data: masteryData,
+    shipId: 17920,
+    originSystemId: 30000142,
+    radius: 1,
+  }, {
+    now: () => Date.parse('2026-07-08T00:00:00Z'),
+    resolveSystemName: async id => `System ${id}`,
+    topology: {
+      systems: new Map([
+        [30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }],
+        [30000145, { id: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge' }],
+        [30000146, { id: 30000146, name: 'Urlen', regionId: 10000002, regionName: 'The Forge' }],
+      ]),
+      adjacency: new Map([
+        [30000142, [30000145]],
+        [30000145, [30000142, 30000146]],
+        [30000146, [30000145]],
+      ]),
+      stations: new Map(),
+    },
+    fetchRegionContracts: async () => ({
+      data: [
+        { contract_id: 30, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 10, start_location_id: 30000146 },
+        { contract_id: 31, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 20, start_location_id: 99000001 },
+      ],
+      pages: 1,
+    }),
+    fetchContractItems: async () => [{ record_id: 1, type_id: 17920, quantity: 1, is_included: true }],
+  });
+
+  assert.deepEqual(response.results.map(r => r.contractId), [31]);
+  assert.equal(response.results[0].locationKnown, false);
+  assert.equal(response.results[0].jumps, null);
+});
+
+test('runContractSearch fetches additional contract pages through a shared concurrency-3 pool', async () => {
+  let activePageFetches = 0;
+  let maxActivePageFetches = 0;
+
+  await runContractSearch({
+    data: masteryData,
+    shipId: 17920,
+    originSystemId: 30000142,
+    radius: 30,
+  }, {
+    now: () => Date.parse('2026-07-08T00:00:00Z'),
+    resolveSystemName: async id => `System ${id}`,
+    topology: {
+      systems: new Map([[30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }]]),
+      adjacency: new Map([[30000142, []]]),
+      stations: new Map(),
+    },
+    fetchRegionContracts: async (_regionId, page) => {
+      if (page === 1) {
+        return {
+          data: [],
+          pages: 5,
+        };
+      }
+
+      activePageFetches += 1;
+      maxActivePageFetches = Math.max(maxActivePageFetches, activePageFetches);
+      await Promise.resolve();
+      activePageFetches -= 1;
+
+      return {
+        data: [],
+        pages: 5,
+      };
+    },
+    fetchContractItems: async () => [],
+  });
+
+  assert.equal(maxActivePageFetches, 3);
+});
+
 test('runContractSearch returns partial warning when an item fetch fails', async () => {
   const response = await runContractSearch({
     data: masteryData,
