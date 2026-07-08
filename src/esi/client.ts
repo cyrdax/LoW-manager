@@ -10,6 +10,7 @@ export interface EsiResponse<T> {
   status: number;
   expires: number | null;
   etag: string | null;
+  pages: number | null;
 }
 
 function userAgent(): string {
@@ -42,6 +43,8 @@ async function esiFetch<T>(path: string, init: RequestInit = {}): Promise<EsiRes
 
   const expiresHeader = res.headers.get('Expires');
   const expires = expiresHeader ? Date.parse(expiresHeader) : null;
+  const pagesHeader = res.headers.get('X-Pages');
+  const pages = pagesHeader ? Number(pagesHeader) : null;
 
   if (!res.ok) {
     const body = await res.text();
@@ -53,7 +56,7 @@ async function esiFetch<T>(path: string, init: RequestInit = {}): Promise<EsiRes
 
   const hasBody = res.status !== 204 && res.status !== 205 && res.headers.get('Content-Length') !== '0';
   const data = hasBody ? ((await res.json()) as T) : (undefined as T);
-  return { data, status: res.status, expires, etag: res.headers.get('ETag') };
+  return { data, status: res.status, expires, etag: res.headers.get('ETag'), pages };
 }
 
 export async function esiGet<T>(path: string, characterId: number): Promise<EsiResponse<T>> {
