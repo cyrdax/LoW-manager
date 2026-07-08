@@ -4,13 +4,14 @@ Self-hosted single-user web app to monitor a fleet of EVE Online characters you 
 
 Designed for ~6–20 alts. Scales comfortably further within ESI's rate limits.
 
-The dashboard has six top-level views, toggled in the sidebar (selection persists in `localStorage.efd.view`):
+The dashboard has seven top-level views, toggled in the sidebar (selection persists in `localStorage.efd.view`):
 
 - **Pilots** — the per-character status table (location, ship, wallet, training, etc.) plus fleet-boss controls and waypoint search.
 - **Planets** — PI dashboard: per-pilot colony health, system scout search, saved systems, per-colony pin drill-down, and fleet-wide inventory roll-up.
 - **Skills** — pilot picker + ship/module search; resolves Mastery I–V skill plans with SP-gap and train-time math from a bundled SDE-derived map, plus per-pilot saved plan bookmarks.
 - **Fleet** — full FC-roster view with drag-and-drop wing/squad reassignment. Any authed pilot can be picked as the actor token (so you can drive moves under whichever alt holds the FC role).
 - **Market** — two sub-tabs: **PLEX** (price chart, sell-side calculator with sales-tax / broker fee math) and **Shopping List** (paste a multi-item buy order, get a per-item + total cost quote in Jita or Amarr, walking the order book).
+- **Contracts** — public ship-contract search: pick a hull and origin system, scan item-exchange and auction contracts within a default 30-jump radius, and sort results by jumps then price.
 - **Industry** — manufacturing and build-chain planner: search any bundled manufacturing blueprint, compare max skills vs one of your pilots, see material/job-time/skill gaps, and model invention/copy/input-build chains with system cost indexes and structure/rig bonuses.
 
 ---
@@ -218,6 +219,19 @@ The parser also accepts `2x Cap Recharger II` and EVE's tab-separated in-game co
 **Send to pilot (EVEmail)** — once a quote is calculated, a dropdown of authed pilots + a **Send as EVEmail** button appears above the results table. Pick the alt that's actually going to buy the items and hit Send. The server re-prices the list at send-time (in case prices shifted), then posts an EVEmail to that pilot via `POST /characters/{id}/mail/`. The mail body renders each item as `<a href="showinfo:TYPE_ID">Item Name</a>` — clickable in-game links that open the showinfo window, which has a "View Market Details" button. Effectively a navigable in-game shopping list.
 
 Requires `esi-mail.send_mail.v1` (added in this scope set; existing pilots must re-auth). If the pilot's token predates the scope, the Send button surfaces a 401 with a "needs re-auth" hint. The mail is a self-mail (the chosen pilot is both sender and recipient — lands in their personal mail tab as From: themself). The endpoint is `POST /api/market/shopping-list/send` with `{ hub, items, recipientCharacterId }`.
+
+## Contracts view
+
+The Contracts tab searches public ESI contracts for a selected ship hull around an origin system.
+
+1. Pick a ship from autocomplete. The list uses the bundled SDE ship map.
+2. Pick an origin system from the existing system autocomplete.
+3. Keep the default `30` jump radius or enter a value from `1` to `100`.
+4. Search public item-exchange and auction contracts.
+
+The server computes jump distance locally from the SDE stargate graph, then scans public contract regions touched by the radius. Results are sorted by jump count and effective price. Player-structure contracts can appear with unknown distance when the public contract data does not provide a resolvable system.
+
+V1 does not create, accept, bid on, or delete contracts. It does not read private character or corporation contracts.
 
 ---
 
