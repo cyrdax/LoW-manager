@@ -11,7 +11,7 @@ The dashboard has seven top-level views, toggled in the sidebar (selection persi
 - **Skills** — pilot picker + ship/module search; resolves Mastery I–V skill plans with SP-gap and train-time math from a bundled SDE-derived map, plus per-pilot saved plan bookmarks.
 - **Fleet** — full FC-roster view with drag-and-drop wing/squad reassignment. Any authed pilot can be picked as the actor token (so you can drive moves under whichever alt holds the FC role).
 - **Market** — two sub-tabs: **PLEX** (price chart, sell-side calculator with sales-tax / broker fee math) and **Shopping List** (paste a multi-item buy order, get a per-item + total cost quote in Jita or Amarr, walking the order book).
-- **Contracts** — public ship-contract search: pick a hull and origin system, scan item-exchange and auction contracts within a default 30-jump radius, and sort results by jumps then price.
+- **Contracts** — public ship-contract search: pick a hull and origin system, query the warm local contract index for item-exchange and auction contracts within a default 30-jump radius, and sort results by jumps then price.
 - **Industry** — manufacturing and build-chain planner: search any bundled manufacturing blueprint, compare max skills vs one of your pilots, see material/job-time/skill gaps, and model invention/copy/input-build chains with system cost indexes and structure/rig bonuses.
 
 ---
@@ -222,14 +222,16 @@ Requires `esi-mail.send_mail.v1` (added in this scope set; existing pilots must 
 
 ## Contracts view
 
-The Contracts tab searches public ESI contracts for a selected ship hull around an origin system.
+The Contracts tab searches the local public-contract index for a selected ship hull around an origin system.
 
 1. Pick a ship from autocomplete. The list uses the bundled SDE ship map.
 2. Pick an origin system from the existing system autocomplete.
 3. Keep the default `30` jump radius or enter a value from `1` to `100`.
-4. Search public item-exchange and auction contracts.
+4. Search public item-exchange and auction contracts from the warm index.
 
-The server computes jump distance locally from the SDE stargate graph, then scans public contract regions touched by the radius. Results are sorted by jump count and effective price. Player-structure contracts can appear with unknown distance when the public contract data does not provide a resolvable system.
+The server keeps a background SQLite index of public contract summaries and item rows using the public ESI contract endpoints and their cache expiry headers. User searches compute jump distance locally from the SDE stargate graph, query indexed item rows by ship type, and prioritize touched regions for refresh without waiting for a live crawl. If the index is still warming, the response returns partial results plus coverage metadata such as ready/stale/missing region counts.
+
+Results are sorted by jump count and effective price. Player-structure contracts can appear with unknown distance when the public contract data does not provide a resolvable system.
 
 V1 does not create, accept, bid on, or delete contracts. It does not read private character or corporation contracts.
 

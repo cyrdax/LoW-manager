@@ -236,9 +236,23 @@ export interface ContractSearchResponse {
   origin: { id: number; name: string };
   radius: number;
   regionsScanned: Array<{ id: number; name: string }>;
+  index: ContractIndexSummary;
   fetchedAt: number;
   results: ContractSearchResult[];
   warnings: ContractWarning[];
+}
+
+export interface ContractIndexSummary {
+  complete: boolean;
+  regionsTotal: number;
+  regionsReady: number;
+  regionsStale: number;
+  regionsMissing: number;
+  regionsQueued: number;
+  oldestRefreshedAt: number | null;
+  newestRefreshedAt: number | null;
+  activeContracts: number;
+  indexedItemContracts: number;
 }
 
 export async function searchContractShips(q: string, signal?: AbortSignal): Promise<ContractShipHit[]> {

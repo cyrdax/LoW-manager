@@ -15,7 +15,6 @@ const SHIP_GROUP_KEY = 'efd.contracts.shipGroupName';
 const ORIGIN_ID_KEY = 'efd.contracts.originSystemId';
 const ORIGIN_NAME_KEY = 'efd.contracts.originSystemName';
 const RADIUS_KEY = 'efd.contracts.radius';
-const CONTRACT_SEARCH_TIMEOUT_MS = 30_000;
 
 function readSavedShip(): ContractShipHit | null {
   const id = Number(localStorage.getItem(SHIP_ID_KEY));
@@ -48,7 +47,6 @@ export function ContractsView() {
   const [response, setResponse] = useState<ContractSearchResponse | null>(null);
   const searchSeq = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (shipText.trim().length < 2 || ship?.name === shipText.trim()) {
@@ -101,10 +99,6 @@ export function ContractsView() {
       searchSeq.current += 1;
       searchAbortRef.current?.abort();
       searchAbortRef.current = null;
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-        searchTimeoutRef.current = null;
-      }
     };
   }, []);
 
@@ -114,30 +108,15 @@ export function ContractsView() {
     searchSeq.current += 1;
     searchAbortRef.current?.abort();
     searchAbortRef.current = null;
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = null;
-    }
     setBusy(false);
   };
 
   const doSearch = async () => {
     if (!ship || !origin) return;
     searchAbortRef.current?.abort();
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = null;
-    }
     const seq = ++searchSeq.current;
     const ctrl = new AbortController();
     searchAbortRef.current = ctrl;
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      if (searchSeq.current !== seq) return;
-      timedOut = true;
-      ctrl.abort();
-    }, CONTRACT_SEARCH_TIMEOUT_MS);
-    searchTimeoutRef.current = timeout;
     setBusy(true);
     setError(null);
     try {
@@ -145,9 +124,6 @@ export function ContractsView() {
         { shipId: ship.id, originSystemId: origin.id, radius },
         ctrl.signal,
       ).catch(err => {
-        if (timedOut) {
-          return { error: 'Contract search timed out. Try a smaller radius or search again.' };
-        }
         return { error: err instanceof Error ? err.message : 'Failed to search contracts' };
       });
       if (seq !== searchSeq.current) return;
@@ -164,10 +140,6 @@ export function ContractsView() {
           searchAbortRef.current = null;
         }
       }
-      if (searchTimeoutRef.current === timeout) {
-        clearTimeout(timeout);
-        searchTimeoutRef.current = null;
-      }
     }
   };
 
@@ -175,6 +147,13 @@ export function ContractsView() {
     if (!response) return null;
     const knownJumps = response.results.filter(row => row.jumps != null).length;
     return `${response.results.length} contracts · ${knownJumps} with jumps · ${response.regionsScanned.length} regions`;
+  }, [response]);
+
+  const indexSummary = useMemo(() => {
+    if (!response) return null;
+    const index = response.index;
+    if (index.complete) return `Index ready · ${index.regionsReady}/${index.regionsTotal} regions`;
+    return `Index warming · ${index.regionsReady}/${index.regionsTotal} regions ready`;
   }, [response]);
 
   return (
@@ -288,6 +267,7 @@ export function ContractsView() {
             <strong>{response.ship.name}</strong>
             <span>{response.origin.name} · {response.radius} jumps</span>
             {summary && <span>{summary}</span>}
+            {indexSummary && <span>{indexSummary}</span>}
             <span>Updated {formatUpdatedAt(response.fetchedAt)}</span>
           </section>
 
