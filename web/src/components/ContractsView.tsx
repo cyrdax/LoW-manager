@@ -15,6 +15,7 @@ const SHIP_GROUP_KEY = 'efd.contracts.shipGroupName';
 const ORIGIN_ID_KEY = 'efd.contracts.originSystemId';
 const ORIGIN_NAME_KEY = 'efd.contracts.originSystemName';
 const RADIUS_KEY = 'efd.contracts.radius';
+const CONTRACT_SEARCH_TIMEOUT_MS = 30_000;
 
 function readSavedShip(): ContractShipHit | null {
   const id = Number(localStorage.getItem(SHIP_ID_KEY));
@@ -47,6 +48,7 @@ export function ContractsView() {
   const [response, setResponse] = useState<ContractSearchResponse | null>(null);
   const searchSeq = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (shipText.trim().length < 2 || ship?.name === shipText.trim()) {
@@ -99,6 +101,10 @@ export function ContractsView() {
       searchSeq.current += 1;
       searchAbortRef.current?.abort();
       searchAbortRef.current = null;
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -108,22 +114,41 @@ export function ContractsView() {
     searchSeq.current += 1;
     searchAbortRef.current?.abort();
     searchAbortRef.current = null;
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
     setBusy(false);
   };
 
   const doSearch = async () => {
     if (!ship || !origin) return;
     searchAbortRef.current?.abort();
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
     const seq = ++searchSeq.current;
     const ctrl = new AbortController();
     searchAbortRef.current = ctrl;
+    let timedOut = false;
+    searchTimeoutRef.current = setTimeout(() => {
+      if (searchSeq.current !== seq) return;
+      timedOut = true;
+      ctrl.abort();
+    }, CONTRACT_SEARCH_TIMEOUT_MS);
     setBusy(true);
     setError(null);
     try {
       const result = await searchContracts(
         { shipId: ship.id, originSystemId: origin.id, radius },
         ctrl.signal,
-      ).catch(err => ({ error: err instanceof Error ? err.message : 'Failed to search contracts' }));
+      ).catch(err => {
+        if (timedOut) {
+          return { error: 'Contract search timed out. Try a smaller radius or search again.' };
+        }
+        return { error: err instanceof Error ? err.message : 'Failed to search contracts' };
+      });
       if (seq !== searchSeq.current) return;
       if ('error' in result) {
         setResponse(null);
@@ -137,6 +162,10 @@ export function ContractsView() {
         if (searchAbortRef.current === ctrl) {
           searchAbortRef.current = null;
         }
+      }
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = null;
       }
     }
   };
