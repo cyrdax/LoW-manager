@@ -23,8 +23,10 @@ async function sleep(ms: number) {
 }
 
 async function esiFetch<T>(path: string, init: RequestInit = {}): Promise<EsiResponse<T>> {
+  throwIfAborted(init.signal);
+
   if (errorLimitRemain < 20 && Date.now() < errorLimitResetAt) {
-    await sleep(errorLimitResetAt - Date.now() + 500);
+    await sleepWithSignal(errorLimitResetAt - Date.now() + 500, init.signal);
   }
 
   const res = await fetch(`${BASE}${path}`, {
@@ -94,8 +96,8 @@ export async function esiDelete<T = void>(path: string, characterId: number): Pr
   });
 }
 
-export async function esiGetPublic<T>(path: string): Promise<EsiResponse<T>> {
-  return esiFetch<T>(path);
+export async function esiGetPublic<T>(path: string, init: RequestInit = {}): Promise<EsiResponse<T>> {
+  return esiFetch<T>(path, init);
 }
 
 export async function esiPostPublic<T>(path: string, body: unknown): Promise<EsiResponse<T>> {
@@ -103,5 +105,36 @@ export async function esiPostPublic<T>(path: string, body: unknown): Promise<Esi
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  });
+}
+
+function abortError(reason?: unknown): Error {
+  if (reason instanceof Error) return reason;
+
+  const err = new Error(typeof reason === 'string' ? reason : 'Aborted');
+  err.name = 'AbortError';
+  return err;
+}
+
+function throwIfAborted(signal?: AbortSignal | null): void {
+  if (signal?.aborted) throw abortError(signal.reason);
+}
+
+async function sleepWithSignal(ms: number, signal?: AbortSignal | null): Promise<void> {
+  throwIfAborted(signal);
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(abortError(signal?.reason));
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }

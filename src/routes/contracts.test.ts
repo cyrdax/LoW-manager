@@ -36,17 +36,21 @@ test('GET /api/contracts/search validates required query params', async () => {
 
 test('GET /api/contracts/search delegates to contract search service', async () => {
   const app = Fastify();
+  let observedSignal: AbortSignal | undefined;
   registerContractRoutes(app, {
     loadData: () => data,
-    runSearch: async input => ({
-      ship: { id: input.shipId, name: 'Barghest', groupName: 'Battleship' },
-      origin: { id: input.originSystemId, name: 'Jita' },
-      radius: input.radius,
-      regionsScanned: [],
-      fetchedAt: 1783526400000,
-      results: [],
-      warnings: [],
-    }),
+    runSearch: async input => {
+      observedSignal = input.signal;
+      return {
+        ship: { id: input.shipId, name: 'Barghest', groupName: 'Battleship' },
+        origin: { id: input.originSystemId, name: 'Jita' },
+        radius: input.radius,
+        regionsScanned: [],
+        fetchedAt: 1783526400000,
+        results: [],
+        warnings: [],
+      };
+    },
   });
 
   const res = await app.inject({
@@ -56,6 +60,8 @@ test('GET /api/contracts/search delegates to contract search service', async () 
 
   assert.equal(res.statusCode, 200);
   assert.equal(JSON.parse(res.body).origin.name, 'Jita');
+  assert.ok(observedSignal);
+  assert.equal(observedSignal.aborted, false);
 });
 
 test('GET /api/contracts/search defaults omitted radius to 30', async () => {

@@ -85,14 +85,19 @@ export interface RunContractSearchInput {
   shipId: number;
   originSystemId: number;
   radius: number;
+  signal?: AbortSignal;
 }
 
 export interface RunContractSearchDeps {
   topology?: ContractMapTopology;
   now?: () => number;
   resolveSystemName?: (systemId: number) => Promise<string>;
-  fetchRegionContracts?: (regionId: number, page: number) => Promise<{ data: PublicContractSummary[]; pages: number }>;
-  fetchContractItems?: (contractId: number) => Promise<PublicContractItem[]>;
+  fetchRegionContracts?: (
+    regionId: number,
+    page: number,
+    signal?: AbortSignal,
+  ) => Promise<{ data: PublicContractSummary[]; pages: number }>;
+  fetchContractItems?: (contractId: number, signal?: AbortSignal) => Promise<PublicContractItem[]>;
 }
 
 const CONTRACT_TYPES = new Set(['item_exchange', 'auction']);
@@ -101,6 +106,8 @@ export async function runContractSearch(
   input: RunContractSearchInput,
   deps: RunContractSearchDeps = {},
 ): Promise<ContractSearchResponse> {
+  throwIfAborted(input.signal);
+
   const radius = validateContractRadius(input.radius);
   const ship = input.data.ships[String(input.shipId)];
   if (!ship) throw new Error('Ship not found');
@@ -118,49 +125,67 @@ export async function runContractSearch(
 
   const contracts: Array<{ contract: PublicContractSummary; regionId: number; regionName: string }> = [];
   await runPool(regions, 3, async region => {
+    throwIfAborted(input.signal);
+
     try {
-      const first = await fetchRegionContracts(region.id, 1);
+      const first = await fetchRegionContracts(region.id, 1, input.signal);
       for (const c of first.data) contracts.push({ contract: c, regionId: region.id, regionName: region.name });
       for (let page = 2; page <= first.pages; page++) deferredPages.push({ regionId: region.id, regionName: region.name, page });
-    } catch {
+    } catch (err) {
+      if (input.signal?.aborted) throw abortError(input.signal.reason);
+      if (isAbortError(err)) throw err;
       incrementRegionFailure(regionFailures, region.id, region.name);
     }
-  });
+  }, input.signal);
   await runPool(deferredPages, 3, async ({ regionId, regionName, page }) => {
+    throwIfAborted(input.signal);
+
     try {
-      const next = await fetchRegionContracts(regionId, page);
+      const next = await fetchRegionContracts(regionId, page, input.signal);
       for (const c of next.data) contracts.push({ contract: c, regionId, regionName });
-    } catch {
+    } catch (err) {
+      if (input.signal?.aborted) throw abortError(input.signal.reason);
+      if (isAbortError(err)) throw err;
       incrementRegionFailure(regionFailures, regionId, regionName);
     }
-  });
+  }, input.signal);
   for (const { name, count } of regionFailures.values()) {
     warnings.push({ code: 'region_contracts_failed', message: `Failed to load public contracts for ${name}`, count });
   }
 
-  const candidates = contracts.filter(({ contract }) => (
-    CONTRACT_TYPES.has(contract.type)
-    && Date.parse(contract.date_expired) > now
-  ));
+  const candidates = contracts
+    .filter(({ contract }) => (
+      CONTRACT_TYPES.has(contract.type)
+      && Date.parse(contract.date_expired) > now
+    ))
+    .map(entry => {
+      const locationId = entry.contract.start_location_id ?? entry.contract.end_location_id ?? null;
+      const location = locationForId(topology, locationId);
+      const systemId = location?.systemId ?? null;
+      return { ...entry, location, systemId };
+    })
+    .filter(({ systemId }) => systemId == null || distances.has(systemId));
 
   const results: ContractSearchResult[] = [];
   let itemFailures = 0;
-  await runPool(candidates, 8, async ({ contract, regionId, regionName }) => {
+  await runPool(candidates, 8, async ({ contract, regionId, regionName, location, systemId }) => {
+    throwIfAborted(input.signal);
+
     let items: PublicContractItem[];
     try {
-      items = await fetchContractItems(contract.contract_id);
-    } catch {
+      items = await fetchContractItems(contract.contract_id, input.signal);
+    } catch (err) {
+      if (input.signal?.aborted) throw abortError(input.signal.reason);
+      if (isAbortError(err)) throw err;
       itemFailures += 1;
       return;
     }
 
+    throwIfAborted(input.signal);
+
     const quantity = matchingShipQuantity(items, input.shipId);
     if (quantity <= 0) return;
 
-    const locationId = contract.start_location_id ?? contract.end_location_id ?? null;
-    const location = locationForId(topology, locationId);
-    const systemId = location?.systemId ?? null;
-    if (systemId != null && !distances.has(systemId)) return;
     const jumps = systemId == null ? null : distances.get(systemId)!;
     const systemName = systemId == null
       ? null
@@ -187,11 +212,13 @@ export async function runContractSearch(
       dateIssued: contract.date_issued,
       dateExpired: contract.date_expired,
     });
-  });
+  }, input.signal);
 
   if (itemFailures > 0) {
     warnings.push({ code: 'contract_items_failed', message: 'Failed to load items for some contracts', count: itemFailures });
   }
+
+  throwIfAborted(input.signal);
 
   const originName = topology.systems.get(input.originSystemId)?.name
     ?? await resolveSystemName(input.originSystemId).catch(() => `System ${input.originSystemId}`);
@@ -227,13 +254,36 @@ function incrementRegionFailure(
   regionFailures.set(regionId, { name: regionName, count: 1 });
 }
 
-async function runPool<T>(items: T[], concurrency: number, fn: (item: T) => Promise<void>): Promise<void> {
+function abortError(reason?: unknown): Error {
+  if (reason instanceof Error) return reason;
+
+  const err = new Error(typeof reason === 'string' ? reason : 'Aborted');
+  err.name = 'AbortError';
+  return err;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw abortError(signal.reason);
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
+}
+
+async function runPool<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<void>,
+  signal?: AbortSignal,
+): Promise<void> {
   let cursor = 0;
 
   async function worker() {
     while (true) {
+      throwIfAborted(signal);
       const index = cursor++;
       if (index >= items.length) return;
+      throwIfAborted(signal);
       await fn(items[index]);
     }
   }

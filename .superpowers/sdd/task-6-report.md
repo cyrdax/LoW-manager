@@ -47,3 +47,19 @@
 - Verification run after the code change: `npm run typecheck` and `npm run build` both passed.
 - Self-review: each search now owns a local timeout handle and only clears that handle, preventing an older search from clearing a newer search's timeout.
 - Commit SHA: `6e35529`.
+
+## Final-Review Fix Wave
+- Files changed: `src/contracts/search.ts`, `src/contracts/search.test.ts`, `src/routes/contracts.ts`, `src/routes/contracts.test.ts`, `src/esi/client.ts`, `src/esi/contracts.ts`, `.superpowers/sdd/task-6-report.md`.
+- Fix summary:
+  - Resolved contract location/system before item fetches so known out-of-radius contracts are discarded before any contract-item ESI calls.
+  - Threaded an optional `AbortSignal` from `/api/contracts/search` through `runContractSearch`, the contract paging/item pools, and the public ESI contract wrappers so client disconnects stop new crawl work.
+  - Added regressions covering the out-of-radius item-fetch skip, search-layer abort propagation/pool stopping, and route-level signal injection.
+- Tests run:
+  - `npm test` — PASS (`32` tests passed, `0` failed)
+  - `npm run typecheck` — PASS
+  - `npm run build` — PASS
+- Commit SHA: reported in the final-review handoff; this report section is part of the commit itself, so embedding the final SHA here would change it again on amend.
+- Self-review notes:
+  - Kept the change scoped to the Contracts backend path and did not touch the known autocomplete staleness issue.
+  - Preserved existing partial-warning behavior for ordinary region/item failures while letting aborts short-circuit instead of being counted as fetch failures.
+  - Left public-contract cache behavior intact while making live ESI requests and error-limit waits abort-aware.

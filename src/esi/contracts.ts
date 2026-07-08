@@ -18,6 +18,7 @@ function expiry(expires: number | null): number {
 export async function getPublicContracts(
   regionId: number,
   page = 1,
+  signal?: AbortSignal,
 ): Promise<{ data: PublicContractSummary[]; pages: number }> {
   const key = `${regionId}:${page}`;
   const hit = contractPageCache.get(key);
@@ -25,17 +26,17 @@ export async function getPublicContracts(
     return { data: hit.data, pages: hit.pages ?? 1 };
   }
 
-  const res = await esiGetPublic<PublicContractSummary[]>(`/contracts/public/${regionId}/?page=${page}`);
+  const res = await esiGetPublic<PublicContractSummary[]>(`/contracts/public/${regionId}/?page=${page}`, { signal });
   const pages = res.pages ?? 1;
   contractPageCache.set(key, { data: res.data, expiresAt: expiry(res.expires), pages });
   return { data: res.data, pages };
 }
 
-export async function getPublicContractItems(contractId: number): Promise<PublicContractItem[]> {
+export async function getPublicContractItems(contractId: number, signal?: AbortSignal): Promise<PublicContractItem[]> {
   const hit = contractItemsCache.get(contractId);
   if (hit && hit.expiresAt > Date.now()) return hit.data;
 
-  const res = await esiGetPublic<PublicContractItem[]>(`/contracts/public/items/${contractId}/`);
+  const res = await esiGetPublic<PublicContractItem[]>(`/contracts/public/items/${contractId}/`, { signal });
   contractItemsCache.set(contractId, { data: res.data, expiresAt: expiry(res.expires) });
   return res.data;
 }

@@ -40,14 +40,30 @@ export function registerContractRoutes(app: FastifyInstance, deps: ContractRoute
     const parsed = searchQuery.safeParse(req.query);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
 
+    const controller = new AbortController();
+    const abortRequest = () => {
+      if (!controller.signal.aborted) controller.abort(new Error('Request aborted by client'));
+    };
+
+    req.raw.on('aborted', abortRequest);
+    req.raw.on('close', () => {
+      if (req.raw.aborted || !reply.raw.writableEnded) abortRequest();
+    });
+
     try {
       return await runSearch({
         data: loadData(),
         shipId: parsed.data.shipId,
         originSystemId: parsed.data.originSystemId,
         radius: parsed.data.radius,
+        signal: controller.signal,
       });
     } catch (err) {
+      if (controller.signal.aborted || isAbortError(err)) {
+        reply.hijack();
+        return reply;
+      }
+
       const message = err instanceof Error ? err.message : 'Failed to search contracts';
       if (message === 'Ship not found') return reply.code(404).send({ error: message });
       if (message.includes('origin system ') && message.includes(' is not present in contract map topology')) {
@@ -56,4 +72,8 @@ export function registerContractRoutes(app: FastifyInstance, deps: ContractRoute
       return reply.code(500).send({ error: message });
     }
   });
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
 }

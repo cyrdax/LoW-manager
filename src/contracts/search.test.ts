@@ -170,6 +170,47 @@ test('runContractSearch excludes known-location matches outside the selected rad
   assert.equal(response.results[0].jumps, null);
 });
 
+test('runContractSearch skips item fetches for known out-of-radius contracts but still checks unknown locations', async () => {
+  const fetchedContractIds: number[] = [];
+
+  const response = await runContractSearch({
+    data: masteryData,
+    shipId: 17920,
+    originSystemId: 30000142,
+    radius: 1,
+  }, {
+    now: () => Date.parse('2026-07-08T00:00:00Z'),
+    resolveSystemName: async id => `System ${id}`,
+    topology: {
+      systems: new Map([
+        [30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }],
+        [30000145, { id: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge' }],
+        [30000146, { id: 30000146, name: 'Urlen', regionId: 10000002, regionName: 'The Forge' }],
+      ]),
+      adjacency: new Map([
+        [30000142, [30000145]],
+        [30000145, [30000142, 30000146]],
+        [30000146, [30000145]],
+      ]),
+      stations: new Map(),
+    },
+    fetchRegionContracts: async () => ({
+      data: [
+        { contract_id: 40, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 10, start_location_id: 30000146 },
+        { contract_id: 41, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 20, start_location_id: 99000001 },
+      ],
+      pages: 1,
+    }),
+    fetchContractItems: async contractId => {
+      fetchedContractIds.push(contractId);
+      return [{ record_id: contractId, type_id: 17920, quantity: 1, is_included: true }];
+    },
+  });
+
+  assert.deepEqual(fetchedContractIds, [41]);
+  assert.deepEqual(response.results.map(r => r.contractId), [41]);
+});
+
 test('runContractSearch fetches additional contract pages through a shared concurrency-3 pool', async () => {
   let activePageFetches = 0;
   let maxActivePageFetches = 0;
@@ -242,6 +283,54 @@ test('runContractSearch returns partial warning when an item fetch fails', async
   assert.equal(response.warnings.length, 1);
   assert.equal(response.warnings[0].code, 'contract_items_failed');
   assert.equal(response.warnings[0].count, 1);
+});
+
+test('runContractSearch propagates AbortSignal and stops starting new item fetches after abort', async () => {
+  const controller = new AbortController();
+  const fetchedContractIds: number[] = [];
+
+  await assert.rejects(() => runContractSearch({
+    data: masteryData,
+    shipId: 17920,
+    originSystemId: 30000142,
+    radius: 30,
+    signal: controller.signal,
+  }, {
+    now: () => Date.parse('2026-07-08T00:00:00Z'),
+    resolveSystemName: async id => `System ${id}`,
+    topology: {
+      systems: new Map([[30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }]]),
+      adjacency: new Map([[30000142, []]]),
+      stations: new Map(),
+    },
+    fetchRegionContracts: async (_regionId, _page, signal) => {
+      assert.equal(signal, controller.signal);
+      return {
+        data: Array.from({ length: 10 }, (_value, index) => ({
+          contract_id: index + 1,
+          type: 'item_exchange' as const,
+          issuer_id: 1,
+          issuer_corporation_id: 2,
+          date_issued: '2026-07-07T00:00:00Z',
+          date_expired: '2026-07-09T00:00:00Z',
+          price: 20,
+          start_location_id: 99000000 + index,
+        })),
+        pages: 1,
+      };
+    },
+    fetchContractItems: async (contractId, signal) => {
+      assert.equal(signal, controller.signal);
+      fetchedContractIds.push(contractId);
+      if (contractId === 1) {
+        controller.abort(new Error('request closed'));
+        throw controller.signal.reason;
+      }
+      return [{ record_id: contractId, type_id: 17920, quantity: 1, is_included: true }];
+    },
+  }), /request closed/);
+
+  assert.deepEqual(fetchedContractIds, [1]);
 });
 
 function row(contractId: number, jumps: number | null, effectivePrice: number | null): ContractSearchResult {
