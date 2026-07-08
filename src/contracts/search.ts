@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { db as appDb } from '../db.ts';
 import { loadContractMap, distancesFrom, regionsWithin, type ContractMapTopology } from './map.ts';
 import type { MasteryData } from '../skills/mastery-data.ts';
+import { sortContractResultsDefault } from './result-sort.ts';
 import {
   getContractIndexCoverage,
   prioritizeContractRegions,
@@ -75,17 +76,7 @@ export function effectiveContractPrice(contract: PublicContractSummary): number 
 }
 
 export function sortContractResults(results: ContractSearchResult[]): ContractSearchResult[] {
-  return [...results].sort((a, b) => {
-    const aj = a.jumps ?? Number.POSITIVE_INFINITY;
-    const bj = b.jumps ?? Number.POSITIVE_INFINITY;
-    if (aj !== bj) return aj - bj;
-
-    const ap = a.effectivePrice ?? Number.POSITIVE_INFINITY;
-    const bp = b.effectivePrice ?? Number.POSITIVE_INFINITY;
-    if (ap !== bp) return ap - bp;
-
-    return a.dateExpired.localeCompare(b.dateExpired) || a.contractId - b.contractId;
-  });
+  return sortContractResultsDefault(results);
 }
 
 export interface RunContractSearchInput {

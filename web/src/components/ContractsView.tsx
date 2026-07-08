@@ -8,6 +8,11 @@ import {
   type ContractShipHit,
   type SystemHit,
 } from '../api.ts';
+import {
+  sortContractResultsByColumn,
+  type ContractResultSortKey,
+  type SortDirection,
+} from '../../../src/contracts/result-sort.ts';
 
 const SHIP_ID_KEY = 'efd.contracts.shipId';
 const SHIP_NAME_KEY = 'efd.contracts.shipName';
@@ -294,24 +299,38 @@ export function ContractsView() {
 }
 
 function ContractResultsTable({ rows }: { rows: ContractSearchResult[] }) {
+  const [sort, setSort] = useState<{ key: ContractResultSortKey; direction: SortDirection } | null>(null);
+  const sortedRows = useMemo(
+    () => sort ? sortContractResultsByColumn(rows, sort.key, sort.direction) : rows,
+    [rows, sort],
+  );
+  const onSort = (key: ContractResultSortKey) => {
+    setSort(current => {
+      if (current?.key === key) {
+        return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, direction: 'asc' };
+    });
+  };
+
   return (
     <div className="ct-table-wrap">
       <table className="ct-table">
         <thead>
           <tr>
-            <th>Ship</th>
-            <th>Type</th>
-            <th className="num">Price</th>
-            <th className="num">Qty</th>
-            <th>Location</th>
-            <th className="num">Jumps</th>
-            <th>Expires</th>
-            <th>Title</th>
-            <th className="num">Contract</th>
+            <SortableTh label="Ship" sortKey="ship" active={sort} onSort={onSort} />
+            <SortableTh label="Type" sortKey="type" active={sort} onSort={onSort} />
+            <SortableTh label="Price" sortKey="price" active={sort} onSort={onSort} numeric />
+            <SortableTh label="Qty" sortKey="quantity" active={sort} onSort={onSort} numeric />
+            <SortableTh label="Location" sortKey="location" active={sort} onSort={onSort} />
+            <SortableTh label="Jumps" sortKey="jumps" active={sort} onSort={onSort} numeric />
+            <SortableTh label="Expires" sortKey="expires" active={sort} onSort={onSort} />
+            <SortableTh label="Title" sortKey="title" active={sort} onSort={onSort} />
+            <SortableTh label="Contract" sortKey="contract" active={sort} onSort={onSort} numeric />
           </tr>
         </thead>
         <tbody>
-          {rows.map(row => (
+          {sortedRows.map(row => (
             <tr key={row.contractId}>
               <td>{row.shipName}</td>
               <td>{row.type === 'item_exchange' ? 'Item exchange' : 'Auction'}</td>
@@ -333,6 +352,33 @@ function ContractResultsTable({ rows }: { rows: ContractSearchResult[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function SortableTh({
+  label,
+  sortKey,
+  active,
+  onSort,
+  numeric = false,
+}: {
+  label: string;
+  sortKey: ContractResultSortKey;
+  active: { key: ContractResultSortKey; direction: SortDirection } | null;
+  onSort: (key: ContractResultSortKey) => void;
+  numeric?: boolean;
+}) {
+  const selected = active?.key === sortKey;
+  return (
+    <th
+      className={numeric ? 'num' : undefined}
+      aria-sort={selected ? (active.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button className="sort-btn" type="button" onClick={() => onSort(sortKey)}>
+        {label}
+        {selected && <span className="arrow">{active.direction === 'asc' ? '▲' : '▼'}</span>}
+      </button>
+    </th>
   );
 }
 

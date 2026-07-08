@@ -450,6 +450,11 @@ body {
   white-space: nowrap;
 }
 
+.ct-table th.num .sort-btn {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
 .ct-table small {
   color: var(--dim);
   display: block;
