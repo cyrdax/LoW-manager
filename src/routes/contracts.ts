@@ -49,6 +49,9 @@ export function registerContractRoutes(app: FastifyInstance, deps: ContractRoute
       const message = err instanceof Error ? err.message : 'Failed to search contracts';
       if (message === 'Ship not found') return reply.code(404).send({ error: message });
       if (message.includes('radius must be between')) return reply.code(400).send({ error: message });
+      if (message.includes('origin system ') && message.includes(' is not present in contract map topology')) {
+        return reply.code(400).send({ error: message });
+      }
       return reply.code(500).send({ error: message });
     }
   });
