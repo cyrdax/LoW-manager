@@ -17,6 +17,7 @@ import { registerIndustryRoutes } from './routes/industry.ts';
 import { registerContractRoutes } from './routes/contracts.ts';
 import { startPolling } from './polling/scheduler.ts';
 import { bootstrapSystemsCache } from './esi/universe.ts';
+import { startContractIndexer } from './contracts/indexer.ts';
 
 const app = Fastify({ logger: true });
 
@@ -47,6 +48,12 @@ try {
 }
 
 startPolling();
+try {
+  startContractIndexer({ logger: app.log });
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  app.log.warn(`[contracts] indexer not started: ${message}`);
+}
 bootstrapSystemsCache()
   .then(count => app.log.info(`[systems] cache has ${count} solar systems`))
   .catch(err => app.log.warn(`[systems] bootstrap failed: ${err.message}`));

@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { locationForId, type ContractMapTopology } from './map.ts';
-import { sortContractResults, type ContractSearchResult, type PublicContractItem, type PublicContractSummary } from './search.ts';
+import type { ContractSearchResult, PublicContractItem, PublicContractSummary } from './types.ts';
 
 type SqliteDatabase = Database.Database;
 
@@ -366,7 +366,7 @@ export function searchIndexedContracts(
     });
   }
 
-  return { results: sortContractResults(results) };
+  return { results: sortIndexedContractResults(results) };
 }
 
 export function getContractIndexCoverage(
@@ -503,3 +503,16 @@ function emptyCoverage(): ContractIndexCoverage {
   };
 }
 
+function sortIndexedContractResults(results: ContractSearchResult[]): ContractSearchResult[] {
+  return [...results].sort((a, b) => {
+    const aj = a.jumps ?? Number.POSITIVE_INFINITY;
+    const bj = b.jumps ?? Number.POSITIVE_INFINITY;
+    if (aj !== bj) return aj - bj;
+
+    const ap = a.effectivePrice ?? Number.POSITIVE_INFINITY;
+    const bp = b.effectivePrice ?? Number.POSITIVE_INFINITY;
+    if (ap !== bp) return ap - bp;
+
+    return a.dateExpired.localeCompare(b.dateExpired) || a.contractId - b.contractId;
+  });
+}

@@ -73,7 +73,21 @@ export interface ContractSearchResponse {
   origin: ContractOrigin;
   radius: number;
   regionsScanned: ContractRegion[];
+  index: ContractIndexSummary;
   fetchedAt: number;
   results: ContractSearchResult[];
   warnings: ContractWarning[];
+}
+
+export interface ContractIndexSummary {
+  complete: boolean;
+  regionsTotal: number;
+  regionsReady: number;
+  regionsStale: number;
+  regionsMissing: number;
+  regionsQueued: number;
+  oldestRefreshedAt: number | null;
+  newestRefreshedAt: number | null;
+  activeContracts: number;
+  indexedItemContracts: number;
 }

@@ -46,6 +46,7 @@ test('GET /api/contracts/search delegates to contract search service', async () 
         origin: { id: input.originSystemId, name: 'Jita' },
         radius: input.radius,
         regionsScanned: [],
+        index: readyIndex(),
         fetchedAt: 1783526400000,
         results: [],
         warnings: [],
@@ -76,6 +77,7 @@ test('GET /api/contracts/search defaults omitted radius to 30', async () => {
         origin: { id: input.originSystemId, name: 'Jita' },
         radius: input.radius,
         regionsScanned: [],
+        index: readyIndex(),
         fetchedAt: 1783526400000,
         results: [],
         warnings: [],
@@ -105,6 +107,7 @@ test('GET /api/contracts/search rejects radius below the allowed range', async (
         origin: { id: 30000142, name: 'Jita' },
         radius: 30,
         regionsScanned: [],
+        index: readyIndex(),
         fetchedAt: 1783526400000,
         results: [],
         warnings: [],
@@ -133,6 +136,7 @@ test('GET /api/contracts/search rejects radius above the allowed range', async (
         origin: { id: 30000142, name: 'Jita' },
         radius: 30,
         regionsScanned: [],
+        index: readyIndex(),
         fetchedAt: 1783526400000,
         results: [],
         warnings: [],
@@ -148,6 +152,21 @@ test('GET /api/contracts/search rejects radius above the allowed range', async (
   assert.equal(res.statusCode, 400);
   assert.equal(called, false);
 });
+
+function readyIndex() {
+  return {
+    complete: true,
+    regionsTotal: 0,
+    regionsReady: 0,
+    regionsStale: 0,
+    regionsMissing: 0,
+    regionsQueued: 0,
+    oldestRefreshedAt: null,
+    newestRefreshedAt: null,
+    activeContracts: 0,
+    indexedItemContracts: 0,
+  };
+}
 
 test('GET /api/contracts/search returns 400 when origin system is missing from topology', async () => {
   const app = Fastify();

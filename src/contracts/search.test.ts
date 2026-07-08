@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import Database from 'better-sqlite3';
 import type { MasteryData } from '../skills/mastery-data.ts';
 import {
   effectiveContractPrice,
@@ -10,6 +11,18 @@ import {
   validateContractRadius,
   type ContractSearchResult,
 } from './search.ts';
+import {
+  migrateContractIndexDb,
+  nextContractRegionToRefresh,
+  replaceContractItems,
+  upsertContractIndexRegions,
+  upsertRegionContracts,
+} from './index-store.ts';
+import { buildTopologyFromSystems } from './map.ts';
+import type { PublicContractItem, PublicContractSummary } from './types.ts';
+
+const NOW = Date.parse('2026-07-08T00:00:00Z');
+const EXPIRES = NOW + 300_000;
 
 const masteryData = {
   ships: {
@@ -64,34 +77,20 @@ test('sortContractResults sorts known jumps before unknown, then price', () => {
   assert.deepEqual(sortContractResults(rows).map(r => r.contractId), [4, 3, 2, 5, 1]);
 });
 
-test('runContractSearch returns active matching contracts with distances', async () => {
+test('runContractSearch reads indexed contracts and returns coverage metadata', async () => {
+  const db = memoryDb();
+  const topology = topologyFixture();
+  seedIndexedRegion(db, topology);
+
   const response = await runContractSearch({
     data: masteryData,
     shipId: 17920,
     originSystemId: 30000142,
     radius: 30,
   }, {
-    now: () => Date.parse('2026-07-08T00:00:00Z'),
-    resolveSystemName: async id => id === 30000142 ? 'Jita' : `System ${id}`,
-    topology: {
-      systems: new Map([
-        [30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }],
-        [30000145, { id: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge' }],
-      ]),
-      adjacency: new Map([[30000142, [30000145]], [30000145, [30000142]]]),
-      stations: new Map([[60003760, { stationId: 60003760, stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant', solarSystemId: 30000142 }]]),
-    },
-    fetchRegionContracts: async () => ({
-      data: [
-        { contract_id: 1, type: 'item_exchange', issuer_id: 9, issuer_corporation_id: 10, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 50, start_location_id: 60003760, title: 'Barghest hull' },
-        { contract_id: 2, type: 'courier', issuer_id: 9, issuer_corporation_id: 10, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', start_location_id: 60003760 },
-        { contract_id: 3, type: 'item_exchange', issuer_id: 9, issuer_corporation_id: 10, date_issued: '2026-07-01T00:00:00Z', date_expired: '2026-07-02T00:00:00Z', price: 5, start_location_id: 60003760 },
-      ],
-      pages: 1,
-    }),
-    fetchContractItems: async contractId => contractId === 1
-      ? [{ record_id: 11, type_id: 17920, quantity: 1, is_included: true }]
-      : [],
+    database: db,
+    now: () => NOW,
+    topology,
   });
 
   assert.equal(response.ship.name, 'Barghest');
@@ -102,118 +101,17 @@ test('runContractSearch returns active matching contracts with distances', async
   assert.equal(response.results[0].quantity, 1);
   assert.equal(response.results[0].jumps, 0);
   assert.equal(response.results[0].locationName, 'Jita IV - Moon 4 - Caldari Navy Assembly Plant');
+  assert.equal(response.index.regionsTotal, 1);
+  assert.equal(response.index.regionsReady, 1);
+  assert.equal(response.index.complete, true);
+  assert.deepEqual(response.warnings, []);
 });
 
-test('runContractSearch keeps unknown-location matches after known-distance matches', async () => {
-  const response = await runContractSearch({
-    data: masteryData,
-    shipId: 17920,
-    originSystemId: 30000142,
-    radius: 30,
-  }, {
-    now: () => Date.parse('2026-07-08T00:00:00Z'),
-    resolveSystemName: async id => `System ${id}`,
-    topology: {
-      systems: new Map([[30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }]]),
-      adjacency: new Map([[30000142, []]]),
-      stations: new Map(),
-    },
-    fetchRegionContracts: async () => ({
-      data: [
-        { contract_id: 10, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 10, start_location_id: 99000001 },
-        { contract_id: 11, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 20, start_location_id: 30000142 },
-      ],
-      pages: 1,
-    }),
-    fetchContractItems: async () => [{ record_id: 1, type_id: 17920, quantity: 1, is_included: true }],
-  });
-
-  assert.deepEqual(response.results.map(r => r.contractId), [11, 10]);
-  assert.equal(response.results[1].locationKnown, false);
-  assert.equal(response.results[1].jumps, null);
-});
-
-test('runContractSearch excludes known-location matches outside the selected radius', async () => {
-  const response = await runContractSearch({
-    data: masteryData,
-    shipId: 17920,
-    originSystemId: 30000142,
-    radius: 1,
-  }, {
-    now: () => Date.parse('2026-07-08T00:00:00Z'),
-    resolveSystemName: async id => `System ${id}`,
-    topology: {
-      systems: new Map([
-        [30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }],
-        [30000145, { id: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge' }],
-        [30000146, { id: 30000146, name: 'Urlen', regionId: 10000002, regionName: 'The Forge' }],
-      ]),
-      adjacency: new Map([
-        [30000142, [30000145]],
-        [30000145, [30000142, 30000146]],
-        [30000146, [30000145]],
-      ]),
-      stations: new Map(),
-    },
-    fetchRegionContracts: async () => ({
-      data: [
-        { contract_id: 30, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 10, start_location_id: 30000146 },
-        { contract_id: 31, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 20, start_location_id: 99000001 },
-      ],
-      pages: 1,
-    }),
-    fetchContractItems: async () => [{ record_id: 1, type_id: 17920, quantity: 1, is_included: true }],
-  });
-
-  assert.deepEqual(response.results.map(r => r.contractId), [31]);
-  assert.equal(response.results[0].locationKnown, false);
-  assert.equal(response.results[0].jumps, null);
-});
-
-test('runContractSearch skips item fetches for known out-of-radius contracts but still checks unknown locations', async () => {
-  const fetchedContractIds: number[] = [];
-
-  const response = await runContractSearch({
-    data: masteryData,
-    shipId: 17920,
-    originSystemId: 30000142,
-    radius: 1,
-  }, {
-    now: () => Date.parse('2026-07-08T00:00:00Z'),
-    resolveSystemName: async id => `System ${id}`,
-    topology: {
-      systems: new Map([
-        [30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }],
-        [30000145, { id: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge' }],
-        [30000146, { id: 30000146, name: 'Urlen', regionId: 10000002, regionName: 'The Forge' }],
-      ]),
-      adjacency: new Map([
-        [30000142, [30000145]],
-        [30000145, [30000142, 30000146]],
-        [30000146, [30000145]],
-      ]),
-      stations: new Map(),
-    },
-    fetchRegionContracts: async () => ({
-      data: [
-        { contract_id: 40, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 10, start_location_id: 30000146 },
-        { contract_id: 41, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 20, start_location_id: 99000001 },
-      ],
-      pages: 1,
-    }),
-    fetchContractItems: async contractId => {
-      fetchedContractIds.push(contractId);
-      return [{ record_id: contractId, type_id: 17920, quantity: 1, is_included: true }];
-    },
-  });
-
-  assert.deepEqual(fetchedContractIds, [41]);
-  assert.deepEqual(response.results.map(r => r.contractId), [41]);
-});
-
-test('runContractSearch fetches additional contract pages through a shared concurrency-3 pool', async () => {
-  let activePageFetches = 0;
-  let maxActivePageFetches = 0;
+test('runContractSearch prioritizes touched regions for background refresh', async () => {
+  const db = memoryDb();
+  const topology = topologyFixture();
+  seedIndexedRegion(db, topology);
+  assert.equal(nextContractRegionToRefresh(db, NOW), null);
 
   await runContractSearch({
     data: masteryData,
@@ -221,116 +119,35 @@ test('runContractSearch fetches additional contract pages through a shared concu
     originSystemId: 30000142,
     radius: 30,
   }, {
-    now: () => Date.parse('2026-07-08T00:00:00Z'),
-    resolveSystemName: async id => `System ${id}`,
-    topology: {
-      systems: new Map([[30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }]]),
-      adjacency: new Map([[30000142, []]]),
-      stations: new Map(),
-    },
-    fetchRegionContracts: async (_regionId, page) => {
-      if (page === 1) {
-        return {
-          data: [],
-          pages: 5,
-        };
-      }
-
-      activePageFetches += 1;
-      maxActivePageFetches = Math.max(maxActivePageFetches, activePageFetches);
-      await Promise.resolve();
-      activePageFetches -= 1;
-
-      return {
-        data: [],
-        pages: 5,
-      };
-    },
-    fetchContractItems: async () => [],
+    database: db,
+    now: () => NOW,
+    topology,
   });
 
-  assert.equal(maxActivePageFetches, 3);
+  assert.deepEqual(nextContractRegionToRefresh(db, NOW), { id: 10000002, name: 'The Forge' });
 });
 
-test('runContractSearch returns partial warning when an item fetch fails', async () => {
+test('runContractSearch returns warming metadata and warning when index coverage is incomplete', async () => {
+  const db = memoryDb();
+  const topology = topologyFixture();
+
   const response = await runContractSearch({
     data: masteryData,
     shipId: 17920,
     originSystemId: 30000142,
     radius: 30,
   }, {
-    now: () => Date.parse('2026-07-08T00:00:00Z'),
-    resolveSystemName: async id => `System ${id}`,
-    topology: {
-      systems: new Map([[30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }]]),
-      adjacency: new Map([[30000142, []]]),
-      stations: new Map(),
-    },
-    fetchRegionContracts: async () => ({
-      data: [
-        { contract_id: 21, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 20, start_location_id: 30000142 },
-        { contract_id: 22, type: 'item_exchange', issuer_id: 1, issuer_corporation_id: 2, date_issued: '2026-07-07T00:00:00Z', date_expired: '2026-07-09T00:00:00Z', price: 20, start_location_id: 30000142 },
-      ],
-      pages: 1,
-    }),
-    fetchContractItems: async contractId => {
-      if (contractId === 22) throw new Error('ESI failed');
-      return [{ record_id: 1, type_id: 17920, quantity: 1, is_included: true }];
-    },
+    database: db,
+    now: () => NOW,
+    topology,
   });
 
-  assert.equal(response.results.length, 1);
+  assert.deepEqual(response.results, []);
+  assert.equal(response.index.regionsTotal, 1);
+  assert.equal(response.index.regionsReady, 0);
+  assert.equal(response.index.regionsMissing, 1);
   assert.equal(response.warnings.length, 1);
-  assert.equal(response.warnings[0].code, 'contract_items_failed');
-  assert.equal(response.warnings[0].count, 1);
-});
-
-test('runContractSearch propagates AbortSignal and stops starting new item fetches after abort', async () => {
-  const controller = new AbortController();
-  const fetchedContractIds: number[] = [];
-
-  await assert.rejects(() => runContractSearch({
-    data: masteryData,
-    shipId: 17920,
-    originSystemId: 30000142,
-    radius: 30,
-    signal: controller.signal,
-  }, {
-    now: () => Date.parse('2026-07-08T00:00:00Z'),
-    resolveSystemName: async id => `System ${id}`,
-    topology: {
-      systems: new Map([[30000142, { id: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge' }]]),
-      adjacency: new Map([[30000142, []]]),
-      stations: new Map(),
-    },
-    fetchRegionContracts: async (_regionId, _page, signal) => {
-      assert.equal(signal, controller.signal);
-      return {
-        data: Array.from({ length: 10 }, (_value, index) => ({
-          contract_id: index + 1,
-          type: 'item_exchange' as const,
-          issuer_id: 1,
-          issuer_corporation_id: 2,
-          date_issued: '2026-07-07T00:00:00Z',
-          date_expired: '2026-07-09T00:00:00Z',
-          price: 20,
-          start_location_id: 99000000 + index,
-        })),
-        pages: 1,
-      };
-    },
-    fetchContractItems: async (contractId, signal) => {
-      assert.equal(signal, controller.signal);
-      fetchedContractIds.push(contractId);
-      if (contractId === 1) {
-        controller.abort(new Error('request closed'));
-        throw controller.signal.reason;
-      }
-      return [{ record_id: contractId, type_id: 17920, quantity: 1, is_included: true }];
-    },
-  }), /request closed/);
-
-  assert.deepEqual(fetchedContractIds, [1]);
+  assert.equal(response.warnings[0].code, 'contract_index_warming');
 });
 
 function row(contractId: number, jumps: number | null, effectivePrice: number | null): ContractSearchResult {
@@ -354,4 +171,66 @@ function row(contractId: number, jumps: number | null, effectivePrice: number | 
     dateIssued: '2026-01-01T00:00:00Z',
     dateExpired: '2026-01-02T00:00:00Z',
   };
+}
+
+function memoryDb() {
+  const db = new Database(':memory:');
+  migrateContractIndexDb(db);
+  return db;
+}
+
+function topologyFixture() {
+  return buildTopologyFromSystems([
+    { systemId: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145] },
+    { systemId: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge', neighbors: [30000142] },
+  ], [
+    { stationId: 60003760, stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant', solarSystemId: 30000142 },
+  ]);
+}
+
+function seedIndexedRegion(db: Database.Database, topology: ReturnType<typeof topologyFixture>) {
+  upsertContractIndexRegions(db, [{ id: 10000002, name: 'The Forge' }], NOW);
+  upsertRegionContracts(db, {
+    region: { id: 10000002, name: 'The Forge' },
+    topology,
+    refreshedAt: NOW - 60_000,
+    expiresAt: EXPIRES,
+    contracts: [
+      contract(1, { start_location_id: 60003760, price: 50, title: 'Barghest hull' }),
+      contract(2, { type: 'courier', start_location_id: 60003760 }),
+      contract(3, { date_expired: '2026-07-02T00:00:00Z', start_location_id: 60003760 }),
+    ],
+  });
+  replaceContractItems(db, 1, [item(11, 17920, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 2, [item(21, 17920, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 3, [item(31, 17920, 1, true)], NOW - 60_000, EXPIRES);
+
+  db.prepare(`
+    UPDATE contract_index_regions
+    SET next_refresh_at = ?
+    WHERE region_id = ?
+  `).run(EXPIRES, 10000002);
+}
+
+function contract(contract_id: number, overrides: Partial<PublicContractSummary> = {}): PublicContractSummary {
+  return {
+    contract_id,
+    issuer_id: 9,
+    issuer_corporation_id: 10,
+    type: 'item_exchange',
+    date_issued: '2026-07-08T00:00:00Z',
+    date_expired: '2026-07-09T00:00:00Z',
+    title: `Contract ${contract_id}`,
+    price: 1_000,
+    ...overrides,
+  };
+}
+
+function item(
+  record_id: number,
+  type_id: number,
+  quantity: number,
+  is_included: boolean,
+): PublicContractItem {
+  return { record_id, type_id, quantity, is_included };
 }
