@@ -132,11 +132,12 @@ export function ContractsView() {
     const ctrl = new AbortController();
     searchAbortRef.current = ctrl;
     let timedOut = false;
-    searchTimeoutRef.current = setTimeout(() => {
+    const timeout = setTimeout(() => {
       if (searchSeq.current !== seq) return;
       timedOut = true;
       ctrl.abort();
     }, CONTRACT_SEARCH_TIMEOUT_MS);
+    searchTimeoutRef.current = timeout;
     setBusy(true);
     setError(null);
     try {
@@ -163,8 +164,8 @@ export function ContractsView() {
           searchAbortRef.current = null;
         }
       }
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
+      if (searchTimeoutRef.current === timeout) {
+        clearTimeout(timeout);
         searchTimeoutRef.current = null;
       }
     }
