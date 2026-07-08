@@ -46,6 +46,7 @@ export function ContractsView() {
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<ContractSearchResponse | null>(null);
   const searchSeq = useRef(0);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (shipText.trim().length < 2 || ship?.name === shipText.trim()) {
@@ -93,26 +94,51 @@ export function ContractsView() {
     localStorage.setItem(RADIUS_KEY, String(radius));
   }, [radius]);
 
+  useEffect(() => {
+    return () => {
+      searchSeq.current += 1;
+      searchAbortRef.current?.abort();
+      searchAbortRef.current = null;
+    };
+  }, []);
+
   const canSearch = ship != null && origin != null && radius >= 1 && radius <= 100;
+
+  const invalidateSearch = () => {
+    searchSeq.current += 1;
+    searchAbortRef.current?.abort();
+    searchAbortRef.current = null;
+    setBusy(false);
+  };
 
   const doSearch = async () => {
     if (!ship || !origin) return;
+    searchAbortRef.current?.abort();
     const seq = ++searchSeq.current;
     const ctrl = new AbortController();
+    searchAbortRef.current = ctrl;
     setBusy(true);
     setError(null);
-    const result = await searchContracts(
-      { shipId: ship.id, originSystemId: origin.id, radius },
-      ctrl.signal,
-    ).catch(err => ({ error: err instanceof Error ? err.message : 'Failed to search contracts' }));
-    if (seq !== searchSeq.current) return;
-    setBusy(false);
-    if ('error' in result) {
-      setResponse(null);
-      setError(result.error);
-      return;
+    try {
+      const result = await searchContracts(
+        { shipId: ship.id, originSystemId: origin.id, radius },
+        ctrl.signal,
+      ).catch(err => ({ error: err instanceof Error ? err.message : 'Failed to search contracts' }));
+      if (seq !== searchSeq.current) return;
+      if ('error' in result) {
+        setResponse(null);
+        setError(result.error);
+        return;
+      }
+      setResponse(result);
+    } finally {
+      if (seq === searchSeq.current) {
+        setBusy(false);
+        if (searchAbortRef.current === ctrl) {
+          searchAbortRef.current = null;
+        }
+      }
     }
-    setResponse(result);
   };
 
   const summary = useMemo(() => {
@@ -132,6 +158,7 @@ export function ContractsView() {
             placeholder="Type 2+ characters"
             autoComplete="off"
             onChange={e => {
+              invalidateSearch();
               setShipText(e.target.value);
               setShip(null);
               setResponse(null);
@@ -166,6 +193,7 @@ export function ContractsView() {
             placeholder="Start system"
             autoComplete="off"
             onChange={e => {
+              invalidateSearch();
               setOriginText(e.target.value);
               setOrigin(null);
               setResponse(null);
@@ -200,6 +228,7 @@ export function ContractsView() {
             max={100}
             value={radius}
             onChange={e => {
+              invalidateSearch();
               setRadius(Math.max(1, Math.min(100, Number(e.target.value) || 1)));
               setResponse(null);
               setError(null);

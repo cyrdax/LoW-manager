@@ -46,9 +46,20 @@
 - Tests run:
   - `npm run typecheck` — PASS
   - `npm run build` — PASS
-- Commit SHA:
-  - `e1927c61c7d885306ec1d8f695900888982e023e`
 - Self-review notes:
   - Jumps now renders the literal `null` value for unknown-location rows instead of substituting placeholder text.
   - Confirmed ship and origin selections now clear their saved `localStorage` keys when the selection is removed, preventing stale reload state.
   - Kept the fix tightly scoped to the two reviewer findings and left the autocomplete accessibility note untouched.
+
+## Fix Report Addendum
+- Files changed:
+  - `web/src/components/ContractsView.tsx`
+- Tests run:
+  - `npm run typecheck` — PASS
+  - `npm run build` — PASS
+- Commit SHA:
+  - pending final commit hash
+- Self-review notes:
+  - Search requests are now invalidated when ship, origin, or radius edits occur, so an older in-flight response cannot repopulate stale results.
+  - Active searches are aborted on criteria changes and on unmount, and `busy` is cleared when the current request is invalidated.
+  - Prior Task 5 fixes remain intact: unknown jumps still render literal `null`, and cleared confirmed ship/origin keys still disappear from `localStorage`.
