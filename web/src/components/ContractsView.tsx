@@ -68,14 +68,23 @@ export function ContractsView() {
   }, [originText, origin]);
 
   useEffect(() => {
-    if (!ship) return;
+    if (!ship) {
+      localStorage.removeItem(SHIP_ID_KEY);
+      localStorage.removeItem(SHIP_NAME_KEY);
+      localStorage.removeItem(SHIP_GROUP_KEY);
+      return;
+    }
     localStorage.setItem(SHIP_ID_KEY, String(ship.id));
     localStorage.setItem(SHIP_NAME_KEY, ship.name);
     localStorage.setItem(SHIP_GROUP_KEY, ship.groupName);
   }, [ship]);
 
   useEffect(() => {
-    if (!origin) return;
+    if (!origin) {
+      localStorage.removeItem(ORIGIN_ID_KEY);
+      localStorage.removeItem(ORIGIN_NAME_KEY);
+      return;
+    }
     localStorage.setItem(ORIGIN_ID_KEY, String(origin.id));
     localStorage.setItem(ORIGIN_NAME_KEY, origin.name);
   }, [origin]);
@@ -276,7 +285,7 @@ function ContractResultsTable({ rows }: { rows: ContractSearchResult[] }) {
                   {!row.locationKnown ? ' · unresolved' : ''}
                 </small>
               </td>
-              <td className="num">{row.jumps ?? 'unknown'}</td>
+              <td className="num">{row.jumps == null ? 'null' : row.jumps}</td>
               <td>{formatExpiry(row.dateExpired)}</td>
               <td>{row.title || '—'}</td>
               <td className="num">{row.contractId}</td>
