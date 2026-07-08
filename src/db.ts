@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { migrateContractIndexDb } from './contracts/index-store.ts';
 
 const DB_PATH = process.env.DB_PATH ?? 'data/app.db';
 mkdirSync(dirname(DB_PATH), { recursive: true });
@@ -60,6 +61,8 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_saved_skill_plans_char ON saved_skill_plans(character_id);
 `);
+
+migrateContractIndexDb(db);
 
 // Housekeeping: drop oauth_states entries older than 10 minutes.
 db.prepare(`DELETE FROM oauth_states WHERE created_at < ?`).run(Date.now() - 10 * 60 * 1000);
