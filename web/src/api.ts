@@ -198,6 +198,70 @@ export async function searchSystems(q: string, signal?: AbortSignal): Promise<Sy
   return res.json();
 }
 
+export interface ContractShipHit {
+  id: number;
+  name: string;
+  groupName: string;
+}
+
+export interface ContractWarning {
+  code: string;
+  message: string;
+  count?: number;
+}
+
+export interface ContractSearchResult {
+  contractId: number;
+  type: 'item_exchange' | 'auction';
+  title: string;
+  price: number | null;
+  buyout: number | null;
+  effectivePrice: number | null;
+  quantity: number;
+  shipTypeId: number;
+  shipName: string;
+  regionId: number;
+  regionName: string;
+  systemId: number | null;
+  systemName: string | null;
+  locationName: string;
+  locationKnown: boolean;
+  jumps: number | null;
+  dateIssued: string;
+  dateExpired: string;
+}
+
+export interface ContractSearchResponse {
+  ship: ContractShipHit;
+  origin: { id: number; name: string };
+  radius: number;
+  regionsScanned: Array<{ id: number; name: string }>;
+  fetchedAt: number;
+  results: ContractSearchResult[];
+  warnings: ContractWarning[];
+}
+
+export async function searchContractShips(q: string, signal?: AbortSignal): Promise<ContractShipHit[]> {
+  if (q.trim().length < 2) return [];
+  const res = await fetch(`/api/contracts/ships?q=${encodeURIComponent(q)}`, { signal });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function searchContracts(
+  params: { shipId: number; originSystemId: number; radius: number },
+  signal?: AbortSignal,
+): Promise<ContractSearchResponse | { error: string }> {
+  const qs = new URLSearchParams({
+    shipId: String(params.shipId),
+    originSystemId: String(params.originSystemId),
+    radius: String(params.radius),
+  });
+  const res = await fetch(`/api/contracts/search?${qs.toString()}`, { signal });
+  if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
+  return res.json();
+}
+
 export interface WaypointResult {
   characterId: number;
   name: string;

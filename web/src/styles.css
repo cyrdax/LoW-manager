@@ -50,9 +50,11 @@ body {
 .view-nav .nav-btn.active { background: var(--accent); color: #0b0e13; font-weight: 700; }
 .view-nav .nav-btn:not(.active):hover { color: var(--text); }
 .view-nav-5,
-.view-nav-6 { grid-template-columns: 1fr; }
+.view-nav-6,
+.view-nav-7 { grid-template-columns: 1fr; }
 .view-nav-5 .nav-btn,
-.view-nav-6 .nav-btn { padding: 8px 12px; text-align: left; }
+.view-nav-6 .nav-btn,
+.view-nav-7 .nav-btn { padding: 8px 12px; text-align: left; }
 
 .sidebar {
   background: var(--panel);
@@ -298,6 +300,185 @@ body {
   color: var(--dim);
   padding: 32px;
   text-align: center;
+}
+
+/* contracts */
+.contracts-view {
+  padding: 12px 16px;
+  gap: 12px;
+}
+
+.ct-search {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) minmax(220px, 1.3fr) 96px auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.ct-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ct-field span {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.ct-field input {
+  width: 100%;
+  min-height: 36px;
+  background: #101620;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.ct-radius input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ct-search-btn {
+  min-height: 36px;
+}
+
+.ct-suggest {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  background: #0f141d;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.ct-suggest button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 9px;
+  text-align: left;
+  font: inherit;
+}
+
+.ct-suggest button:hover {
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.ct-suggest small {
+  color: var(--dim);
+  flex-shrink: 0;
+}
+
+.ct-summary,
+.ct-warnings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.ct-summary strong {
+  color: var(--text);
+}
+
+.ct-warnings {
+  color: var(--amber);
+}
+
+.ct-error {
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  color: var(--red);
+  padding: 10px 12px;
+  border-radius: 4px;
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.ct-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.ct-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ct-table th,
+.ct-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  vertical-align: top;
+}
+
+.ct-table th {
+  color: var(--dim);
+  font-weight: 600;
+  text-align: left;
+  background: var(--panel-2);
+  white-space: nowrap;
+}
+
+.ct-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ct-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ct-table small {
+  color: var(--dim);
+  display: block;
+  margin-top: 2px;
+}
+
+@media (max-width: 900px) {
+  .ct-search {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .ct-radius {
+    grid-column: span 1;
+  }
+
+  .ct-search-btn {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .ct-search {
+    grid-template-columns: 1fr;
+  }
+
+  .ct-search-btn,
+  .ct-radius {
+    grid-column: span 1;
+  }
 }
 
 /* planets view */

@@ -12,12 +12,14 @@ import {
   type WaypointResult,
 } from '../api.ts';
 
+type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts';
+
 interface Props {
   chars: CharacterStatus[];
   selection: Set<number>;
   onRefresh: () => void;
-  view: 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry';
-  setView: (v: 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry') => void;
+  view: View;
+  setView: (v: View) => void;
 }
 
 export function ControlPanel({ chars, selection, onRefresh, view, setView }: Props) {
@@ -112,7 +114,7 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView }: Pro
         <small>{chars.length} characters · {selection.size} selected</small>
       </div>
 
-      <div className="view-nav view-nav-6">
+      <div className="view-nav view-nav-7">
         <button
           className={`nav-btn${view === 'pilots' ? ' active' : ''}`}
           onClick={() => setView('pilots')}
@@ -137,11 +139,21 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView }: Pro
           className={`nav-btn${view === 'industry' ? ' active' : ''}`}
           onClick={() => setView('industry')}
         >Industry</button>
+        <button
+          className={`nav-btn${view === 'contracts' ? ' active' : ''}`}
+          onClick={() => setView('contracts')}
+        >Contracts</button>
       </div>
 
       <button className="primary" onClick={openAuth}>Add character</button>
 
       {view === 'pilots' && <AutopilotPanel selectedIds={selectedIds} />}
+
+      {view === 'contracts' && (
+        <div style={{ fontSize: 12, color: 'var(--dim)', lineHeight: 1.4 }}>
+          Search public ship contracts around an origin system. V1 uses public item-exchange and auction contracts only; player-structure locations may show as unknown.
+        </div>
+      )}
 
       {view === 'pilots' && <>
       <div>

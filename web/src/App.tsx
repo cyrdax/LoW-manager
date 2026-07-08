@@ -8,9 +8,10 @@ import { SkillsView } from './components/SkillsView.tsx';
 import { FleetView } from './components/FleetView.tsx';
 import { MarketView } from './components/MarketView.tsx';
 import { IndustryView } from './components/IndustryView.tsx';
+import { ContractsView } from './components/ContractsView.tsx';
 import { deleteCharacter, setBoss, type CharacterStatus } from './api.ts';
 
-type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry';
+type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts';
 
 interface HeaderDef {
   key: SortKey;
@@ -179,6 +180,7 @@ export function App() {
       {view === 'fleet' && <FleetView chars={list} />}
       {view === 'market' && <MarketView chars={list} />}
       {view === 'industry' && <IndustryView chars={list} />}
+      {view === 'contracts' && <ContractsView />}
     </div>
   );
 }
