@@ -46,8 +46,8 @@ export function registerContractRoutes(app: FastifyInstance, deps: ContractRoute
     };
 
     req.raw.on('aborted', abortRequest);
-    req.raw.on('close', () => {
-      if (req.raw.aborted || !reply.raw.writableEnded) abortRequest();
+    reply.raw.on('close', () => {
+      if (!reply.raw.writableEnded) abortRequest();
     });
 
     try {
