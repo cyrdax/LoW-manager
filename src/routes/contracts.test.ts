@@ -58,6 +58,91 @@ test('GET /api/contracts/search delegates to contract search service', async () 
   assert.equal(JSON.parse(res.body).origin.name, 'Jita');
 });
 
+test('GET /api/contracts/search defaults omitted radius to 30', async () => {
+  const app = Fastify();
+  let receivedRadius: number | undefined;
+  registerContractRoutes(app, {
+    loadData: () => data,
+    runSearch: async input => {
+      receivedRadius = input.radius;
+      return {
+        ship: { id: input.shipId, name: 'Barghest', groupName: 'Battleship' },
+        origin: { id: input.originSystemId, name: 'Jita' },
+        radius: input.radius,
+        regionsScanned: [],
+        fetchedAt: 1783526400000,
+        results: [],
+        warnings: [],
+      };
+    },
+  });
+
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/contracts/search?shipId=17920&originSystemId=30000142',
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(receivedRadius, 30);
+  assert.equal(JSON.parse(res.body).radius, 30);
+});
+
+test('GET /api/contracts/search rejects radius below the allowed range', async () => {
+  const app = Fastify();
+  let called = false;
+  registerContractRoutes(app, {
+    loadData: () => data,
+    runSearch: async () => {
+      called = true;
+      return {
+        ship: { id: 17920, name: 'Barghest', groupName: 'Battleship' },
+        origin: { id: 30000142, name: 'Jita' },
+        radius: 30,
+        regionsScanned: [],
+        fetchedAt: 1783526400000,
+        results: [],
+        warnings: [],
+      };
+    },
+  });
+
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/contracts/search?shipId=17920&originSystemId=30000142&radius=0',
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(called, false);
+});
+
+test('GET /api/contracts/search rejects radius above the allowed range', async () => {
+  const app = Fastify();
+  let called = false;
+  registerContractRoutes(app, {
+    loadData: () => data,
+    runSearch: async () => {
+      called = true;
+      return {
+        ship: { id: 17920, name: 'Barghest', groupName: 'Battleship' },
+        origin: { id: 30000142, name: 'Jita' },
+        radius: 30,
+        regionsScanned: [],
+        fetchedAt: 1783526400000,
+        results: [],
+        warnings: [],
+      };
+    },
+  });
+
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/contracts/search?shipId=17920&originSystemId=30000142&radius=101',
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(called, false);
+});
+
 test('GET /api/contracts/search returns 400 when origin system is missing from topology', async () => {
   const app = Fastify();
   registerContractRoutes(app, {

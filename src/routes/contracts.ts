@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { loadMasteryData, type MasteryData } from '../skills/mastery-data.ts';
 import {
   CONTRACT_RADIUS_DEFAULT,
+  CONTRACT_RADIUS_MAX,
+  CONTRACT_RADIUS_MIN,
   runContractSearch,
   searchContractShips,
   type ContractSearchResponse,
@@ -16,7 +18,7 @@ const shipQuery = z.object({
 const searchQuery = z.object({
   shipId: z.coerce.number().int().positive(),
   originSystemId: z.coerce.number().int().positive(),
-  radius: z.coerce.number().int().default(CONTRACT_RADIUS_DEFAULT),
+  radius: z.coerce.number().int().min(CONTRACT_RADIUS_MIN).max(CONTRACT_RADIUS_MAX).default(CONTRACT_RADIUS_DEFAULT),
 });
 
 export interface ContractRouteDeps {
@@ -48,7 +50,6 @@ export function registerContractRoutes(app: FastifyInstance, deps: ContractRoute
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to search contracts';
       if (message === 'Ship not found') return reply.code(404).send({ error: message });
-      if (message.includes('radius must be between')) return reply.code(400).send({ error: message });
       if (message.includes('origin system ') && message.includes(' is not present in contract map topology')) {
         return reply.code(400).send({ error: message });
       }
