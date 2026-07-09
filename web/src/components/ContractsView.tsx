@@ -343,7 +343,7 @@ function ContractResultsTable({ rows }: { rows: ContractSearchResult[] }) {
                   {!row.locationKnown ? ' · unresolved' : ''}
                 </small>
               </td>
-              <td className="num">{row.jumps == null ? 'null' : row.jumps}</td>
+              <td className="num">{row.jumps == null ? '—' : row.jumps}</td>
               <td>{formatExpiry(row.dateExpired)}</td>
               <td>{row.title || '—'}</td>
               <td className="num">{row.contractId}</td>

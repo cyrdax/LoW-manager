@@ -82,7 +82,7 @@ test('indexed search returns matching included ship items and excludes out-of-ra
   assert.equal(search.results[0].jumps, 0);
 });
 
-test('indexed search includes unknown-location contracts from touched regions after known rows', () => {
+test('indexed search excludes unknown-location contracts and reports skipped count', () => {
   const db = seededDb();
   const topology = buildTopologyFromSystems([
     { systemId: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge', neighbors: [] },
@@ -112,11 +112,8 @@ test('indexed search includes unknown-location contracts from touched regions af
     now: NOW,
   });
 
-  assert.deepEqual(search.results.map(row => row.contractId), [1, 2]);
-  assert.equal(search.results[1].quantity, 2);
-  assert.equal(search.results[1].locationName, 'Unknown structure');
-  assert.equal(search.results[1].locationKnown, false);
-  assert.equal(search.results[1].jumps, null);
+  assert.deepEqual(search.results.map(row => row.contractId), [1]);
+  assert.equal(search.unresolvedLocationCount, 1);
 });
 
 test('coverage reports ready stale and missing regions', () => {
@@ -199,4 +196,3 @@ function item(
 ): PublicContractItem {
   return { record_id, type_id, quantity, is_included };
 }
-

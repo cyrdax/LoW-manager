@@ -107,6 +107,47 @@ test('runContractSearch reads indexed contracts and returns coverage metadata', 
   assert.deepEqual(response.warnings, []);
 });
 
+test('runContractSearch warns when matching contracts have unresolved locations', async () => {
+  const db = memoryDb();
+  const topology = topologyFixture();
+  upsertContractIndexRegions(db, [{ id: 10000002, name: 'The Forge' }], NOW);
+  upsertRegionContracts(db, {
+    region: { id: 10000002, name: 'The Forge' },
+    topology,
+    refreshedAt: NOW - 60_000,
+    expiresAt: EXPIRES,
+    contracts: [
+      contract(1, { start_location_id: 60003760 }),
+      contract(2, { start_location_id: 1031231231231 }),
+    ],
+  });
+  replaceContractItems(db, 1, [item(11, 17920, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 2, [item(21, 17920, 1, true)], NOW - 60_000, EXPIRES);
+  db.prepare(`
+    UPDATE contract_index_regions
+    SET next_refresh_at = ?
+    WHERE region_id = ?
+  `).run(EXPIRES, 10000002);
+
+  const response = await runContractSearch({
+    data: masteryData,
+    shipId: 17920,
+    originSystemId: 30000142,
+    radius: 30,
+  }, {
+    database: db,
+    now: () => NOW,
+    topology,
+  });
+
+  assert.deepEqual(response.results.map(row => row.contractId), [1]);
+  assert.deepEqual(response.warnings, [{
+    code: 'contract_locations_unresolved',
+    message: 'Skipped contracts in unresolved player structures because jumps cannot be calculated',
+    count: 1,
+  }]);
+});
+
 test('runContractSearch prioritizes touched regions for background refresh', async () => {
   const db = memoryDb();
   const topology = topologyFixture();

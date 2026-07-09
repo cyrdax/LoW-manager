@@ -29,6 +29,7 @@ export interface IndexedContractSearchInput {
 
 export interface IndexedContractSearch {
   results: ContractSearchResult[];
+  unresolvedLocationCount: number;
 }
 
 export interface ContractIndexCoverage {
@@ -308,7 +309,7 @@ export function searchIndexedContracts(
   database: SqliteDatabase,
   input: IndexedContractSearchInput,
 ): IndexedContractSearch {
-  if (input.regionIds.length === 0) return { results: [] };
+  if (input.regionIds.length === 0) return { results: [], unresolvedLocationCount: 0 };
 
   const regionFilter = input.regionIds.map(() => '?').join(',');
   const rows = database.prepare(`
@@ -339,12 +340,17 @@ export function searchIndexedContracts(
   `).all(...input.regionIds, input.shipTypeId) as ContractIndexSummaryRow[];
 
   const results: ContractSearchResult[] = [];
+  let unresolvedLocationCount = 0;
   for (const row of rows) {
     if (!CONTRACT_TYPES.has(row.type)) continue;
     if (Date.parse(row.date_expired) <= input.now) continue;
-    if (row.location_system_id != null && !input.distances.has(row.location_system_id)) continue;
+    if (row.location_system_id == null) {
+      unresolvedLocationCount += 1;
+      continue;
+    }
+    if (!input.distances.has(row.location_system_id)) continue;
 
-    const jumps = row.location_system_id == null ? null : input.distances.get(row.location_system_id)!;
+    const jumps = input.distances.get(row.location_system_id)!;
     results.push({
       contractId: row.contract_id,
       type: row.type,
@@ -367,7 +373,7 @@ export function searchIndexedContracts(
     });
   }
 
-  return { results: sortContractResultsDefault(results) };
+  return { results: sortContractResultsDefault(results), unresolvedLocationCount };
 }
 
 export function getContractIndexCoverage(

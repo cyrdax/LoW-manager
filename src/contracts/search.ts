@@ -132,6 +132,13 @@ export async function runContractSearch(
       count: incompleteRegions,
     });
   }
+  if (indexed.unresolvedLocationCount > 0) {
+    warnings.push({
+      code: 'contract_locations_unresolved',
+      message: 'Skipped contracts in unresolved player structures because jumps cannot be calculated',
+      count: indexed.unresolvedLocationCount,
+    });
+  }
 
   const originName = topology.systems.get(input.originSystemId)?.name ?? `System ${input.originSystemId}`;
   const index = {

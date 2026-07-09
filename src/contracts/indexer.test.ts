@@ -71,8 +71,8 @@ test('refreshContractRegion fetches all pages, indexes summaries, and refreshes 
     distances,
     now: NOW,
   });
-  assert.deepEqual(search.results.map(row => row.contractId), [1, 2]);
-  assert.equal(search.results[1].jumps, null);
+  assert.deepEqual(search.results.map(row => row.contractId), [1]);
+  assert.equal(search.unresolvedLocationCount, 1);
 });
 
 test('refreshContractRegion marks contracts missing from the latest region page inactive', async () => {
@@ -198,4 +198,3 @@ function item(
 ): PublicContractItem {
   return { record_id, type_id, quantity, is_included };
 }
-
