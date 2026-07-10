@@ -11,6 +11,7 @@ import {
   type ShoppingHub,
   type ShoppingListQuote,
 } from '../api.ts';
+import { aggregateShoppingItems, parseShoppingList } from '../../../src/market/shopping-list-parser.ts';
 
 interface Props { chars: CharacterStatus[] }
 
@@ -165,31 +166,6 @@ function PlexView() {
 
 // --- Shopping List ---
 
-interface ParsedLine { name: string; qty: number; raw: string; ok: boolean }
-
-function parseShoppingList(text: string): ParsedLine[] {
-  return text
-    .split(/\r?\n/)
-    .map(raw => {
-      const trimmed = raw.trim();
-      if (!trimmed) return null;
-      // Accept "<qty> <name>" or "<qty>x <name>" or tab-separated "<name>\t<qty>"
-      // (the latter is how EVE's in-game inventory copy works).
-      let m = trimmed.match(/^(\d[\d,]*)\s*[x×]?\s+(.+)$/i);
-      if (m) {
-        const qty = Number(m[1].replace(/,/g, ''));
-        return { name: m[2].trim(), qty, raw: trimmed, ok: qty > 0 };
-      }
-      m = trimmed.match(/^(.+?)\t+(\d[\d,]*)\b/);
-      if (m) {
-        const qty = Number(m[2].replace(/,/g, ''));
-        return { name: m[1].trim(), qty, raw: trimmed, ok: qty > 0 };
-      }
-      return { name: trimmed, qty: 0, raw: trimmed, ok: false };
-    })
-    .filter((x): x is ParsedLine => x !== null);
-}
-
 const SHOPPING_TEXT_KEY = 'efd.market.shopping.text';
 const SHOPPING_HUB_KEY = 'efd.market.shopping.hub';
 const SHOPPING_PILOT_KEY = 'efd.market.shopping.pilot';
@@ -238,17 +214,22 @@ function ShoppingListView({ chars }: { chars: CharacterStatus[] }) {
 
   const parsed = useMemo(() => parseShoppingList(text), [text]);
   const validItems = useMemo(() => parsed.filter(p => p.ok), [parsed]);
+  const quoteItems = useMemo(() => aggregateShoppingItems(validItems), [validItems]);
+  const totalUnits = useMemo(
+    () => quoteItems.reduce((sum, item) => sum + item.qty, 0),
+    [quoteItems],
+  );
   const parseErrors = useMemo(() => parsed.filter(p => !p.ok), [parsed]);
 
   const calculate = async () => {
-    if (validItems.length === 0) {
-      setError('No valid lines. Format: "<qty> <item name>" per line.');
+    if (quoteItems.length === 0) {
+      setError('No valid lines.');
       return;
     }
     setLoading(true);
     setError(null);
     setSendStatus({ kind: 'idle' });
-    const res = await quoteShoppingList(hub, validItems.map(p => ({ name: p.name, qty: p.qty })));
+    const res = await quoteShoppingList(hub, quoteItems);
     setLoading(false);
     if ('error' in res) {
       setQuote(null);
@@ -268,7 +249,7 @@ function ShoppingListView({ chars }: { chars: CharacterStatus[] }) {
     // and Send).
     const res = await sendShoppingList(
       hub,
-      validItems.map(p => ({ name: p.name, qty: p.qty })),
+      quoteItems,
       pilotId,
     );
     if ('error' in res) {
@@ -300,13 +281,13 @@ function ShoppingListView({ chars }: { chars: CharacterStatus[] }) {
         <div className="mk-shop-summary dim">
           {parsed.length === 0
             ? 'Paste your list below'
-            : `${validItems.length} item${validItems.length === 1 ? '' : 's'}` +
+            : `${quoteItems.length} item${quoteItems.length === 1 ? '' : 's'} · ${totalUnits.toLocaleString()} unit${totalUnits === 1 ? '' : 's'}` +
               (parseErrors.length > 0 ? `, ${parseErrors.length} unparsed line${parseErrors.length === 1 ? '' : 's'}` : '')}
         </div>
         <button
           className="fl-refresh"
           onClick={calculate}
-          disabled={loading || validItems.length === 0}
+          disabled={loading || quoteItems.length === 0}
         >{loading ? 'Pricing…' : 'Calculate'}</button>
       </div>
 
@@ -314,7 +295,7 @@ function ShoppingListView({ chars }: { chars: CharacterStatus[] }) {
         className="mk-shop-input"
         value={text}
         onChange={e => setText(e.target.value)}
-        placeholder={'2 Cap Recharger II\n4 Multispectrum Energized Membrane II\n1 Nanofiber Internal Structure II'}
+        placeholder={'Republic Fleet Gyrostabilizer\nRepublic Fleet Gyrostabilizer\nHail XL x4057'}
         spellCheck={false}
         rows={10}
       />
