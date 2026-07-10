@@ -844,3 +844,228 @@ export async function fetchIndustryPlan(params: {
   if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
   return res.json();
 }
+
+// --- Fits ---
+
+export type FitHub = 'jita' | 'amarr';
+export type FitSectionRole =
+  | 'low'
+  | 'mid'
+  | 'high'
+  | 'rig'
+  | 'service'
+  | 'subsystem'
+  | 'droneBay'
+  | 'fighterBay'
+  | 'extras'
+  | 'unmatched';
+
+export interface FitWarning {
+  code: string;
+  message: string;
+  inputName?: string;
+  count?: number;
+}
+
+export interface FitShip {
+  typeId: number;
+  name: string;
+  groupId: number;
+  groupName: string;
+}
+
+export interface FitShipLayout {
+  shipTypeId: number;
+  shipName: string;
+  highSlots: number;
+  midSlots: number;
+  lowSlots: number;
+  rigSlots: number;
+  serviceSlots: number;
+  subsystemSlots: number;
+  warnings: FitWarning[];
+}
+
+export interface AssignedFitItem {
+  id: string;
+  source: 'fit-line' | 'loaded-charge';
+  sectionIndex: number;
+  lineIndex: number;
+  rawLine: string;
+  inputName: string;
+  resolvedName: string | null;
+  typeId: number | null;
+  quantity: number;
+  role: FitSectionRole;
+  slotFlag: string | null;
+  warning: FitWarning | null;
+}
+
+export interface AssignedFitSection {
+  role: FitSectionRole;
+  label: string;
+  slotCount: number;
+  emptySlots: number;
+  items: AssignedFitItem[];
+}
+
+export interface FitDraft {
+  rawEft: string;
+  fitName: string;
+  headerShipName: string;
+  ship: FitShip | null;
+  layout: FitShipLayout | null;
+  sections: Record<FitSectionRole, AssignedFitSection>;
+  items: AssignedFitItem[];
+  warnings: FitWarning[];
+  normalizedEft: string;
+}
+
+export interface SavedFitDetail extends FitDraft {
+  id: number;
+  notes: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SavedFitSummary {
+  id: number;
+  shipTypeId: number;
+  shipName: string;
+  fitName: string;
+  notes: string;
+  createdAt: number;
+  updatedAt: number;
+  itemCount: number;
+  warningCounts: { unmatched: number; overSlot: number; unassignable: number };
+}
+
+export interface FitQuoteItem {
+  inputName: string;
+  resolvedName: string | null;
+  typeId: number | null;
+  requestedQty: number;
+  filledQty: number;
+  totalCost: number;
+  avgPrice: number | null;
+  shortfall: number;
+  status: 'ok' | 'partial' | 'no-orders' | 'unknown-item';
+  bucket: 'hull' | 'fitted' | 'extras';
+}
+
+export interface FitQuote {
+  hub: FitHub;
+  systemName: string;
+  regionName: string;
+  items: FitQuoteItem[];
+  totalCost: number;
+  totals: { hull: number; fitted: number; extras: number; grand: number };
+  counts: { ok: number; partial: number; noOrders: number; unknown: number };
+  fetchedAt: number;
+}
+
+export interface FitShipHit { id: number; name: string; groupName: string }
+
+async function jsonOrError<T>(res: Response): Promise<T | { error: string; reauthHint?: string | null }> {
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return { error: body.error ?? res.statusText, reauthHint: body.reauthHint ?? null };
+  }
+  return res.json();
+}
+
+export async function fetchFits(): Promise<SavedFitSummary[]> {
+  const res = await fetch('/api/fits');
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchFit(id: number): Promise<SavedFitDetail | { error: string }> {
+  return jsonOrError(await fetch(`/api/fits/${id}`));
+}
+
+export async function previewFit(rawEft: string, shipTypeId?: number): Promise<FitDraft | { error: string }> {
+  return jsonOrError(await fetch('/api/fits/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rawEft, shipTypeId }),
+  }));
+}
+
+export async function saveFit(input: {
+  rawEft: string;
+  shipTypeId?: number;
+  fitName?: string;
+  notes?: string;
+}): Promise<SavedFitDetail | { error: string }> {
+  return jsonOrError(await fetch('/api/fits', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }));
+}
+
+export async function updateFit(
+  id: number,
+  input: { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string },
+): Promise<SavedFitDetail | { error: string }> {
+  return jsonOrError(await fetch(`/api/fits/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }));
+}
+
+export async function deleteFit(id: number): Promise<{ ok: true } | { error: string }> {
+  return jsonOrError(await fetch(`/api/fits/${id}`, { method: 'DELETE' }));
+}
+
+export async function searchFitShips(q: string, signal?: AbortSignal): Promise<FitShipHit[]> {
+  if (q.trim().length < 2) return [];
+  const res = await fetch(`/api/fits/ships?q=${encodeURIComponent(q)}`, { signal });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function quoteSavedFit(id: number, hub: FitHub): Promise<FitQuote | { error: string }> {
+  return jsonOrError(await fetch(`/api/fits/${id}/quote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hub }),
+  }));
+}
+
+export async function quoteDraftFit(
+  rawEft: string,
+  hub: FitHub,
+  shipTypeId?: number,
+): Promise<FitQuote | { error: string }> {
+  return jsonOrError(await fetch('/api/fits/quote-draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rawEft, hub, shipTypeId }),
+  }));
+}
+
+export async function sendSavedFit(
+  id: number,
+  characterId: number,
+): Promise<{ ok: true; fittingId: number | null; excludedCount: number; warnings: FitWarning[] } | { error: string; reauthHint?: string | null }> {
+  return jsonOrError(await fetch(`/api/fits/${id}/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ characterId }),
+  }));
+}
+
+export async function sendDraftFit(
+  rawEft: string,
+  characterId: number,
+  input?: { shipTypeId?: number; fitName?: string; notes?: string },
+): Promise<{ ok: true; fittingId: number | null; excludedCount: number; warnings: FitWarning[] } | { error: string; reauthHint?: string | null }> {
+  return jsonOrError(await fetch('/api/fits/send-draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rawEft, characterId, ...input }),
+  }));
+}

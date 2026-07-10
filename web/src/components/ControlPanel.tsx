@@ -12,7 +12,7 @@ import {
   type WaypointResult,
 } from '../api.ts';
 
-type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts';
+type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits';
 
 interface Props {
   chars: CharacterStatus[];
@@ -114,7 +114,7 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView }: Pro
         <small>{chars.length} characters · {selection.size} selected</small>
       </div>
 
-      <div className="view-nav view-nav-7">
+      <div className="view-nav view-nav-8">
         <button
           className={`nav-btn${view === 'pilots' ? ' active' : ''}`}
           onClick={() => setView('pilots')}
@@ -143,6 +143,10 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView }: Pro
           className={`nav-btn${view === 'contracts' ? ' active' : ''}`}
           onClick={() => setView('contracts')}
         >Contracts</button>
+        <button
+          className={`nav-btn${view === 'fits' ? ' active' : ''}`}
+          onClick={() => setView('fits')}
+        >Fits</button>
       </div>
 
       <button className="primary" onClick={openAuth}>Add character</button>
