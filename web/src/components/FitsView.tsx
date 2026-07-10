@@ -52,6 +52,12 @@ type SendStatus =
   | { kind: 'sent'; fittingId: number | null; excludedCount: number }
   | { kind: 'error'; message: string; reauthHint?: string | null };
 
+type FitTooltipState = { label: string; x: number; y: number } | null;
+type FitTooltipHandlers = {
+  show: (label: string, target: HTMLElement) => void;
+  hide: () => void;
+};
+
 function formatIsk(n: number | null | undefined): string {
   if (n == null) return '-';
   if (n >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
@@ -84,6 +90,7 @@ export function FitsView({ chars }: Props) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [sendStatus, setSendStatus] = useState<SendStatus>({ kind: 'idle' });
+  const [tooltip, setTooltip] = useState<FitTooltipState>(null);
 
   const sortedChars = useMemo(() => [...chars].sort((a, b) => a.name.localeCompare(b.name)), [chars]);
   const [pilotId, setPilotId] = useState<number | null>(() => {
@@ -124,6 +131,15 @@ export function FitsView({ chars }: Props) {
   const active = draft ?? detail;
   const activeSavedId = draft ? null : detail?.id ?? null;
   const unmatchedItems = active?.items.filter(item => item.role === 'unmatched') ?? [];
+  const tooltipHandlers: FitTooltipHandlers = {
+    show: (label, target) => {
+      const rect = target.getBoundingClientRect();
+      const edge = Math.min(140, Math.max(16, window.innerWidth / 2));
+      const x = Math.min(window.innerWidth - edge, Math.max(edge, rect.left + rect.width / 2));
+      setTooltip({ label, x, y: Math.max(12, rect.top - 7) });
+    },
+    hide: () => setTooltip(null),
+  };
 
   useEffect(() => {
     setFitName(active?.fitName ?? '');
@@ -282,7 +298,7 @@ export function FitsView({ chars }: Props) {
         </div>
       </aside>
 
-      <section className="fits-detail">
+      <section className="fits-detail" onScroll={tooltipHandlers.hide}>
         {!active && <div className="fits-empty large">Import a fit or select one from the library.</div>}
         {active && (
           <>
@@ -312,8 +328,8 @@ export function FitsView({ chars }: Props) {
 
             <div className="fits-body">
               <div className="fits-slots">
-                {SLOT_ROLES.map(role => <SlotSection key={role} role={role} fit={active} />)}
-                {EXTRA_ROLES.map(role => <ExtraSection key={role} role={role} fit={active} />)}
+                {SLOT_ROLES.map(role => <SlotSection key={role} role={role} fit={active} tooltip={tooltipHandlers} />)}
+                {EXTRA_ROLES.map(role => <ExtraSection key={role} role={role} fit={active} tooltip={tooltipHandlers} />)}
               </div>
               <PricePanel quote={quote} loading={quoteLoading} error={quoteError} />
             </div>
@@ -347,6 +363,7 @@ export function FitsView({ chars }: Props) {
           </div>
         </Modal>
       )}
+      {tooltip && <FitTooltip tooltip={tooltip} />}
     </main>
   );
 }
@@ -440,7 +457,7 @@ function ShipPicker({ onSelect }: { onSelect: (ship: FitShipHit) => void }) {
   );
 }
 
-function SlotSection({ role, fit }: { role: FitSectionRole; fit: FitDraft | SavedFitDetail }) {
+function SlotSection({ role, fit, tooltip }: { role: FitSectionRole; fit: FitDraft | SavedFitDetail; tooltip: FitTooltipHandlers }) {
   const section = fit.sections[role];
   if (!section || (section.slotCount === 0 && section.items.length === 0)) return null;
   const cells = Math.max(section.slotCount, section.items.length);
@@ -450,27 +467,27 @@ function SlotSection({ role, fit }: { role: FitSectionRole; fit: FitDraft | Save
       <div className="fits-slot-grid">
         {Array.from({ length: cells }, (_, i) => {
           const item = section.items[i];
-          return item ? <ItemCell key={item.id} item={item} over={i >= section.slotCount} /> : <div key={i} className="fits-slot empty" />;
+          return item ? <ItemCell key={item.id} item={item} over={i >= section.slotCount} tooltip={tooltip} /> : <div key={i} className="fits-slot empty" />;
         })}
       </div>
     </section>
   );
 }
 
-function ExtraSection({ role, fit }: { role: FitSectionRole; fit: FitDraft | SavedFitDetail }) {
+function ExtraSection({ role, fit, tooltip }: { role: FitSectionRole; fit: FitDraft | SavedFitDetail; tooltip: FitTooltipHandlers }) {
   const section = fit.sections[role];
   if (!section || section.items.length === 0) return null;
   return (
     <section className="fits-section">
       <h3>{section.label}<span>{section.items.length}</span></h3>
       <div className="fits-extra-list">
-        {section.items.map(item => <ItemRow key={item.id} item={item} />)}
+        {section.items.map(item => <ItemRow key={item.id} item={item} tooltip={tooltip} />)}
       </div>
     </section>
   );
 }
 
-function ItemCell({ item, over }: { item: AssignedFitItem; over?: boolean }) {
+function ItemCell({ item, over, tooltip }: { item: AssignedFitItem; over?: boolean; tooltip: FitTooltipHandlers }) {
   const label = item.resolvedName ?? item.inputName;
   return (
     <div
@@ -478,6 +495,11 @@ function ItemCell({ item, over }: { item: AssignedFitItem; over?: boolean }) {
       data-tooltip={item.resolvedName ?? item.inputName}
       aria-label={label}
       tabIndex={0}
+      onPointerEnter={e => tooltip.show(label, e.currentTarget)}
+      onPointerMove={e => tooltip.show(label, e.currentTarget)}
+      onPointerLeave={tooltip.hide}
+      onFocus={e => tooltip.show(label, e.currentTarget)}
+      onBlur={tooltip.hide}
     >
       {item.typeId ? <img src={iconUrl(item.typeId)} alt="" /> : <span>?</span>}
       {item.quantity > 1 && <b>{item.quantity.toLocaleString()}</b>}
@@ -485,7 +507,7 @@ function ItemCell({ item, over }: { item: AssignedFitItem; over?: boolean }) {
   );
 }
 
-function ItemRow({ item }: { item: AssignedFitItem }) {
+function ItemRow({ item, tooltip }: { item: AssignedFitItem; tooltip: FitTooltipHandlers }) {
   const label = item.resolvedName ?? item.inputName;
   return (
     <div
@@ -493,10 +515,23 @@ function ItemRow({ item }: { item: AssignedFitItem }) {
       data-tooltip={item.resolvedName ?? item.inputName}
       aria-label={label}
       tabIndex={0}
+      onPointerEnter={e => tooltip.show(label, e.currentTarget)}
+      onPointerMove={e => tooltip.show(label, e.currentTarget)}
+      onPointerLeave={tooltip.hide}
+      onFocus={e => tooltip.show(label, e.currentTarget)}
+      onBlur={tooltip.hide}
     >
       <div className="fits-item-icon">{item.typeId ? <img src={iconUrl(item.typeId)} alt="" /> : '?'}</div>
       <span>{label}</span>
       <small>{item.quantity.toLocaleString()}</small>
+    </div>
+  );
+}
+
+function FitTooltip({ tooltip }: { tooltip: NonNullable<FitTooltipState> }) {
+  return (
+    <div className="fits-floating-tooltip" role="tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+      {tooltip.label}
     </div>
   );
 }

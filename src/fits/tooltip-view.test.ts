@@ -9,6 +9,10 @@ test('fit item tooltips render instantly instead of using native title delay', (
 
   assert.match(view, /data-tooltip=\{item\.resolvedName \?\? item\.inputName\}/);
   assert.doesNotMatch(view, /title=\{item\.resolvedName \?\? item\.inputName\}/);
-  assert.match(css, /\.fits-tooltip:hover::after/);
-  assert.match(css, /\.fits-tooltip:focus-visible::after/);
+  assert.match(view, /className="fits-floating-tooltip"/);
+  assert.match(view, /style=\{\{ left: tooltip\.x, top: tooltip\.y \}\}/);
+  assert.match(css, /\.fits-floating-tooltip\s*\{/);
+  assert.match(css, /\.fits-floating-tooltip\s*\{[^}]*position: fixed/s);
+  assert.doesNotMatch(css, /\.fits-tooltip:hover::after/);
+  assert.doesNotMatch(css, /\.fits-tooltip:focus-visible::after/);
 });

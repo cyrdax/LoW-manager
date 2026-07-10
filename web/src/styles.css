@@ -2157,18 +2157,13 @@ body {
   background: #11141a;
 }
 .fits-item-row.warn { outline: 1px solid #5a4622; }
-.fits-tooltip {
-  position: relative;
-}
-.fits-tooltip::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  z-index: 60;
-  left: 50%;
-  bottom: calc(100% + 7px);
-  transform: translateX(-50%);
+.fits-tooltip { cursor: default; }
+.fits-floating-tooltip {
+  position: fixed;
+  z-index: 1000;
+  transform: translate(-50%, -100%);
   width: max-content;
-  max-width: 240px;
+  max-width: 260px;
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -2178,16 +2173,9 @@ body {
   font-size: 12px;
   font-weight: 600;
   line-height: 1.25;
-  opacity: 0;
   pointer-events: none;
   text-align: left;
-  visibility: hidden;
   white-space: normal;
-}
-.fits-tooltip:hover::after,
-.fits-tooltip:focus-visible::after {
-  opacity: 1;
-  visibility: visible;
 }
 .fits-item-row span {
   overflow: hidden;
