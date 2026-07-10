@@ -471,8 +471,14 @@ function ExtraSection({ role, fit }: { role: FitSectionRole; fit: FitDraft | Sav
 }
 
 function ItemCell({ item, over }: { item: AssignedFitItem; over?: boolean }) {
+  const label = item.resolvedName ?? item.inputName;
   return (
-    <div className={`fits-slot${over || item.warning ? ' warn' : ''}`} title={item.resolvedName ?? item.inputName}>
+    <div
+      className={`fits-slot fits-tooltip${over || item.warning ? ' warn' : ''}`}
+      data-tooltip={item.resolvedName ?? item.inputName}
+      aria-label={label}
+      tabIndex={0}
+    >
       {item.typeId ? <img src={iconUrl(item.typeId)} alt="" /> : <span>?</span>}
       {item.quantity > 1 && <b>{item.quantity.toLocaleString()}</b>}
     </div>
@@ -480,10 +486,16 @@ function ItemCell({ item, over }: { item: AssignedFitItem; over?: boolean }) {
 }
 
 function ItemRow({ item }: { item: AssignedFitItem }) {
+  const label = item.resolvedName ?? item.inputName;
   return (
-    <div className={`fits-item-row${item.warning ? ' warn' : ''}`} title={item.resolvedName ?? item.inputName}>
+    <div
+      className={`fits-item-row fits-tooltip${item.warning ? ' warn' : ''}`}
+      data-tooltip={item.resolvedName ?? item.inputName}
+      aria-label={label}
+      tabIndex={0}
+    >
       <div className="fits-item-icon">{item.typeId ? <img src={iconUrl(item.typeId)} alt="" /> : '?'}</div>
-      <span>{item.resolvedName ?? item.inputName}</span>
+      <span>{label}</span>
       <small>{item.quantity.toLocaleString()}</small>
     </div>
   );

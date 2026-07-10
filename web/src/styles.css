@@ -2083,7 +2083,7 @@ body {
 }
 .fits-section {
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .fits-section h3,
 .fits-price h3 {
@@ -2115,7 +2115,7 @@ body {
   background: #0f1218;
   border: 1px solid #323845;
   border-radius: 4px;
-  overflow: hidden;
+  overflow: visible;
 }
 .fits-slot.empty {
   border-style: dashed;
@@ -2127,6 +2127,9 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.fits-slot img {
+  border-radius: 3px;
 }
 .fits-slot b {
   position: absolute;
@@ -2154,6 +2157,38 @@ body {
   background: #11141a;
 }
 .fits-item-row.warn { outline: 1px solid #5a4622; }
+.fits-tooltip {
+  position: relative;
+}
+.fits-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 60;
+  left: 50%;
+  bottom: calc(100% + 7px);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 240px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: rgba(15, 17, 21, 0.98);
+  color: var(--text);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  visibility: hidden;
+  white-space: normal;
+}
+.fits-tooltip:hover::after,
+.fits-tooltip:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
 .fits-item-row span {
   overflow: hidden;
   text-overflow: ellipsis;
