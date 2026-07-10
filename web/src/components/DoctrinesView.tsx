@@ -1,0 +1,209 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  addDoctrineFit,
+  createDoctrine,
+  deleteDoctrine,
+  fetchDoctrine,
+  fetchDoctrines,
+  fetchFits,
+  removeDoctrineFit,
+  updateDoctrine,
+  type DoctrineDetail,
+  type DoctrineSummary,
+  type SavedFitSummary,
+} from '../api.ts';
+import { FitModeSwitch, type FitMode } from './FitModeSwitch.tsx';
+
+interface Props {
+  mode: FitMode;
+  onMode: (mode: FitMode) => void;
+}
+
+function iconUrl(typeId: number): string {
+  return `https://images.evetech.net/types/${typeId}/icon?size=64`;
+}
+
+function warningCount(fit: SavedFitSummary): number {
+  return fit.warningCounts.unmatched + fit.warningCounts.overSlot + fit.warningCounts.unassignable;
+}
+
+export function DoctrinesView({ mode, onMode }: Props) {
+  const [query, setQuery] = useState('');
+  const [doctrines, setDoctrines] = useState<DoctrineSummary[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [detail, setDetail] = useState<DoctrineDetail | null>(null);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [fitQuery, setFitQuery] = useState('');
+  const [savedFits, setSavedFits] = useState<SavedFitSummary[]>([]);
+
+  async function reloadList(q = query) {
+    const rows = await fetchDoctrines(q);
+    setDoctrines(rows);
+    if (selectedId == null && rows.length > 0) setSelectedId(rows[0].id);
+  }
+
+  useEffect(() => { reloadList(); }, []);
+  useEffect(() => {
+    const t = window.setTimeout(() => reloadList(query), 150);
+    return () => window.clearTimeout(t);
+  }, [query]);
+
+  useEffect(() => {
+    fetchFits().then(setSavedFits).catch(() => setSavedFits([]));
+  }, []);
+
+  useEffect(() => {
+    if (selectedId == null) { setDetail(null); return; }
+    let cancelled = false;
+    fetchDoctrine(selectedId).then(res => {
+      if (cancelled) return;
+      if ('error' in res) setDetail(null);
+      else setDetail(res);
+    });
+    return () => { cancelled = true; };
+  }, [selectedId]);
+
+  useEffect(() => {
+    setName(detail?.name ?? '');
+    setDescription(detail?.description ?? '');
+    setStatus(null);
+  }, [detail?.id]);
+
+  const availableFits = useMemo(() => {
+    const q = fitQuery.trim().toLowerCase();
+    const used = new Set(detail?.fits.map(fit => fit.id) ?? []);
+    return savedFits
+      .filter(fit => !used.has(fit.id))
+      .filter(fit => !q || `${fit.shipName} ${fit.fitName}`.toLowerCase().includes(q))
+      .slice(0, 12);
+  }, [savedFits, fitQuery, detail?.fits]);
+
+  async function createNewDoctrine() {
+    setBusy(true);
+    setStatus(null);
+    const res = await createDoctrine({ name: 'New Doctrine', description: '' });
+    setBusy(false);
+    if ('error' in res) { setStatus(res.error); return; }
+    setSelectedId(res.id);
+    setDetail(res);
+    setQuery('');
+    await reloadList('');
+  }
+
+  async function saveDoctrine() {
+    if (!detail) return;
+    setBusy(true);
+    const res = await updateDoctrine(detail.id, { name, description });
+    setBusy(false);
+    if ('error' in res) { setStatus(res.error); return; }
+    setDetail(res);
+    setStatus('Saved.');
+    await reloadList();
+  }
+
+  async function removeDoctrine() {
+    if (!detail) return;
+    if (!confirm('Delete this doctrine? Saved fits will not be deleted.')) return;
+    const res = await deleteDoctrine(detail.id);
+    if ('error' in res) { setStatus(res.error); return; }
+    setSelectedId(null);
+    setDetail(null);
+    await reloadList();
+  }
+
+  async function addFit(fitId: number) {
+    if (!detail) return;
+    const res = await addDoctrineFit(detail.id, fitId);
+    if ('error' in res) { setStatus(res.error); return; }
+    setDetail(res);
+    setFitQuery('');
+    await reloadList();
+  }
+
+  async function removeFit(fitId: number) {
+    if (!detail) return;
+    const res = await removeDoctrineFit(detail.id, fitId);
+    if ('error' in res) { setStatus(res.error); return; }
+    setDetail(res);
+    await reloadList();
+  }
+
+  return (
+    <main className="rows-wrap fits-view">
+      <aside className="fits-library doctrine-library">
+        <FitModeSwitch mode={mode} onMode={onMode} />
+        <div className="fits-lib-head">
+          <strong>Doctrines</strong>
+          <button className="fl-refresh" onClick={createNewDoctrine} disabled={busy}>Create doctrine</button>
+        </div>
+        <input className="fits-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search doctrines" />
+        <div className="fits-list">
+          {doctrines.map(row => (
+            <button key={row.id} className={`fits-row${selectedId === row.id ? ' active' : ''}`} onClick={() => setSelectedId(row.id)}>
+              <span className="fits-row-ship">{row.name}</span>
+              <span className="fits-row-name">{row.description || row.shipNames.join(', ') || 'No description'}</span>
+              <span className="fits-row-meta">{row.fitCount} fits</span>
+            </button>
+          ))}
+          {doctrines.length === 0 && <div className="fits-empty">Create a doctrine from saved fits.</div>}
+        </div>
+      </aside>
+
+      <section className="fits-detail doctrine-detail">
+        {!detail && <div className="fits-empty large">Create a doctrine from saved fits.</div>}
+        {detail && (
+          <>
+            <div className="doctrine-head">
+              <div className="doctrine-fields">
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="Doctrine name" />
+                <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Description of how this doctrine works" />
+              </div>
+              <div className="fits-actions">
+                <button onClick={saveDoctrine} disabled={busy}>Save</button>
+                <button className="danger" onClick={removeDoctrine}>Delete</button>
+                {status && <small className={status === 'Saved.' ? 'fits-status ok' : 'fits-status err'}>{status}</small>}
+              </div>
+            </div>
+
+            <section className="doctrine-add">
+              <h3>Add fit</h3>
+              <input value={fitQuery} onChange={e => setFitQuery(e.target.value)} placeholder="Search saved fits by ship or fit name" />
+              {fitQuery.trim() && (
+                <div className="doctrine-fit-results">
+                  {availableFits.map(fit => (
+                    <button key={fit.id} onClick={() => addFit(fit.id)}>
+                      <img src={iconUrl(fit.shipTypeId)} alt="" />
+                      <span><b>{fit.shipName}</b><small>{fit.fitName}</small></span>
+                    </button>
+                  ))}
+                  {availableFits.length === 0 && <div className="fits-empty">No saved fits found.</div>}
+                </div>
+              )}
+            </section>
+
+            <section className="doctrine-members">
+              <h3>Fits <span>{detail.fitCount}</span></h3>
+              <div className="doctrine-member-grid">
+                {detail.fits.map(fit => (
+                  <div className="doctrine-member" key={fit.id}>
+                    <img src={iconUrl(fit.shipTypeId)} alt="" />
+                    <div>
+                      <strong>{fit.shipName}</strong>
+                      <span>{fit.fitName}</span>
+                      {warningCount(fit) > 0 && <small>{warningCount(fit)} warnings</small>}
+                    </div>
+                    <button onClick={() => removeFit(fit.id)}>Remove</button>
+                  </div>
+                ))}
+                {detail.fits.length === 0 && <div className="fits-empty">No fits in this doctrine yet.</div>}
+              </div>
+            </section>
+          </>
+        )}
+      </section>
+    </main>
+  );
+}

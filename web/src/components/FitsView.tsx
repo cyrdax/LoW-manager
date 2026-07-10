@@ -21,10 +21,13 @@ import {
   type SavedFitDetail,
   type SavedFitSummary,
 } from '../api.ts';
+import { DoctrinesView } from './DoctrinesView.tsx';
+import { FitModeSwitch, type FitMode } from './FitModeSwitch.tsx';
 
 interface Props { chars: CharacterStatus[] }
 
 const FITS_HUB_KEY = 'efd.fits.hub';
+const FITS_MODE_KEY = 'efd.fits.mode';
 const FITS_PILOT_KEY = 'efd.fits.pilot';
 
 const SLOT_ROLES: FitSectionRole[] = ['low', 'mid', 'high', 'rig', 'service', 'subsystem'];
@@ -72,6 +75,13 @@ function iconUrl(typeId: number): string {
 }
 
 export function FitsView({ chars }: Props) {
+  const [mode, setMode] = useState<FitMode>(() => (localStorage.getItem(FITS_MODE_KEY) as FitMode) || 'fits');
+  useEffect(() => { localStorage.setItem(FITS_MODE_KEY, mode); }, [mode]);
+  if (mode === 'doctrines') return <DoctrinesView mode={mode} onMode={setMode} />;
+  return <SavedFitsView chars={chars} mode={mode} onMode={setMode} />;
+}
+
+function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode: (mode: FitMode) => void }) {
   const [fits, setFits] = useState<SavedFitSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<SavedFitDetail | null>(null);
@@ -253,6 +263,7 @@ export function FitsView({ chars }: Props) {
   return (
     <main className="rows-wrap fits-view">
       <aside className="fits-library">
+        <FitModeSwitch mode={mode} onMode={onMode} />
         <div className="fits-lib-head">
           <strong>Fits</strong>
           <button className="fl-refresh" onClick={() => setImportOpen(true)}>Import</button>
