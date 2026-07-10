@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { migrateContractIndexDb } from './contracts/index-store.ts';
+import { migrateDoctrinesDb } from './fits/doctrines.ts';
 import { migrateFitsDb } from './fits/store.ts';
 
 const DB_PATH = process.env.DB_PATH ?? 'data/app.db';
@@ -65,6 +66,7 @@ db.exec(`
 
 migrateContractIndexDb(db);
 migrateFitsDb(db);
+migrateDoctrinesDb(db);
 
 // Housekeeping: drop oauth_states entries older than 10 minutes.
 db.prepare(`DELETE FROM oauth_states WHERE created_at < ?`).run(Date.now() - 10 * 60 * 1000);
