@@ -63,3 +63,75 @@ export interface RenderEftInput {
   fitName: string;
   lines: ParsedFitLine[];
 }
+
+export interface FitWarning {
+  code: FitWarningCode;
+  message: string;
+  inputName?: string;
+  count?: number;
+}
+
+export interface FitShip {
+  typeId: number;
+  name: string;
+  groupId: number;
+  groupName: string;
+}
+
+export interface FitItem {
+  typeId: number;
+  name: string;
+  groupId: number;
+  groupName: string;
+  categoryId: number;
+  categoryName: string;
+}
+
+export interface FitShipLayout {
+  shipTypeId: number;
+  shipName: string;
+  highSlots: number;
+  midSlots: number;
+  lowSlots: number;
+  rigSlots: number;
+  serviceSlots: number;
+  subsystemSlots: number;
+  warnings: FitWarning[];
+}
+
+export interface FitShipSearchHit extends FitShip {}
+
+export interface AssignedFitItem {
+  id: string;
+  source: 'fit-line' | 'loaded-charge';
+  sectionIndex: number;
+  lineIndex: number;
+  rawLine: string;
+  inputName: string;
+  resolvedName: string | null;
+  typeId: number | null;
+  quantity: number;
+  role: FitSectionRole;
+  slotFlag: EsiFitFlag | null;
+  warning: FitWarning | null;
+}
+
+export interface AssignedFitSection {
+  role: FitSectionRole;
+  label: string;
+  slotCount: number;
+  emptySlots: number;
+  items: AssignedFitItem[];
+}
+
+export interface FitDraft {
+  rawEft: string;
+  fitName: string;
+  headerShipName: string;
+  ship: FitShip | null;
+  layout: FitShipLayout | null;
+  sections: Record<FitSectionRole, AssignedFitSection>;
+  items: AssignedFitItem[];
+  warnings: FitWarning[];
+  normalizedEft: string;
+}
