@@ -4,5 +4,6 @@ dist
 data/
 .cache/
 .worktrees/
+.superpowers/
 *.log
 .DS_Store
