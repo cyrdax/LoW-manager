@@ -353,7 +353,8 @@ npm run dev
 - Backend (Fastify + polling): http://localhost:3100
 - Vite dev server (frontend): http://localhost:5173
 - Vite proxies `/api` and `/auth` to `http://127.0.0.1:3100` by default. Override with `VITE_API_TARGET=http://127.0.0.1:<port>` if you run the backend on a different port.
-- The current runtime still uses SQLite while the multi-tenant Postgres cutover is in progress. `npm run db:migrate` prepares the target Postgres schema for the upcoming phases.
+- During the multi-tenant cutover, most legacy app data still uses SQLite. EVE OAuth state and the target multi-tenant schema use Postgres, so run `npm run db:migrate` before using EVE SSO on this branch.
+- Run live Postgres integration checks with `npm run test:pg` after setting `DATABASE_URL` and `TEST_DATABASE_URL`.
 
 Open http://localhost:5173. Click **Add character** once per alt.
 
@@ -384,7 +385,7 @@ If you move the boss into a squad mid-op, subsequent `Invite all` calls will fai
 
 ## Data, privacy, security
 
-- During the multi-tenant cutover, the legacy local runtime still stores tokens in `data/app.db`. The target hosted runtime stores EVE refresh tokens encrypted in Postgres.
+- During the multi-tenant cutover, the legacy local runtime still stores EVE character tokens in `data/app.db`. The target hosted runtime stores EVE refresh tokens encrypted in Postgres.
 - Anyone with an unencrypted legacy SQLite file can impersonate your characters within the scope set until you revoke the grants.
 - To fully reset: stop the server, delete `data/app.db`, revoke third-party grants at <https://community.eveonline.com/support/third-party-applications/>, then re-authenticate.
 - The server binds to `127.0.0.1` only — it's not reachable from other machines by default.

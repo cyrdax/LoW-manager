@@ -11,6 +11,7 @@
     "start": "node --loader tsx dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test:pg": "node --import tsx --test \"src/**/*.integration.test.ts\"",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "build:mastery": "tsx scripts/build-mastery-data.ts"
   },

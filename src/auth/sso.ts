@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { randomBytes } from 'node:crypto';
 import { db } from '../db.ts';
 import { SCOPE_STRING } from './scopes.ts';
 import { characterIdFromSub, verifyEveJwt } from './jwt.ts';
+import { createOAuthStateStore, type OAuthStateStore } from './oauth-state-store.ts';
 
 const AUTHORIZE_URL = 'https://login.eveonline.com/v2/oauth/authorize';
 const TOKEN_URL = 'https://login.eveonline.com/v2/oauth/token';
@@ -22,6 +22,10 @@ interface TokenResponse {
   expires_in: number;
   refresh_token: string;
   token_type: 'Bearer';
+}
+
+export interface SsoRouteDeps {
+  oauthStates?: OAuthStateStore;
 }
 
 export async function exchangeCode(code: string): Promise<TokenResponse> {
@@ -54,10 +58,11 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
   return res.json() as Promise<TokenResponse>;
 }
 
-export function registerSsoRoutes(app: FastifyInstance) {
+export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps = {}) {
+  const oauthStates = () => deps.oauthStates ?? createOAuthStateStore();
+
   app.get('/auth/login', async (req, reply) => {
-    const state = randomBytes(16).toString('hex');
-    db.prepare('INSERT INTO oauth_states (state, created_at) VALUES (?, ?)').run(state, Date.now());
+    const state = await oauthStates().issue();
     const params = new URLSearchParams({
       response_type: 'code',
       redirect_uri: env('EVE_CALLBACK_URL'),
@@ -72,9 +77,7 @@ export function registerSsoRoutes(app: FastifyInstance) {
     const { code, state } = req.query;
     if (!code || !state) return reply.code(400).send('Missing code/state');
 
-    const stateRow = db.prepare('SELECT state FROM oauth_states WHERE state = ?').get(state);
-    if (!stateRow) return reply.code(400).send('Invalid state');
-    db.prepare('DELETE FROM oauth_states WHERE state = ?').run(state);
+    if (!await oauthStates().consume(state)) return reply.code(400).send('Invalid state');
 
     const tokens = await exchangeCode(code);
     const claims = await verifyEveJwt(tokens.access_token);
