@@ -1,16 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { db } from '../db.ts';
 import { getPlanetPublic, getSystemInfo, resolveSchematic, resolveSystem, resolveType } from '../esi/universe.ts';
 import { allColonyPins, getColonyPins, snapshot } from '../polling/scheduler.ts';
 import { classifyTier, extractablesFor, type PiTier } from '../esi/pi-data.ts';
 import type { PlanetPin, PlanetType } from '../esi/planets.ts';
-
-interface SavedSystemRow {
-  system_id: number;
-  system_name: string;
-  saved_at: number;
-}
+import { createSavedSystemsStore, type SavedSystemsStore } from '../planets/saved-systems-store.ts';
 
 async function buildSystemPlanetList(systemId: number, overlay: Map<number, MyColonyOverlay[]>) {
   const system = await getSystemInfo(systemId);
@@ -79,7 +73,13 @@ interface MyColonyOverlay {
   hasIdle: boolean;
 }
 
-export function registerPlanetRoutes(app: FastifyInstance) {
+export interface PlanetRouteDeps {
+  savedSystems?: SavedSystemsStore;
+}
+
+export function registerPlanetRoutes(app: FastifyInstance, deps: PlanetRouteDeps = {}) {
+  const savedSystems = () => deps.savedSystems ?? createSavedSystemsStore();
+
   app.get<{ Params: { id: string } }>('/api/planets/system/:id', async (req, reply) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'invalid system id' });
@@ -120,14 +120,14 @@ export function registerPlanetRoutes(app: FastifyInstance) {
   );
 
   app.get('/api/planets/saved', async () => {
-    const rows = db.prepare('SELECT * FROM saved_systems ORDER BY system_name').all() as SavedSystemRow[];
+    const rows = await savedSystems().list();
     const overlay = overlayByPlanetId();
     const systems = await Promise.all(rows.map(async r => {
-      const block = await buildSystemPlanetList(r.system_id, overlay).catch(() => null);
+      const block = await buildSystemPlanetList(r.systemId, overlay).catch(() => null);
       if (!block) {
-        return { systemId: r.system_id, systemName: r.system_name, securityStatus: 0, planets: [], savedAt: r.saved_at, error: 'failed to load' };
+        return { systemId: r.systemId, systemName: r.systemName, securityStatus: 0, planets: [], savedAt: r.savedAt, error: 'failed to load' };
       }
-      return { ...block, savedAt: r.saved_at };
+      return { ...block, savedAt: r.savedAt };
     }));
     return { systems };
   });
@@ -138,8 +138,7 @@ export function registerPlanetRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
     const systemId = parsed.data.system_id;
 
-    const existing = db.prepare('SELECT system_id FROM saved_systems WHERE system_id = ?').get(systemId);
-    if (existing) return { ok: true, alreadySaved: true };
+    if (await savedSystems().has(systemId)) return { ok: true, alreadySaved: true };
 
     let systemName: string;
     try { systemName = await resolveSystem(systemId); }
@@ -148,15 +147,14 @@ export function registerPlanetRoutes(app: FastifyInstance) {
       return reply.code(e.status ?? 500).send({ error: e.message ?? 'failed to resolve system' });
     }
 
-    db.prepare(`INSERT INTO saved_systems (system_id, system_name, saved_at) VALUES (?, ?, ?)`)
-      .run(systemId, systemName, Date.now());
+    await savedSystems().add(systemId, systemName);
     return { ok: true };
   });
 
   app.delete<{ Params: { systemId: string } }>('/api/planets/saved/:systemId', async (req, reply) => {
     const systemId = Number(req.params.systemId);
     if (!Number.isFinite(systemId)) return reply.code(400).send({ error: 'invalid system id' });
-    db.prepare('DELETE FROM saved_systems WHERE system_id = ?').run(systemId);
+    await savedSystems().delete(systemId);
     return { ok: true };
   });
 

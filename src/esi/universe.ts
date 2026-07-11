@@ -1,20 +1,25 @@
-import { db } from '../db.ts';
 import { esiGet, esiGetPublic, esiPostPublic } from './client.ts';
+import { createUniverseCacheStore, type CorporationInfo } from './universe-cache-store.ts';
 
-function cached(category: string, id: number): string | null {
-  const row = db.prepare('SELECT name FROM universe_names WHERE category = ? AND id = ?').get(category, id) as { name: string } | undefined;
-  return row?.name ?? null;
+const privateStructureNames = new Map<string, string>();
+
+function cache() {
+  return createUniverseCacheStore();
 }
 
-function store(category: string, id: number, name: string) {
-  db.prepare('INSERT OR REPLACE INTO universe_names (category, id, name) VALUES (?, ?, ?)').run(category, id, name);
+async function cached(category: string, id: number): Promise<string | null> {
+  return cache().getName(category, id);
+}
+
+async function store(category: string, id: number, name: string): Promise<void> {
+  await cache().setName(category, id, name);
 }
 
 export async function resolveSystem(id: number): Promise<string> {
-  const hit = cached('system', id);
+  const hit = await cached('system', id);
   if (hit) return hit;
   const { data } = await esiGetPublic<{ name: string }>(`/universe/systems/${id}/`);
-  store('system', id, data.name);
+  await store('system', id, data.name);
   return data.name;
 }
 
@@ -23,26 +28,23 @@ export async function resolveSystem(id: number): Promise<string> {
  * Idempotent; cheap after first run because subsequent runs see the cache is already populated.
  */
 export async function bootstrapSystemsCache(): Promise<number> {
-  const existing = db.prepare(`SELECT COUNT(*) AS c FROM universe_names WHERE category = 'system'`).get() as { c: number };
-  if (existing.c > 7000) return existing.c; // New Eden has ~8k+ K-space + W-space systems; skip if we clearly have them
+  const names = cache();
+  const existing = await names.countNames('system');
+  if (existing > 7000) return existing; // New Eden has ~8k+ K-space + W-space systems; skip if we clearly have them
 
   const { data: ids } = await esiGetPublic<number[]>(`/universe/systems/`);
-  const missing = ids.filter(id => !cached('system', id));
-
-  const insert = db.prepare(`INSERT OR REPLACE INTO universe_names (category, id, name) VALUES ('system', ?, ?)`);
-  const tx = db.transaction((rows: Array<{ id: number; name: string }>) => {
-    for (const r of rows) insert.run(r.id, r.name);
-  });
+  const missing = await names.missingNameIds('system', ids);
 
   // /universe/names/ accepts up to 1000 IDs per call
   for (let i = 0; i < missing.length; i += 1000) {
     const chunk = missing.slice(i, i + 1000);
     const { data } = await esiPostPublic<Array<{ id: number; name: string; category: string }>>(`/universe/names/`, chunk);
-    tx(data.filter(d => d.category === 'solar_system'));
+    await names.setNames('system', data
+      .filter(d => d.category === 'solar_system')
+      .map(d => ({ id: d.id, name: d.name })));
   }
 
-  const final = db.prepare(`SELECT COUNT(*) AS c FROM universe_names WHERE category = 'system'`).get() as { c: number };
-  return final.c;
+  return names.countNames('system');
 }
 
 export interface SystemSearchHit {
@@ -50,48 +52,23 @@ export interface SystemSearchHit {
   name: string;
 }
 
-export function searchSystems(query: string, limit = 3): SystemSearchHit[] {
-  const q = query.trim();
-  if (q.length < 2) return [];
-  // Prefix match first (more relevant), then substring — de-duplicated, ordered by name length.
-  const prefix = db.prepare(`
-    SELECT id, name FROM universe_names
-    WHERE category = 'system' AND name LIKE ? COLLATE NOCASE
-    ORDER BY length(name) ASC
-    LIMIT ?
-  `).all(`${q}%`, limit) as SystemSearchHit[];
-
-  if (prefix.length >= limit) return prefix;
-
-  const seen = new Set(prefix.map(p => p.id));
-  const substr = db.prepare(`
-    SELECT id, name FROM universe_names
-    WHERE category = 'system' AND name LIKE ? COLLATE NOCASE
-    ORDER BY length(name) ASC
-    LIMIT ?
-  `).all(`%${q}%`, limit * 2) as SystemSearchHit[];
-
-  for (const s of substr) {
-    if (seen.has(s.id)) continue;
-    prefix.push(s);
-    if (prefix.length >= limit) break;
-  }
-  return prefix;
+export async function searchSystems(query: string, limit = 3): Promise<SystemSearchHit[]> {
+  return cache().searchNames('system', query, limit);
 }
 
 export async function resolveType(id: number): Promise<string> {
-  const hit = cached('type', id);
+  const hit = await cached('type', id);
   if (hit) return hit;
   const { data } = await esiGetPublic<{ name: string }>(`/universe/types/${id}/`);
-  store('type', id, data.name);
+  await store('type', id, data.name);
   return data.name;
 }
 
 export async function resolveSchematic(id: number): Promise<string> {
-  const hit = cached('schematic', id);
+  const hit = await cached('schematic', id);
   if (hit) return hit;
   const { data } = await esiGetPublic<{ schematic_name: string }>(`/universe/schematics/${id}/`);
-  store('schematic', id, data.schematic_name);
+  await store('schematic', id, data.schematic_name);
   return data.schematic_name;
 }
 
@@ -105,7 +82,7 @@ export interface SystemInfoPublic {
 
 export async function getSystemInfo(id: number): Promise<SystemInfoPublic> {
   const { data } = await esiGetPublic<SystemInfoPublic>(`/universe/systems/${id}/`);
-  store('system', id, data.name);
+  await store('system', id, data.name);
   return data;
 }
 
@@ -119,33 +96,34 @@ export interface PlanetPublic {
 
 export async function getPlanetPublic(id: number): Promise<PlanetPublic> {
   // Cache the planet's display name under a 'planet' category so repeated lookups stay cheap.
-  const cachedName = cached('planet', id);
+  const cachedName = await cached('planet', id);
   const { data } = await esiGetPublic<PlanetPublic>(`/universe/planets/${id}/`);
-  if (!cachedName) store('planet', id, data.name);
+  if (!cachedName) await store('planet', id, data.name);
   return data;
 }
 
 export async function resolveStation(id: number): Promise<string> {
-  const hit = cached('station', id);
+  const hit = await cached('station', id);
   if (hit) return hit;
   const { data } = await esiGetPublic<{ name: string }>(`/universe/stations/${id}/`);
-  store('station', id, data.name);
+  await store('station', id, data.name);
   return data.name;
 }
 
 // Structures (player-owned citadels) are private: the name only resolves for a character
 // with esi-universe.read_structures.v1 AND docking/grid access to that structure. ESI returns
 // the citadel's own name (by player convention usually system-prefixed, e.g. "J155720 - Home").
-// Names are cached permanently — they rarely change and a 403 elsewhere shouldn't lose a known one.
+// Names are cached per process and per character so access-derived names do not become global.
 // Returns null when the structure can't be resolved (no scope, no access, or transient error) so
 // the caller can fall back to the system/wormhole label it already has.
 export async function resolveStructure(id: number, characterId: number): Promise<string | null> {
-  const hit = cached('structure', id);
+  const cacheKey = `${characterId}:${id}`;
+  const hit = privateStructureNames.get(cacheKey);
   if (hit) return hit;
   try {
     const { data } = await esiGet<{ name: string }>(`/universe/structures/${id}/`, characterId);
     if (data?.name) {
-      store('structure', id, data.name);
+      privateStructureNames.set(cacheKey, data.name);
       return data.name;
     }
     return null;
@@ -166,12 +144,12 @@ export async function getCharacterPublic(id: number): Promise<CharacterPublic> {
   return data;
 }
 
-export interface CorporationInfo { name: string; ticker: string }
+export type { CorporationInfo } from './universe-cache-store.ts';
 
 export async function resolveCorporation(id: number): Promise<CorporationInfo> {
-  const row = db.prepare('SELECT name, ticker FROM corporations WHERE id = ?').get(id) as CorporationInfo | undefined;
+  const row = await cache().getCorporation(id);
   if (row) return row;
   const { data } = await esiGetPublic<CorporationInfo & { name: string; ticker: string }>(`/corporations/${id}/`);
-  db.prepare('INSERT OR REPLACE INTO corporations (id, name, ticker) VALUES (?, ?, ?)').run(id, data.name, data.ticker);
+  await cache().setCorporation(id, data);
   return { name: data.name, ticker: data.ticker };
 }

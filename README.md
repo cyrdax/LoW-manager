@@ -353,7 +353,7 @@ npm run dev
 - Backend (Fastify + polling): http://localhost:3100
 - Vite dev server (frontend): http://localhost:5173
 - Vite proxies `/api` and `/auth` to `http://127.0.0.1:3100` by default. Override with `VITE_API_TARGET=http://127.0.0.1:<port>` if you run the backend on a different port.
-- During the multi-tenant cutover, most legacy app data still uses SQLite. EVE OAuth state and the target multi-tenant schema use Postgres, so run `npm run db:migrate` before using EVE SSO on this branch.
+- During the multi-tenant cutover, most legacy pilot data still uses SQLite. EVE OAuth state, global universe/corporation caches, saved PI systems, and the target multi-tenant schema use Postgres, so run `npm run db:migrate` before using this branch.
 - Run live Postgres integration checks with `npm run test:pg` after setting `DATABASE_URL` and `TEST_DATABASE_URL`.
 
 Open http://localhost:5173. Click **Add character** once per alt.
@@ -397,8 +397,8 @@ If you move the boss into a squad mid-op, subsequent `Invite all` calls will fai
 
 ```
 [React + Vite dashboard]  ⇄  [Fastify backend]  ⇄  [EVE SSO / ESI]
-       ↑ SSE push                │
-                                 └── SQLite (tokens, corps, universe names)
+       ↑ SSE push                ├── SQLite (legacy pilot tokens and local-only data)
+                                 └── Postgres (auth state, global caches, saved PI systems, target tenant schema)
 ```
 
 Key pieces:
