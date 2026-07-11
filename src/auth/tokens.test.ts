@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createAccessTokenProvider } from './tokens.ts';
+import { createAccessTokenProvider, setAccessTokenCharacterStore } from './tokens.ts';
 import type { CharacterRow } from '../types.ts';
 
 test('AccessTokenProvider returns a cached token that is not near expiry', async () => {
@@ -63,6 +63,26 @@ test('AccessTokenProvider marks reauth only for invalid grant refresh failures',
 
   await assert.rejects(() => getAccessToken(101), /invalid_grant/);
   assert.deepEqual(characters.reauthMarked, [101]);
+});
+
+test('default AccessTokenProvider uses the configured async character store', async () => {
+  const characters = new FakeTokenCharacters({
+    access_token: 'configured-token',
+    access_token_expires_at: 200_000,
+  });
+  const restore = setAccessTokenCharacterStore(characters);
+  try {
+    const getAccessToken = createAccessTokenProvider({
+      now: () => 1_000,
+      refreshAccessToken: async () => {
+        throw new Error('should not refresh');
+      },
+    });
+
+    assert.equal(await getAccessToken(101), 'configured-token');
+  } finally {
+    restore();
+  }
 });
 
 class FakeTokenCharacters {

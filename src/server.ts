@@ -5,7 +5,10 @@ import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { registerAppAuthRoutes } from './auth/app-auth-routes.ts';
+import { setPilotAccessCharacterStore } from './auth/pilot-access.ts';
 import { registerSsoRoutes } from './auth/sso.ts';
+import { setAccessTokenCharacterStore } from './auth/tokens.ts';
+import { createPostgresCharacterStore } from './characters/store.ts';
 import { registerCharacterRoutes } from './routes/characters.ts';
 import { registerFleetRoutes } from './routes/fleet.ts';
 import { registerStreamRoute } from './routes/stream.ts';
@@ -21,20 +24,26 @@ import { registerFitRoutes } from './routes/fits.ts';
 import { startPolling } from './polling/scheduler.ts';
 import { bootstrapSystemsCache } from './esi/universe.ts';
 import { startContractIndexer } from './contracts/indexer.ts';
+import { createPostgresSavedSkillPlanStore } from './skills/saved-plans-store.ts';
 
 const app = Fastify({ logger: true });
+const characterStore = createPostgresCharacterStore();
+const savedSkillPlans = createPostgresSavedSkillPlanStore();
+
+setPilotAccessCharacterStore(characterStore);
+setAccessTokenCharacterStore(characterStore);
 
 await app.register(cookie, { secret: process.env.COOKIE_SECRET ?? 'dev-secret' });
 
 registerAppAuthRoutes(app);
-registerSsoRoutes(app);
-registerCharacterRoutes(app);
+registerSsoRoutes(app, { characters: characterStore });
+registerCharacterRoutes(app, { characters: characterStore });
 registerFleetRoutes(app);
-registerStreamRoute(app);
+registerStreamRoute(app, { characters: characterStore });
 registerSearchRoutes(app);
 registerAutopilotRoutes(app);
 registerPlanetRoutes(app);
-registerSkillsRoutes(app);
+registerSkillsRoutes(app, { savedPlans: savedSkillPlans });
 registerMarketRoutes(app);
 registerIndustryRoutes(app);
 registerContractRoutes(app);
@@ -56,7 +65,7 @@ try {
   app.log.warn(`No built frontend at ${distDir}; running in dev mode (use vite on port 5173).`);
 }
 
-startPolling();
+startPolling({ characters: characterStore });
 try {
   startContractIndexer({ logger: app.log });
 } catch (err) {

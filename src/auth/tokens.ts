@@ -25,12 +25,26 @@ export interface AccessTokenProviderDeps {
   refreshAccessToken?: (refreshToken: string) => Promise<TokenResponse>;
 }
 
+let defaultCharacters: TokenCharacterStore | null = null;
+
+function defaultCharacterStore(): TokenCharacterStore {
+  return defaultCharacters ??= createSqliteCharacterStore();
+}
+
+export function setAccessTokenCharacterStore(store: TokenCharacterStore): () => void {
+  const previous = defaultCharacters;
+  defaultCharacters = store;
+  return () => {
+    defaultCharacters = previous;
+  };
+}
+
 export function createAccessTokenProvider(deps: AccessTokenProviderDeps = {}) {
-  const characters = deps.characters ?? createSqliteCharacterStore();
   const now = deps.now ?? (() => Date.now());
   const refreshAccessToken = deps.refreshAccessToken ?? refreshAccessTokenDefault;
 
   return async function getAccessTokenForCharacter(characterId: number): Promise<string> {
+    const characters = deps.characters ?? defaultCharacterStore();
     const row = await characters.getById(characterId);
     if (!row) throw new Error(`Unknown character ${characterId}`);
     if (row.needs_reauth) throw new Error(`Character ${characterId} needs reauth`);

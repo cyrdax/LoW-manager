@@ -1,5 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { createSqliteCharacterStore } from '../characters/store.ts';
+import {
+  createSqliteCharacterStore,
+} from '../characters/store.ts';
 import type { CharacterRow } from '../types.ts';
 import {
   createCurrentUserResolver,
@@ -17,7 +19,29 @@ export interface PilotAccessRouteDeps {
   currentUser?: CurrentUserResolver;
 }
 
-const defaultCharacters = createSqliteCharacterStore();
+type MaybePromise<T> = T | Promise<T>;
+
+interface PilotAccessCharacterStore {
+  listByUser(userId: string): MaybePromise<CharacterRow[]>;
+  listUsableByUser(userId: string): MaybePromise<CharacterRow[]>;
+  listIdsByUser(userId: string): MaybePromise<number[]>;
+  getOwned(userId: string, characterId: number): MaybePromise<CharacterRow | undefined>;
+  owns(userId: string, characterId: number): MaybePromise<boolean>;
+}
+
+let defaultCharacters: PilotAccessCharacterStore | null = null;
+
+function defaultCharacterStore(): PilotAccessCharacterStore {
+  return defaultCharacters ??= createSqliteCharacterStore();
+}
+
+export function setPilotAccessCharacterStore(store: PilotAccessCharacterStore): () => void {
+  const previous = defaultCharacters;
+  defaultCharacters = store;
+  return () => {
+    defaultCharacters = previous;
+  };
+}
 
 export function routeCurrentUser(deps: PilotAccessRouteDeps = {}): CurrentUserResolver {
   let defaultResolver: CurrentUserResolver | null = null;
@@ -37,12 +61,12 @@ export async function requireUser(
   return user;
 }
 
-export function ownsCharacter(userId: string, characterId: number): boolean {
-  return defaultCharacters.owns(userId, characterId);
+export function ownsCharacter(userId: string, characterId: number): boolean | Promise<boolean> {
+  return defaultCharacterStore().owns(userId, characterId);
 }
 
 export async function getOwnedCharacter(userId: string, characterId: number): Promise<CharacterRow | undefined> {
-  return defaultCharacters.getOwned(userId, characterId);
+  return defaultCharacterStore().getOwned(userId, characterId);
 }
 
 export async function requireOwnedCharacter(
@@ -57,17 +81,17 @@ export async function requireOwnedCharacter(
 }
 
 export async function listUsableCharacters(userId: string): Promise<CharacterRow[]> {
-  return defaultCharacters.listUsableByUser(userId);
+  return defaultCharacterStore().listUsableByUser(userId);
 }
 
 export async function getFleetBossCharacter(userId: string): Promise<CharacterRow | undefined> {
-  return defaultCharacters.listByUser(userId).find(row => row.is_boss === 1);
+  return (await defaultCharacterStore().listByUser(userId)).find(row => row.is_boss === 1);
 }
 
 export async function listFleetInviteCharacters(userId: string): Promise<CharacterRow[]> {
-  return defaultCharacters.listUsableByUser(userId).filter(row => row.is_boss === 0);
+  return (await defaultCharacterStore().listUsableByUser(userId)).filter(row => row.is_boss === 0);
 }
 
 export async function userCharacterIds(userId: string): Promise<Set<number>> {
-  return new Set(defaultCharacters.listIdsByUser(userId));
+  return new Set(await defaultCharacterStore().listIdsByUser(userId));
 }
