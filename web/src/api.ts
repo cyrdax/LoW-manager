@@ -129,6 +129,14 @@ export async function deleteCharacter(id: number): Promise<void> {
   await fetch(`/api/characters/${id}`, { method: 'DELETE' });
 }
 
+export async function setMainCharacter(characterId: number | null): Promise<{ mainCharacterId: number | null } | { error: string }> {
+  return jsonOrError(await fetch('/api/characters/main', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ character_id: characterId }),
+  }));
+}
+
 export async function setBoss(id: number): Promise<void> {
   await fetch('/api/boss', {
     method: 'POST',

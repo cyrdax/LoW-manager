@@ -37,7 +37,13 @@ class FakeClient implements QueryClient {
       const user = row ? this.users.get(row.user_id) : undefined;
       const valid = row && user?.status === 'active' && row.revoked_at == null && row.expires_at > now;
       return {
-        rows: valid ? [{ ...row, user_email: user.email, user_role: user.role, user_status: user.status }] : [],
+        rows: valid ? [{
+          ...row,
+          user_email: user.email,
+          user_role: user.role,
+          user_status: user.status,
+          user_main_character_id: user.main_character_id,
+        }] : [],
         rowCount: valid ? 1 : 0,
       } as T;
     }
@@ -96,6 +102,7 @@ test('SessionStore finds, touches, revokes, and expires sessions by raw token', 
   const found = await store.findByToken('raw-session-token');
   assert.equal(found?.session.id, issued.session.id);
   assert.equal(found?.user.id, 'active-user');
+  assert.equal((found?.user as { mainCharacterId?: number | null } | undefined)?.mainCharacterId, 95465499);
 
   await store.touch(issued.session.id);
   assert.equal(client.sessions.get(hashSessionToken('raw-session-token'))?.last_seen_at?.toISOString(), now.toISOString());
@@ -110,6 +117,7 @@ interface UserRow {
   email: string;
   role: 'user' | 'admin';
   status: 'active' | 'disabled' | 'deleted';
+  main_character_id: number | null;
 }
 
 interface SessionRow {
@@ -130,5 +138,6 @@ function userRow(id: string, status: UserRow['status']): UserRow {
     email: `${id}@example.com`,
     role: id === 'active-user' ? 'admin' : 'user',
     status,
+    main_character_id: id === 'active-user' ? 95465499 : null,
   };
 }

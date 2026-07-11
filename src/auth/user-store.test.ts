@@ -91,6 +91,13 @@ class FakeClient implements QueryClient {
       user.updated_at = params?.[1] as Date;
       return { rows: [user], rowCount: 1 } as T;
     }
+    if (text.includes('UPDATE app_users') && text.includes('SET main_character_id')) {
+      const user = this.users.get(String(params?.[0]));
+      if (!user || user.status !== 'active') return { rows: [], rowCount: 0 } as T;
+      user.main_character_id = params?.[1] as number | null;
+      user.updated_at = params?.[2] as Date;
+      return { rows: [user], rowCount: 1 } as T;
+    }
     if (text.includes('UPDATE user_password_credentials')) {
       const credential = Array.from(this.credentials.values()).find(c => c.user_id === params?.[0]);
       if (!credential) return { rows: [], rowCount: 0 } as T;
@@ -147,6 +154,22 @@ test('UserStore updates password credentials for active users', async () => {
   assert.equal(await store.updatePassword(user.id, 'new-hash'), true);
   assert.equal((await store.findByEmailWithPassword('pilot@example.com'))?.passwordHash, 'new-hash');
   assert.equal(await store.updatePassword('missing-user', 'newer-hash'), false);
+});
+
+test('UserStore sets and clears the main character for active users', async () => {
+  const client = new FakeClient();
+  const now = new Date('2026-07-11T12:00:00Z');
+  const store = createUserStore(client, { now: () => now }) as ReturnType<typeof createUserStore> & {
+    setMainCharacter(userId: string, characterId: number | null): Promise<{ mainCharacterId: number | null } | null>;
+  };
+  const user = await store.createPasswordUser('pilot@example.com', 'hash');
+
+  const selected = await store.setMainCharacter(user.id, 95465499);
+  assert.equal(selected?.mainCharacterId, 95465499);
+
+  const cleared = await store.setMainCharacter(user.id, null);
+  assert.equal(cleared?.mainCharacterId, null);
+  assert.equal(await store.setMainCharacter('missing-user', 95465499), null);
 });
 
 test('UserStore links Google accounts and reuses existing users by email', async () => {

@@ -4,7 +4,9 @@ import type { AppUser } from './user-store.ts';
 
 export const SESSION_COOKIE = 'efd_session';
 
-export type CurrentAppUser = Pick<AppUser, 'id' | 'email' | 'role' | 'status'>;
+export type CurrentAppUser = Pick<AppUser, 'id' | 'email' | 'role' | 'status'> & {
+  mainCharacterId?: number | null;
+};
 export type CurrentUserResolver = (req: FastifyRequest) => Promise<CurrentAppUser | null>;
 
 export interface CurrentUserResolverDeps {

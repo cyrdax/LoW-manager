@@ -28,6 +28,7 @@ export interface UserStore {
   findOrCreateGoogleUser(input: { googleSub: string; email: string; emailVerified: boolean }): Promise<AppUser>;
   markEmailVerified(userId: string): Promise<AppUser | null>;
   markActive(userId: string): Promise<AppUser | null>;
+  setMainCharacter(userId: string, characterId: number | null): Promise<AppUser | null>;
   updatePassword(userId: string, passwordHash: string): Promise<boolean>;
 }
 
@@ -215,6 +216,21 @@ export function createUserStore(
             last_active_at, created_at, updated_at, deleted_at
         `,
         [userId, timestamp],
+      );
+      return rows.rows[0] ? mapUser(rows.rows[0]) : null;
+    },
+
+    async setMainCharacter(userId, characterId) {
+      const timestamp = now();
+      const rows = await source.query<AppUserRow>(
+        `
+          UPDATE app_users
+          SET main_character_id = $2, updated_at = $3
+          WHERE id = $1 AND status = 'active'
+          RETURNING id, email, email_verified_at, role, status, main_character_id,
+            last_active_at, created_at, updated_at, deleted_at
+        `,
+        [userId, characterId, timestamp],
       );
       return rows.rows[0] ? mapUser(rows.rows[0]) : null;
     },

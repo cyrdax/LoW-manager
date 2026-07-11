@@ -23,9 +23,10 @@ interface Props {
   setView: (v: View) => void;
   currentUser?: CurrentUser;
   onLogout?: () => void;
+  onSetMainCharacter?: (characterId: number | null) => void;
 }
 
-export function ControlPanel({ chars, selection, onRefresh, view, setView, currentUser, onLogout }: Props) {
+export function ControlPanel({ chars, selection, onRefresh, view, setView, currentUser, onLogout, onSetMainCharacter }: Props) {
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<InviteResult[] | null>(null);
   const [resultsLabel, setResultsLabel] = useState<'invited' | 'moved' | 'ok'>('ok');
@@ -34,6 +35,9 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView, curre
   const [targetKey, setTargetKey] = useState<string>('auto');
 
   const boss = chars.find(c => c.isBoss);
+  const mainPilot = currentUser?.mainCharacterId
+    ? chars.find(c => c.characterId === currentUser.mainCharacterId) ?? null
+    : null;
   const bossInFleet = boss?.fleetId != null;
   const bossIsFC = boss?.fleetRole === 'fleet_commander';
   // ESI's `/fleets/{id}/...` writes require the caller to be the fleet_boss_id —
@@ -119,12 +123,29 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView, curre
 
       {currentUser && (
         <div className="account-box">
-          <div>
-            <span>{currentUser.email}</span>
-            <small>{currentUser.role}</small>
+          <div className="account-identity">
+            {mainPilot && <img src={mainPilot.portraitUrl} alt="" />}
+            <div>
+              <span>{mainPilot?.name ?? currentUser.email ?? 'Account'}</span>
+              <small>{mainPilot && currentUser.email ? `${currentUser.email} · ${currentUser.role}` : currentUser.role}</small>
+            </div>
           </div>
           <button onClick={onLogout}>Log out</button>
         </div>
+      )}
+
+      {currentUser && chars.length > 0 && (
+        <label className="main-pilot-control">
+          <span>Main pilot</span>
+          <select
+            className="main-pilot-select"
+            value={currentUser.mainCharacterId ?? ''}
+            onChange={e => onSetMainCharacter?.(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">Choose a pilot</option>
+            {chars.map(c => <option key={c.characterId} value={c.characterId}>{c.name}</option>)}
+          </select>
+        </label>
       )}
 
       <div className="view-nav view-nav-8">

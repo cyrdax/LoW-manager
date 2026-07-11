@@ -24,7 +24,7 @@ export interface IssuedSession {
 
 export interface AuthenticatedSession {
   session: UserSession;
-  user: Pick<AppUser, 'id' | 'email' | 'role' | 'status'>;
+  user: Pick<AppUser, 'id' | 'email' | 'role' | 'status' | 'mainCharacterId'>;
 }
 
 export interface SessionStore {
@@ -62,6 +62,7 @@ interface AuthenticatedSessionRow extends SessionRow {
   user_email: string | null;
   user_role: UserRole;
   user_status: UserStatus;
+  user_main_character_id: string | number | null;
 }
 
 export function createSessionStore(
@@ -105,7 +106,8 @@ export function createSessionStore(
         `
           SELECT s.id, s.user_id, s.token_hash, s.created_at, s.expires_at, s.revoked_at,
             s.last_seen_at, s.ip_hash, s.user_agent_hash,
-            u.email AS user_email, u.role AS user_role, u.status AS user_status
+            u.email AS user_email, u.role AS user_role, u.status AS user_status,
+            u.main_character_id AS user_main_character_id
           FROM user_sessions s
           JOIN app_users u ON u.id = s.user_id
           WHERE s.token_hash = $1
@@ -124,6 +126,7 @@ export function createSessionStore(
               email: row.user_email,
               role: row.user_role,
               status: row.user_status,
+              mainCharacterId: row.user_main_character_id == null ? null : Number(row.user_main_character_id),
             },
           }
         : null;

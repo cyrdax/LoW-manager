@@ -11,7 +11,7 @@ import { IndustryView } from './components/IndustryView.tsx';
 import { ContractsView } from './components/ContractsView.tsx';
 import { FitsView } from './components/FitsView.tsx';
 import { AuthGate } from './components/AuthGate.tsx';
-import { deleteCharacter, fetchCurrentUser, logout, setBoss, type CharacterStatus, type CurrentUser } from './api.ts';
+import { deleteCharacter, fetchCurrentUser, logout, setBoss, setMainCharacter, type CharacterStatus, type CurrentUser } from './api.ts';
 
 type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits';
 
@@ -139,6 +139,15 @@ export function App() {
     await logout();
     setCurrentUser(null);
   };
+  const onSetMainCharacter = async (characterId: number | null) => {
+    if (!currentUser) return;
+    const result = await setMainCharacter(characterId);
+    if ('error' in result) {
+      alert(result.error);
+      return;
+    }
+    setCurrentUser({ ...currentUser, mainCharacterId: result.mainCharacterId });
+  };
 
   const totals: Partial<Record<SortKey, string>> = {
     wallet: list.length ? formatShortIsk(totalWallet) : undefined,
@@ -156,7 +165,16 @@ export function App() {
 
   return (
     <div className="layout">
-      <ControlPanel chars={list} selection={selection} onRefresh={refresh} view={view} setView={setView} currentUser={currentUser} onLogout={onLogout} />
+      <ControlPanel
+        chars={list}
+        selection={selection}
+        onRefresh={refresh}
+        view={view}
+        setView={setView}
+        currentUser={currentUser}
+        onLogout={onLogout}
+        onSetMainCharacter={onSetMainCharacter}
+      />
 
       {view === 'pilots' && (
         <main className="rows-wrap">

@@ -196,7 +196,21 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
-.account-box div {
+.account-identity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.account-identity img {
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.account-identity div {
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -208,6 +222,14 @@ body {
   white-space: nowrap;
 }
 .account-box button { flex-shrink: 0; padding: 6px 8px; }
+.main-pilot-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.main-pilot-select { width: 100%; }
 
 /* rows */
 .rows-wrap {

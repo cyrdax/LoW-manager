@@ -291,6 +291,13 @@ class FakeUserStore implements UserStore {
     return user;
   }
 
+  async setMainCharacter(userId: string, characterId: number | null): Promise<AppUser | null> {
+    const user = this.users.get(userId);
+    if (!user || user.status !== 'active') return null;
+    user.mainCharacterId = characterId;
+    return user;
+  }
+
   async updatePassword(userId: string, passwordHash: string): Promise<boolean> {
     const user = this.users.get(userId);
     if (!user || !user.email) return false;
@@ -353,7 +360,16 @@ class FakeSessionStore implements SessionStore {
     if (!entry) return null;
     const user = this.users.users.get(entry.userId);
     if (!user || user.status !== 'active') return null;
-    return { session: entry.session, user: { id: user.id, email: user.email, role: user.role, status: user.status } };
+    return {
+      session: entry.session,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        mainCharacterId: user.mainCharacterId,
+      },
+    };
   }
 
   async touch(sessionId: string): Promise<void> {

@@ -7,6 +7,7 @@ test('frontend exposes auth api helpers and gates the dashboard behind login', (
   const api = readFileSync(resolve('web/src/api.ts'), 'utf8');
   const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
   const authGate = readFileSync(resolve('web/src/components/AuthGate.tsx'), 'utf8');
+  const controlPanel = readFileSync(resolve('web/src/components/ControlPanel.tsx'), 'utf8');
   const charsHook = readFileSync(resolve('web/src/hooks/useCharacters.ts'), 'utf8');
   const server = readFileSync(resolve('src/server.ts'), 'utf8');
   const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
@@ -18,11 +19,17 @@ test('frontend exposes auth api helpers and gates the dashboard behind login', (
   assert.match(api, /export async function logout/);
   assert.match(api, /export async function requestPasswordReset/);
   assert.match(api, /export async function completePasswordReset/);
+  assert.match(api, /export async function setMainCharacter/);
 
   assert.match(app, /AuthGate/);
   assert.match(app, /fetchCurrentUser/);
   assert.match(app, /if \(!currentUser\)/);
+  assert.match(app, /setCurrentUser\(\{\s*\.\.\.currentUser,\s*mainCharacterId/);
   assert.match(charsHook, /enabled = true/);
+
+  assert.match(controlPanel, /Main pilot/);
+  assert.match(controlPanel, /main-pilot-select/);
+  assert.match(controlPanel, /portraitUrl/);
 
   assert.match(authGate, /Create account/);
   assert.match(authGate, /Sign in/);
