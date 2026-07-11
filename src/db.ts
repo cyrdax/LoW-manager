@@ -55,6 +55,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS saved_skill_plans (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        TEXT,
     character_id   INTEGER NOT NULL,
     ship_id        INTEGER NOT NULL,
     mastery_level  INTEGER NOT NULL,
@@ -70,6 +71,12 @@ if (!characterColumns.some(c => c.name === 'user_id')) {
   db.prepare('ALTER TABLE characters ADD COLUMN user_id TEXT').run();
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_characters_user ON characters(user_id);');
+
+const savedSkillPlanColumns = db.prepare('PRAGMA table_info(saved_skill_plans)').all() as Array<{ name: string }>;
+if (!savedSkillPlanColumns.some(c => c.name === 'user_id')) {
+  db.prepare('ALTER TABLE saved_skill_plans ADD COLUMN user_id TEXT').run();
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_saved_skill_plans_user ON saved_skill_plans(user_id);');
 
 migrateContractIndexDb(db);
 migrateFitsDb(db);

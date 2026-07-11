@@ -26,6 +26,11 @@ function testStore() {
   return createFitStore(db);
 }
 
+const ownedPilotDeps = {
+  currentUser: async () => ({ id: 'user-1', email: null, role: 'user' as const, status: 'active' as const }),
+  ownsCharacter: () => true,
+};
+
 test('POST /api/fits/preview returns a draft with unmatched warnings', async () => {
   const app = Fastify();
   registerFitRoutes(app, { store: testStore() });
@@ -106,6 +111,7 @@ test('send route creates an in-game fitting and reports excluded rows', async ()
   const observed: EsiFittingCreatePayload[] = [];
   registerFitRoutes(app, {
     store,
+    ...ownedPilotDeps,
     createFitting: async (_characterId, payload) => {
       observed.push(payload);
       return 12345;
@@ -130,6 +136,7 @@ test('send route returns a reauth hint for missing fitting scope', async () => {
   const saved = store.create({ rawEft: naglfar });
   registerFitRoutes(app, {
     store,
+    ...ownedPilotDeps,
     createFitting: async () => {
       const err = new Error('forbidden') as Error & { status: number; body: string };
       err.status = 403;

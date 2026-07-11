@@ -1,9 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { db } from '../db.ts';
-import type { CharacterRow } from '../types.ts';
 import { setAutopilotWaypoint } from '../esi/ui.ts';
 import { snapshotOne } from '../polling/scheduler.ts';
+import {
+  listUsableCharacters,
+  requireUser,
+  routeCurrentUser,
+  type CurrentUserResolver,
+  type ListUsableCharacters,
+} from '../auth/pilot-access.ts';
 
 async function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms));
@@ -17,14 +22,25 @@ const body = z.object({
   character_ids: z.array(z.number().int()).optional(),
 });
 
-export function registerAutopilotRoutes(app: FastifyInstance) {
+export interface AutopilotRouteDeps {
+  currentUser?: CurrentUserResolver;
+  listUsableCharacters?: ListUsableCharacters;
+}
+
+export function registerAutopilotRoutes(app: FastifyInstance, deps: AutopilotRouteDeps = {}) {
+  const currentUser = routeCurrentUser(deps);
+  const listCharacters = deps.listUsableCharacters ?? listUsableCharacters;
+
   app.post('/api/autopilot/waypoint', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const parsed = body.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
     const { destination_id, clear_other_waypoints = true, add_to_beginning = false, only_online = true, character_ids } = parsed.data;
     const selection = character_ids ? new Set(character_ids) : null;
 
-    const all = db.prepare('SELECT * FROM characters WHERE needs_reauth = 0').all() as CharacterRow[];
+    const all = listCharacters(user.id);
     const chars = selection ? all.filter(c => selection.has(c.character_id)) : all;
     const results: Array<{ characterId: number; name: string; ok: boolean; error?: string }> = [];
 

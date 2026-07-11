@@ -1,4 +1,11 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import {
+  requireOwnedCharacter,
+  requireUser,
+  routeCurrentUser,
+  type CurrentUserResolver,
+  type OwnsCharacter,
+} from '../auth/pilot-access.ts';
 import { db } from '../db.ts';
 import { buildFitDraft } from '../fits/assignment.ts';
 import { buildEsiFittingPayload, createCharacterFitting, type EsiFittingCreatePayload } from '../fits/esi.ts';
@@ -14,6 +21,8 @@ export interface FitRouteDeps {
   quoteFit?: (fit: FitDraft, hub: HubKey) => Promise<FitQuote>;
   createFitting?: (characterId: number, payload: EsiFittingCreatePayload) => Promise<number | null>;
   searchShips?: typeof searchFitShips;
+  currentUser?: CurrentUserResolver;
+  ownsCharacter?: OwnsCharacter;
 }
 
 export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {}) {
@@ -22,6 +31,8 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   const quote = deps.quoteFit ?? quoteFit;
   const createFitting = deps.createFitting ?? createCharacterFitting;
   const shipSearch = deps.searchShips ?? searchFitShips;
+  const currentUser = routeCurrentUser(deps);
+  const owns = deps.ownsCharacter;
 
   app.get('/api/fits/ships', async (req) => {
     const q = String((req.query as { q?: string }).q ?? '');
@@ -51,6 +62,9 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   });
 
   app.post('/api/fits/send-draft', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const body = req.body as {
       rawEft?: string;
       shipTypeId?: number;
@@ -61,6 +75,7 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
     if (!body?.rawEft) return reply.code(400).send({ error: 'rawEft is required' });
     const characterId = cleanPositiveNumber(body.characterId);
     if (!characterId) return reply.code(400).send({ error: 'characterId is required' });
+    if (!requireOwnedCharacter(user.id, characterId, reply, owns)) return reply;
     try {
       const draft = draftBuilder(body.rawEft, cleanPositiveNumber(body.shipTypeId));
       return sendFit(reply, applyDraftOverrides(draft, body), characterId, createFitting);
@@ -101,10 +116,14 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   });
 
   app.post('/api/fits/:id/send', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid fit id is required' });
     const characterId = cleanPositiveNumber((req.body as { characterId?: number } | undefined)?.characterId);
     if (!characterId) return reply.code(400).send({ error: 'characterId is required' });
+    if (!requireOwnedCharacter(user.id, characterId, reply, owns)) return reply;
     const fit = store.get(id);
     if (!fit) return reply.code(404).send({ error: 'fit not found' });
     return sendFit(reply, fit, characterId, createFitting);

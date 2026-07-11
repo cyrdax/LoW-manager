@@ -1,5 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  requireOwnedCharacter,
+  requireUser,
+  routeCurrentUser,
+  type CurrentUserResolver,
+  type OwnsCharacter,
+} from '../auth/pilot-access.ts';
 import { db } from '../db.ts';
 import { openInformationWindow, openMarketDetailsWindow } from '../esi/ui.ts';
 import { getCharacterAttributes, getCharacterSkills } from '../polling/scheduler.ts';
@@ -8,6 +15,7 @@ import { trainingSecondsForSp, type CharacterAttributes } from '../skills/traini
 
 interface SavedPlanRow {
   id: number;
+  user_id: string | null;
   character_id: number;
   ship_id: number;
   mastery_level: number;
@@ -193,7 +201,15 @@ function buildItemPlan(
   return { skills: planned, totals: { totalSpGap, totalTrainingSeconds, skillsToTrain, skillsMet, totalSkills: planned.length } };
 }
 
-export function registerSkillsRoutes(app: FastifyInstance) {
+export interface SkillRouteDeps {
+  currentUser?: CurrentUserResolver;
+  ownsCharacter?: OwnsCharacter;
+}
+
+export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps = {}) {
+  const currentUser = routeCurrentUser(deps);
+  const owns = deps.ownsCharacter;
+
   app.get('/api/skills/meta', async () => {
     const data = loadMasteryData();
     return { meta: data._meta };
@@ -252,6 +268,9 @@ export function registerSkillsRoutes(app: FastifyInstance) {
       if (!Number.isFinite(charId) || !Number.isFinite(itemId)) {
         return reply.code(400).send({ error: 'characterId and itemId are required' });
       }
+      const user = await requireUser(req, reply, currentUser);
+      if (!user) return reply;
+      if (!requireOwnedCharacter(user.id, charId, reply, owns)) return reply;
       const item = data.items[String(itemId)];
       if (!item) return reply.code(404).send({ error: 'item not found' });
 
@@ -295,6 +314,9 @@ export function registerSkillsRoutes(app: FastifyInstance) {
       if (!Number.isFinite(charId) || !Number.isFinite(shipId)) {
         return reply.code(400).send({ error: 'characterId and shipId are required' });
       }
+      const user = await requireUser(req, reply, currentUser);
+      if (!user) return reply;
+      if (!requireOwnedCharacter(user.id, charId, reply, owns)) return reply;
       const ship = data.ships[String(shipId)];
       if (!ship) return reply.code(404).send({ error: 'ship not found' });
 
@@ -315,12 +337,16 @@ export function registerSkillsRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get<{ Querystring: { characterId?: string } }>('/api/skills/plans', async (req) => {
+  app.get<{ Querystring: { characterId?: string } }>('/api/skills/plans', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const data = loadMasteryData();
     const charId = Number(req.query.characterId);
+    if (Number.isFinite(charId) && !requireOwnedCharacter(user.id, charId, reply, owns)) return reply;
     const rows = (Number.isFinite(charId)
-      ? db.prepare('SELECT * FROM saved_skill_plans WHERE character_id = ? ORDER BY saved_at DESC').all(charId)
-      : db.prepare('SELECT * FROM saved_skill_plans ORDER BY saved_at DESC').all()
+      ? db.prepare('SELECT * FROM saved_skill_plans WHERE user_id = ? AND character_id = ? ORDER BY saved_at DESC').all(user.id, charId)
+      : db.prepare('SELECT * FROM saved_skill_plans WHERE user_id = ? ORDER BY saved_at DESC').all(user.id)
     ) as SavedPlanRow[];
     return rows.map(r => {
       const ship = data.ships[String(r.ship_id)];
@@ -347,19 +373,25 @@ export function registerSkillsRoutes(app: FastifyInstance) {
     const parsed = savePlanSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
     const { character_id, ship_id, mastery_level, label } = parsed.data;
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+    if (!requireOwnedCharacter(user.id, character_id, reply, owns)) return reply;
     db.prepare(`
-      INSERT INTO saved_skill_plans (character_id, ship_id, mastery_level, label, saved_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO saved_skill_plans (user_id, character_id, ship_id, mastery_level, label, saved_at)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(character_id, ship_id, mastery_level)
-      DO UPDATE SET label = excluded.label, saved_at = excluded.saved_at
-    `).run(character_id, ship_id, mastery_level, label ?? null, Date.now());
+      DO UPDATE SET user_id = excluded.user_id, label = excluded.label, saved_at = excluded.saved_at
+    `).run(user.id, character_id, ship_id, mastery_level, label ?? null, Date.now());
     return { ok: true };
   });
 
   app.delete<{ Params: { id: string } }>('/api/skills/plans/:id', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'invalid id' });
-    db.prepare('DELETE FROM saved_skill_plans WHERE id = ?').run(id);
+    db.prepare('DELETE FROM saved_skill_plans WHERE id = ? AND user_id = ?').run(id, user.id);
     return { ok: true };
   });
 
@@ -372,6 +404,9 @@ export function registerSkillsRoutes(app: FastifyInstance) {
     const parsed = openWindowSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
     const { character_id, type_id, kind } = parsed.data;
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+    if (!requireOwnedCharacter(user.id, character_id, reply, owns)) return reply;
     try {
       if (kind === 'info') await openInformationWindow(character_id, type_id);
       else await openMarketDetailsWindow(character_id, type_id);

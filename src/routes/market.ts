@@ -1,4 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import {
+  requireOwnedCharacter,
+  requireUser,
+  routeCurrentUser,
+  type CurrentUserResolver,
+  type OwnsCharacter,
+} from '../auth/pilot-access.ts';
 import { esiPost } from '../esi/client.ts';
 import {
   HUBS,
@@ -58,7 +65,15 @@ function formatShoppingMailBody(quote: MarketQuoteResult): string {
   return lines.join('<br>');
 }
 
-export function registerMarketRoutes(app: FastifyInstance) {
+export interface MarketRouteDeps {
+  currentUser?: CurrentUserResolver;
+  ownsCharacter?: OwnsCharacter;
+}
+
+export function registerMarketRoutes(app: FastifyInstance, deps: MarketRouteDeps = {}) {
+  const currentUser = routeCurrentUser(deps);
+  const owns = deps.ownsCharacter;
+
   app.get('/api/market/plex/history', async (_req, reply) => {
     try {
       const history = await getHistory(PLEX_REGION_ID, PLEX_TYPE_ID);
@@ -91,6 +106,9 @@ export function registerMarketRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/market/shopping-list/send', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const body = req.body as {
       hub?: string;
       items?: Array<{ name?: string; qty?: number }>;
@@ -104,6 +122,7 @@ export function registerMarketRoutes(app: FastifyInstance) {
     if (!Number.isFinite(recipientId) || recipientId <= 0) {
       return reply.code(400).send({ error: 'recipientCharacterId required' });
     }
+    if (!requireOwnedCharacter(user.id, recipientId, reply, owns)) return reply;
 
     try {
       const quote = await quoteShoppingListItems(hubKey, rawItems, { log: req.log });
