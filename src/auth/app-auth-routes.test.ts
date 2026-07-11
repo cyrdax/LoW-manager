@@ -176,6 +176,35 @@ test('google auth start redirects to Google with an oauth state token', async ()
   await app.close();
 });
 
+test('google auth env accepts GOOGLE_CALLBACK_URL as redirect override', async (t) => {
+  const previous = {
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL,
+    GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
+  };
+  t.after(() => {
+    restoreEnv('GOOGLE_CLIENT_ID', previous.GOOGLE_CLIENT_ID);
+    restoreEnv('GOOGLE_CLIENT_SECRET', previous.GOOGLE_CLIENT_SECRET);
+    restoreEnv('GOOGLE_CALLBACK_URL', previous.GOOGLE_CALLBACK_URL);
+    restoreEnv('GOOGLE_REDIRECT_URI', previous.GOOGLE_REDIRECT_URI);
+  });
+  process.env.GOOGLE_CLIENT_ID = 'env-google-client';
+  process.env.GOOGLE_CLIENT_SECRET = 'env-google-secret';
+  process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3100/auth/google/callback';
+  delete process.env.GOOGLE_REDIRECT_URI;
+
+  const app = await appWithAuth(testDeps());
+  const res = await app.inject({ method: 'GET', url: '/auth/google/start' });
+
+  assert.equal(res.statusCode, 302);
+  const location = String(res.headers.location);
+  assert.match(location, /client_id=env-google-client/);
+  assert.match(location, /redirect_uri=http%3A%2F%2Flocalhost%3A3100%2Fauth%2Fgoogle%2Fcallback/);
+
+  await app.close();
+});
+
 test('google auth callback creates a session for a verified Google account', async () => {
   const deps = testDeps();
   deps.google = testGoogleConfig();
@@ -221,6 +250,14 @@ function testDeps() {
   const tokens = new FakeTokenStore();
   const mailer = new FakeMailer();
   return { users, sessions, tokens, mailer, google: undefined as ReturnType<typeof testGoogleConfig> | undefined };
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value == null) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
 }
 
 function testGoogleConfig() {

@@ -267,7 +267,7 @@ function googleConfigFromEnv(): GoogleAuthConfig | null {
   return {
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    redirectUri: process.env.GOOGLE_REDIRECT_URI,
+    redirectUri: process.env.GOOGLE_REDIRECT_URI ?? process.env.GOOGLE_CALLBACK_URL,
   };
 }
 
