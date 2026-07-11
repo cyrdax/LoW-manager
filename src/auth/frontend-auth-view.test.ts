@@ -9,6 +9,7 @@ test('frontend exposes auth api helpers and gates the dashboard behind login', (
   const authGate = readFileSync(resolve('web/src/components/AuthGate.tsx'), 'utf8');
   const charsHook = readFileSync(resolve('web/src/hooks/useCharacters.ts'), 'utf8');
   const server = readFileSync(resolve('src/server.ts'), 'utf8');
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
 
   assert.match(api, /export interface CurrentUser/);
   assert.match(api, /export async function fetchCurrentUser/);
@@ -27,9 +28,11 @@ test('frontend exposes auth api helpers and gates the dashboard behind login', (
   assert.match(authGate, /Sign in/);
   assert.match(authGate, /Continue with Google/);
   assert.match(authGate, /\/auth\/google\/start/);
-  assert.match(authGate, /Reset password/);
+  assert.match(authGate, /Forgot password\?/);
+  assert.doesNotMatch(authGate, />Reset password<\/button>/);
   assert.match(authGate, /requestPasswordReset/);
   assert.match(authGate, /completePasswordReset/);
+  assert.match(styles, /grid-template-columns: repeat\(2, 1fr\)/);
 
   assert.match(server, /\/auth\/password\/reset/);
 });

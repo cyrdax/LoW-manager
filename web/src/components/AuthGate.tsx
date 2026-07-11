@@ -98,7 +98,6 @@ export function AuthGate({ onAuthenticated }: Props) {
         <div className="auth-tabs">
           <button className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(null); }}>Sign in</button>
           <button className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setError(null); }}>Create account</button>
-          <button className={mode === 'reset' ? 'active' : ''} onClick={() => { setMode('reset'); setError(null); }}>Reset password</button>
         </div>
 
         {message && <div className="auth-note">{message}</div>}
@@ -110,6 +109,9 @@ export function AuthGate({ onAuthenticated }: Props) {
           <form className="auth-form" onSubmit={submitLogin}>
             <label>Email<input value={email} onChange={e => setEmail(e.target.value)} type="email" autoComplete="email" required /></label>
             <label>Password<input value={password} onChange={e => setPassword(e.target.value)} type="password" autoComplete="current-password" required minLength={8} /></label>
+            <button className="auth-link-button" type="button" onClick={() => { setMode('reset'); setError(null); }}>
+              Forgot password?
+            </button>
             <button className="primary" disabled={busy}>{busy ? 'Signing in...' : 'Sign in'}</button>
           </form>
         )}

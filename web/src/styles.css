@@ -43,7 +43,7 @@ body {
 .auth-panel p { margin: 0; color: var(--dim); }
 .auth-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 4px;
   padding: 2px;
   border: 1px solid var(--border);
@@ -105,6 +105,17 @@ body {
   font-weight: 700;
 }
 .auth-form button.primary:disabled { opacity: 0.65; cursor: not-allowed; }
+.auth-link-button {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.auth-link-button:hover { text-decoration: underline; }
 .auth-note,
 .auth-error {
   border-radius: 6px;
