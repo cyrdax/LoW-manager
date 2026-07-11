@@ -43,14 +43,18 @@ test('frontend exposes public and private fit library controls', () => {
 
   assert.match(fitsView, /FITS_VISIBILITY_KEY/);
   assert.match(fitsView, /LibraryScopeSwitch/);
+  assert.match(fitsView, /<div className="fits-topbar">/);
+  assert.match(fitsView, /<LibraryScopeSwitch value=\{visibility\} onChange=\{setVisibility\} \/>/);
+  assert.match(fitsView, /<SavedFitsView[^>]+visibility=\{visibility\}[^>]+setVisibility=\{setVisibility\}/s);
+  assert.match(fitsView, /<DoctrinesView[^>]+visibility=\{visibility\}[^>]+setVisibility=\{setVisibility\}/s);
   assert.match(fitsView, /fetchFits\((scope|visibility)\)/);
   assert.match(fitsView, /publishCurrent/);
   assert.match(fitsView, /copyCurrentToPrivate/);
   assert.match(fitsView, /Publish/);
   assert.match(fitsView, /Copy private/);
 
-  assert.match(doctrinesView, /DOCTRINE_VISIBILITY_KEY/);
-  assert.match(doctrinesView, /LibraryScopeSwitch/);
+  assert.doesNotMatch(doctrinesView, /DOCTRINE_VISIBILITY_KEY/);
+  assert.doesNotMatch(doctrinesView, /LibraryScopeSwitch/);
   assert.match(doctrinesView, /fetchDoctrines\(q, (scope|visibility)\)/);
   assert.match(doctrinesView, /publishCurrentDoctrine/);
   assert.match(doctrinesView, /copyDoctrineToPrivate/);

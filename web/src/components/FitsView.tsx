@@ -82,18 +82,34 @@ function iconUrl(typeId: number): string {
 
 export function FitsView({ chars, currentUser }: Props) {
   const [mode, setMode] = useState<FitMode>(() => (localStorage.getItem(FITS_MODE_KEY) as FitMode) || 'fits');
+  const [visibility, setVisibility] = useState<LibraryVisibility>(() => (localStorage.getItem(FITS_VISIBILITY_KEY) as LibraryVisibility) || 'private');
   useEffect(() => { localStorage.setItem(FITS_MODE_KEY, mode); }, [mode]);
-  if (mode === 'doctrines') return <DoctrinesView mode={mode} onMode={setMode} currentUser={currentUser} />;
-  return <SavedFitsView chars={chars} mode={mode} onMode={setMode} currentUser={currentUser} />;
+  useEffect(() => { localStorage.setItem(FITS_VISIBILITY_KEY, visibility); }, [visibility]);
+
+  return (
+    <>
+      <div className="fits-topbar">
+        <FitModeSwitch mode={mode} onMode={setMode} />
+        <LibraryScopeSwitch value={visibility} onChange={setVisibility} />
+      </div>
+      {mode === 'doctrines'
+        ? <DoctrinesView currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} />
+        : <SavedFitsView chars={chars} currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} />}
+    </>
+  );
 }
 
-function SavedFitsView({ chars, mode, onMode, currentUser }: Props & { mode: FitMode; onMode: (mode: FitMode) => void }) {
+function SavedFitsView({
+  chars,
+  currentUser,
+  visibility,
+  setVisibility,
+}: Props & { visibility: LibraryVisibility; setVisibility: (visibility: LibraryVisibility) => void }) {
   const [fits, setFits] = useState<SavedFitSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<SavedFitDetail | null>(null);
   const [draft, setDraft] = useState<FitDraft | null>(null);
   const [search, setSearch] = useState('');
-  const [visibility, setVisibility] = useState<LibraryVisibility>(() => (localStorage.getItem(FITS_VISIBILITY_KEY) as LibraryVisibility) || 'private');
   const [hub, setHub] = useState<FitHub>(() => (localStorage.getItem(FITS_HUB_KEY) as FitHub) || 'jita');
   const [quote, setQuote] = useState<FitQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -132,7 +148,6 @@ function SavedFitsView({ chars, mode, onMode, currentUser }: Props & { mode: Fit
     setFits(rows);
     setSelectedId(current => (current != null && rows.some(row => row.id === current)) ? current : rows[0]?.id ?? null);
   };
-  useEffect(() => { localStorage.setItem(FITS_VISIBILITY_KEY, visibility); }, [visibility]);
   useEffect(() => {
     setDraft(null);
     setDetail(null);
@@ -309,12 +324,10 @@ function SavedFitsView({ chars, mode, onMode, currentUser }: Props & { mode: Fit
   return (
     <main className="rows-wrap fits-view">
       <aside className="fits-library">
-        <FitModeSwitch mode={mode} onMode={onMode} />
         <div className="fits-lib-head">
           <strong>Fits</strong>
           <button className="fl-refresh" onClick={() => setImportOpen(true)}>Import</button>
         </div>
-        <LibraryScopeSwitch value={visibility} onChange={setVisibility} />
         <input
           className="fits-search"
           value={search}

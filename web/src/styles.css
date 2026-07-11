@@ -1990,6 +1990,17 @@ body {
 }
 
 /* Fits */
+.fits-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px 0;
+}
+.fits-topbar .fits-mode-switch,
+.fits-topbar .library-scope-switch {
+  min-width: 220px;
+}
 .fits-view {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
@@ -2584,6 +2595,14 @@ body {
 }
 
 @media (max-width: 820px) {
+  .fits-topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .fits-topbar .fits-mode-switch,
+  .fits-topbar .library-scope-switch {
+    min-width: 0;
+  }
   .fits-view {
     grid-template-columns: 1fr;
     overflow-y: auto;

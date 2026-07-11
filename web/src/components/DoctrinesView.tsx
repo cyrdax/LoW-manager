@@ -16,16 +16,12 @@ import {
   type LibraryVisibility,
   type SavedFitSummary,
 } from '../api.ts';
-import { FitModeSwitch, type FitMode } from './FitModeSwitch.tsx';
-import { LibraryScopeSwitch } from './LibraryScopeSwitch.tsx';
 
 interface Props {
-  mode: FitMode;
-  onMode: (mode: FitMode) => void;
   currentUser: CurrentUser;
+  visibility: LibraryVisibility;
+  setVisibility: (visibility: LibraryVisibility) => void;
 }
-
-const DOCTRINE_VISIBILITY_KEY = 'efd.doctrines.visibility';
 
 function iconUrl(typeId: number): string {
   return `https://images.evetech.net/types/${typeId}/icon?size=64`;
@@ -35,9 +31,8 @@ function warningCount(fit: SavedFitSummary): number {
   return fit.warningCounts.unmatched + fit.warningCounts.overSlot + fit.warningCounts.unassignable;
 }
 
-export function DoctrinesView({ mode, onMode, currentUser }: Props) {
+export function DoctrinesView({ currentUser, visibility, setVisibility }: Props) {
   const [query, setQuery] = useState('');
-  const [visibility, setVisibility] = useState<LibraryVisibility>(() => (localStorage.getItem(DOCTRINE_VISIBILITY_KEY) as LibraryVisibility) || 'private');
   const [doctrines, setDoctrines] = useState<DoctrineSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<DoctrineDetail | null>(null);
@@ -54,7 +49,6 @@ export function DoctrinesView({ mode, onMode, currentUser }: Props) {
     setSelectedId(current => (current != null && rows.some(row => row.id === current)) ? current : rows[0]?.id ?? null);
   }
 
-  useEffect(() => { localStorage.setItem(DOCTRINE_VISIBILITY_KEY, visibility); }, [visibility]);
   useEffect(() => {
     setDetail(null);
     setSelectedId(null);
@@ -180,12 +174,10 @@ export function DoctrinesView({ mode, onMode, currentUser }: Props) {
   return (
     <main className="rows-wrap fits-view">
       <aside className="fits-library doctrine-library">
-        <FitModeSwitch mode={mode} onMode={onMode} />
         <div className="fits-lib-head">
           <strong>Doctrines</strong>
           <button className="fl-refresh" onClick={createNewDoctrine} disabled={busy}>Create doctrine</button>
         </div>
-        <LibraryScopeSwitch value={visibility} onChange={setVisibility} />
         <input className="fits-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search doctrines" />
         <div className="fits-list">
           {doctrines.map(row => (
