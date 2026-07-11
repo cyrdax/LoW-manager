@@ -1,5 +1,6 @@
 export interface CharacterRow {
   character_id: number;
+  user_id: string | null;
   character_name: string;
   owner_hash: string;
   scopes: string;

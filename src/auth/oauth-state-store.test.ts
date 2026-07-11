@@ -5,18 +5,19 @@ import type { QueryClient } from '../db/migrations.ts';
 
 class FakeClient implements QueryClient {
   queries: Array<{ text: string; params?: readonly unknown[] }> = [];
-  validHashes = new Set<string>();
+  validHashes = new Map<string, Record<string, unknown>>();
 
   async query<T>(text: string, params?: readonly unknown[]) {
     this.queries.push({ text, params });
     if (text.includes('INSERT INTO auth_tokens')) {
-      this.validHashes.add(String(params?.[0]));
+      this.validHashes.set(String(params?.[0]), JSON.parse(String(params?.[1])));
       return { rows: [], rowCount: 1 } as T;
     }
     if (text.includes('UPDATE auth_tokens')) {
       const hash = String(params?.[0]);
+      const metadata = this.validHashes.get(hash);
       const consumed = this.validHashes.delete(hash);
-      return { rows: consumed ? [{ id: 'token-id' }] : [], rowCount: consumed ? 1 : 0 } as T;
+      return { rows: consumed ? [{ id: 'token-id', metadata }] : [], rowCount: consumed ? 1 : 0 } as T;
     }
     if (text.includes('DELETE FROM auth_tokens')) {
       return { rows: [], rowCount: 3 } as T;
@@ -39,8 +40,8 @@ test('OAuthStateStore issues hashed state and consumes it once', async () => {
   const state = await store.issue({ redirect: '/fits' });
   assert.equal(client.queries[0].params?.[0], hashState(state));
   assert.notEqual(client.queries[0].params?.[0], state);
-  assert.equal(await store.consume(state), true);
-  assert.equal(await store.consume(state), false);
+  assert.deepEqual(await store.consume(state), { redirect: '/fits' });
+  assert.equal(await store.consume(state), null);
 });
 
 test('OAuthStateStore deletes expired state rows', async () => {

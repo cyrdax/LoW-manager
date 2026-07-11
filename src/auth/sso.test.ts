@@ -29,11 +29,11 @@ test('EVE login issues OAuth state through the state store', withEveEnv(async ()
   let issued = false;
   const store: OAuthStateStore = {
     issue: async () => { issued = true; return 'state-from-store'; },
-    consume: async () => false,
+    consume: async () => null,
     deleteExpired: async () => 0,
   };
   const app = Fastify();
-  registerSsoRoutes(app, { oauthStates: store });
+  registerSsoRoutes(app, { oauthStates: store, currentUser: async () => ({ id: 'user-1', email: 'u@example.com', role: 'user', status: 'active' }) });
 
   const res = await app.inject({ method: 'GET', url: '/auth/login' });
   assert.equal(res.statusCode, 302);
@@ -44,12 +44,41 @@ test('EVE login issues OAuth state through the state store', withEveEnv(async ()
   assert.match(String(location), /state=state-from-store/);
 }));
 
-test('EVE callback rejects invalid OAuth state before token exchange', withEveEnv(async () => {
-  const store: OAuthStateStore = {
-    issue: async () => 'state-from-store',
-    consume: async () => false,
+test('EVE login requires an app user and stores their id in OAuth state metadata', withEveEnv(async () => {
+  let issuedMetadata: Record<string, unknown> | undefined;
+  const store = {
+    issue: async (metadata?: Record<string, unknown>) => { issuedMetadata = metadata; return 'state-from-store'; },
+    consume: async () => null,
     deleteExpired: async () => 0,
-  };
+  } as any as OAuthStateStore;
+
+  const unauthenticated = Fastify();
+  registerSsoRoutes(unauthenticated, {
+    oauthStates: store,
+    currentUser: async () => null,
+  } as any);
+
+  const denied = await unauthenticated.inject({ method: 'GET', url: '/auth/login' });
+  assert.equal(denied.statusCode, 401);
+  assert.equal(issuedMetadata, undefined);
+
+  const authenticated = Fastify();
+  registerSsoRoutes(authenticated, {
+    oauthStates: store,
+    currentUser: async () => ({ id: 'user-1' }),
+  } as any);
+
+  const res = await authenticated.inject({ method: 'GET', url: '/auth/login' });
+  assert.equal(res.statusCode, 302);
+  assert.deepEqual(issuedMetadata, { userId: 'user-1' });
+}));
+
+test('EVE callback rejects invalid OAuth state before token exchange', withEveEnv(async () => {
+  const store = {
+    issue: async () => 'state-from-store',
+    consume: async () => null,
+    deleteExpired: async () => 0,
+  } as any as OAuthStateStore;
   const app = Fastify();
   registerSsoRoutes(app, { oauthStates: store });
 

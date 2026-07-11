@@ -32,8 +32,8 @@ test('OAuthStateStore persists and consumes EVE OAuth state in Postgres', { skip
     assert.equal(rows.rows[0].token_hash, hashState(state));
     assert.equal(rows.rows[0].consumed_at, null);
 
-    assert.equal(await store.consume(state), true);
-    assert.equal(await store.consume(state), false);
+    assert.deepEqual(await store.consume(state), {});
+    assert.equal(await store.consume(state), null);
   } finally {
     await pool.end();
     await dropPostgresTestDatabase(isolated);

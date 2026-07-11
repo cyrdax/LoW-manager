@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
-import type { FastifyBaseLogger, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { createAppTokenStore, type AppTokenStore } from './app-token-store.ts';
+import { readSessionToken, SESSION_COOKIE } from './current-user.ts';
 import { hashPassword as hashPasswordDefault, verifyPassword as verifyPasswordDefault } from './password.ts';
 import { createSessionStore, type SessionStore } from './session-store.ts';
 import { createUserStore, type AppUser, type UserStore } from './user-store.ts';
 
-const SESSION_COOKIE = 'efd_session';
 const SESSION_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
@@ -206,13 +206,6 @@ function publicUser(user: AppUser) {
     status: user.status,
     mainCharacterId: user.mainCharacterId,
   };
-}
-
-function readSessionToken(req: FastifyRequest, cookieName: string): string | null {
-  const raw = req.cookies?.[cookieName];
-  if (!raw) return null;
-  const unsigned = req.unsignCookie(raw);
-  return unsigned.valid ? unsigned.value ?? null : null;
 }
 
 function setSessionCookie(reply: FastifyReply, cookieName: string, token: string, secure: boolean): void {

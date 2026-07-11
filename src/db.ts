@@ -15,6 +15,7 @@ db.pragma('foreign_keys = ON');
 db.exec(`
   CREATE TABLE IF NOT EXISTS characters (
     character_id            INTEGER PRIMARY KEY,
+    user_id                 TEXT,
     character_name          TEXT NOT NULL,
     owner_hash              TEXT NOT NULL,
     scopes                  TEXT NOT NULL,
@@ -63,6 +64,12 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_saved_skill_plans_char ON saved_skill_plans(character_id);
 `);
+
+const characterColumns = db.prepare('PRAGMA table_info(characters)').all() as Array<{ name: string }>;
+if (!characterColumns.some(c => c.name === 'user_id')) {
+  db.prepare('ALTER TABLE characters ADD COLUMN user_id TEXT').run();
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_characters_user ON characters(user_id);');
 
 migrateContractIndexDb(db);
 migrateFitsDb(db);

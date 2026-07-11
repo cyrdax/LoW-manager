@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { db } from '../db.ts';
 import { SCOPE_STRING } from './scopes.ts';
 import { characterIdFromSub, verifyEveJwt } from './jwt.ts';
+import { createCurrentUserResolver, type CurrentUserResolver } from './current-user.ts';
 import { createOAuthStateStore, type OAuthStateStore } from './oauth-state-store.ts';
 
 const AUTHORIZE_URL = 'https://login.eveonline.com/v2/oauth/authorize';
@@ -26,6 +27,7 @@ interface TokenResponse {
 
 export interface SsoRouteDeps {
   oauthStates?: OAuthStateStore;
+  currentUser?: CurrentUserResolver;
 }
 
 export async function exchangeCode(code: string): Promise<TokenResponse> {
@@ -60,9 +62,21 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 
 export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps = {}) {
   const oauthStates = () => deps.oauthStates ?? createOAuthStateStore();
+  let defaultCurrentUser: CurrentUserResolver | null = null;
+  const currentUser = () => deps.currentUser ?? (defaultCurrentUser ??= createCurrentUserResolver());
 
   app.get('/auth/login', async (req, reply) => {
-    const state = await oauthStates().issue();
+    const user = await currentUser()(req);
+    if (!user) {
+      return reply.code(401).type('text/html').send(`
+        <!doctype html><html><body style="font-family:sans-serif;background:#111;color:#eee;padding:2rem">
+          <h2>Sign in required</h2>
+          <p>Sign in to the dashboard before adding an EVE pilot.</p>
+        </body></html>
+      `);
+    }
+
+    const state = await oauthStates().issue({ userId: user.id });
     const params = new URLSearchParams({
       response_type: 'code',
       redirect_uri: env('EVE_CALLBACK_URL'),
@@ -77,7 +91,9 @@ export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps = {})
     const { code, state } = req.query;
     if (!code || !state) return reply.code(400).send('Missing code/state');
 
-    if (!await oauthStates().consume(state)) return reply.code(400).send('Invalid state');
+    const stateMetadata = await oauthStates().consume(state);
+    const userId = typeof stateMetadata?.userId === 'string' ? stateMetadata.userId : null;
+    if (!userId) return reply.code(400).send('Invalid state');
 
     const tokens = await exchangeCode(code);
     const claims = await verifyEveJwt(tokens.access_token);
@@ -86,10 +102,11 @@ export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps = {})
     const expiresAt = Date.now() + tokens.expires_in * 1000;
 
     db.prepare(`
-      INSERT INTO characters (character_id, character_name, owner_hash, scopes,
+      INSERT INTO characters (character_id, user_id, character_name, owner_hash, scopes,
         refresh_token, access_token, access_token_expires_at, added_at, needs_reauth, is_boss)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
       ON CONFLICT(character_id) DO UPDATE SET
+        user_id = excluded.user_id,
         character_name = excluded.character_name,
         owner_hash = excluded.owner_hash,
         scopes = excluded.scopes,
@@ -99,6 +116,7 @@ export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps = {})
         needs_reauth = 0
     `).run(
       characterId,
+      userId,
       claims.name,
       claims.owner,
       scopes,

@@ -6,13 +6,17 @@ const DEFAULT_TTL_MS = 10 * 60 * 1000;
 
 export interface OAuthStateStore {
   issue(metadata?: Record<string, unknown>): Promise<string>;
-  consume(state: string): Promise<boolean>;
+  consume(state: string): Promise<Record<string, unknown> | null>;
   deleteExpired(): Promise<number>;
 }
 
 export interface OAuthStateStoreOptions {
   ttlMs?: number;
   now?: () => Date;
+}
+
+interface ConsumedOAuthStateRow {
+  metadata: unknown;
 }
 
 export function createOAuthStateStore(
@@ -37,9 +41,9 @@ export function createOAuthStateStore(
       return state;
     },
 
-    async consume(state: string): Promise<boolean> {
+    async consume(state: string): Promise<Record<string, unknown> | null> {
       const consumedAt = now();
-      const result = await client.query(
+      const result = await client.query<ConsumedOAuthStateRow>(
         `
           UPDATE auth_tokens
           SET consumed_at = $2
@@ -47,11 +51,12 @@ export function createOAuthStateStore(
             AND token_hash = $1
             AND consumed_at IS NULL
             AND expires_at > $2
-          RETURNING id
+          RETURNING metadata
         `,
         [hashState(state), consumedAt],
       );
-      return result.rowCount === 1;
+      const row = result.rows[0];
+      return row ? metadataRecord(row.metadata) : null;
     },
 
     async deleteExpired(): Promise<number> {
@@ -70,4 +75,10 @@ export function createOAuthStateStore(
 
 export function hashState(state: string): string {
   return createHash('sha256').update(state).digest('hex');
+}
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
