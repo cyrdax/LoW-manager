@@ -12,8 +12,9 @@ test('private pilot action routes verify character ownership before using ESI da
   const skills = readFileSync(resolve('src/routes/skills.ts'), 'utf8');
 
   assert.match(helper, /export function ownsCharacter/);
-  assert.match(helper, /SELECT 1 FROM characters WHERE character_id = \? AND user_id = \?/);
-  assert.match(helper, /SELECT \* FROM characters WHERE user_id = \? AND needs_reauth = 0/);
+  assert.match(helper, /createSqliteCharacterStore/);
+  assert.match(helper, /\.owns\(userId, characterId\)/);
+  assert.match(helper, /\.listUsableByUser\(userId\)/);
 
   assert.match(db, /user_id\s+TEXT/);
   assert.match(db, /CREATE INDEX IF NOT EXISTS idx_saved_skill_plans_user/);

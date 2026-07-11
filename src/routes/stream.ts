@@ -1,15 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { createCurrentUserResolver, type CurrentUserResolver } from '../auth/current-user.ts';
-import { db } from '../db.ts';
+import { createSqliteCharacterStore, type CharacterStore } from '../characters/store.ts';
 import { bus } from '../polling/events.ts';
 import { snapshot } from '../polling/scheduler.ts';
 
 export interface StreamRouteDeps {
   currentUser?: CurrentUserResolver;
+  characters?: CharacterStore;
 }
 
 export function registerStreamRoute(app: FastifyInstance, deps: StreamRouteDeps = {}) {
   const currentUser = deps.currentUser ?? createCurrentUserResolver();
+  const characterStore = deps.characters ?? createSqliteCharacterStore();
 
   app.get('/api/stream', async (req, reply) => {
     const user = await currentUser(req);
@@ -26,10 +28,7 @@ export function registerStreamRoute(app: FastifyInstance, deps: StreamRouteDeps 
       reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
-    const characterIds = () => new Set(
-      (db.prepare('SELECT character_id FROM characters WHERE user_id = ?').all(user.id) as Array<{ character_id: number }>)
-        .map(row => row.character_id),
-    );
+    const characterIds = () => new Set(characterStore.listIdsByUser(user.id));
     const ownsCharacter = (value: unknown) => {
       if (typeof value !== 'object' || value === null || !('characterId' in value)) return false;
       return characterIds().has(Number((value as { characterId: unknown }).characterId));

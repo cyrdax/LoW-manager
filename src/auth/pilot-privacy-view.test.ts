@@ -11,15 +11,15 @@ test('pilot authorization and realtime character routes are scoped to the curren
 
   assert.match(db, /user_id\s+TEXT/);
   assert.match(sso, /issue\(\{ userId: user\.id \}\)/);
-  assert.match(sso, /INSERT INTO characters \(character_id, user_id,/);
-  assert.match(sso, /ON CONFLICT\(character_id\) DO UPDATE SET[\s\S]*user_id = excluded\.user_id/);
+  assert.match(sso, /upsertAuthorized/);
 
-  assert.match(characters, /WHERE user_id = \?/);
-  assert.match(characters, /WHERE character_id = \? AND user_id = \?/);
-  assert.match(characters, /UPDATE characters SET is_boss = 0 WHERE user_id = \?/);
+  assert.match(characters, /createSqliteCharacterStore/);
+  assert.match(characters, /listByUser\(user\.id\)/);
+  assert.match(characters, /deleteOwned\(user\.id, id\)/);
+  assert.match(characters, /setBoss\(user\.id, parsed\.data\.character_id\)/);
   assert.match(characters, /\/api\/characters\/main/);
   assert.match(characters, /setMainCharacter/);
 
-  assert.match(stream, /WHERE user_id = \?/);
+  assert.match(stream, /listIdsByUser\(user\.id\)/);
   assert.match(stream, /characterId/);
 });

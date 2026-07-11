@@ -9,7 +9,8 @@ test('pilot-derived PI and industry routes only read data for the current app us
   const industry = readFileSync(resolve('src/routes/industry.ts'), 'utf8');
 
   assert.match(helper, /export function userCharacterIds/);
-  assert.match(helper, /SELECT character_id FROM characters WHERE user_id = \?/);
+  assert.match(helper, /createSqliteCharacterStore/);
+  assert.match(helper, /listIdsByUser\(userId\)/);
 
   assert.match(planets, /routeCurrentUser/);
   assert.match(planets, /overlayByPlanetId\(characterIds\)/);

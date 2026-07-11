@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { db } from '../db.ts';
+import { createSqliteCharacterStore, type CharacterStore } from '../characters/store.ts';
 import { SCOPE_STRING } from './scopes.ts';
 import { characterIdFromSub, verifyEveJwt } from './jwt.ts';
 import { createCurrentUserResolver, type CurrentUserResolver } from './current-user.ts';
@@ -28,6 +28,7 @@ interface TokenResponse {
 export interface SsoRouteDeps {
   oauthStates?: OAuthStateStore;
   currentUser?: CurrentUserResolver;
+  characters?: CharacterStore;
 }
 
 export async function exchangeCode(code: string): Promise<TokenResponse> {
@@ -62,6 +63,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 
 export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps = {}) {
   const oauthStates = () => deps.oauthStates ?? createOAuthStateStore();
+  const characterStore = deps.characters ?? createSqliteCharacterStore();
   let defaultCurrentUser: CurrentUserResolver | null = null;
   const currentUser = () => deps.currentUser ?? (defaultCurrentUser ??= createCurrentUserResolver());
 
@@ -101,30 +103,16 @@ export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps = {})
     const scopes = Array.isArray(claims.scp) ? claims.scp.join(' ') : claims.scp;
     const expiresAt = Date.now() + tokens.expires_in * 1000;
 
-    db.prepare(`
-      INSERT INTO characters (character_id, user_id, character_name, owner_hash, scopes,
-        refresh_token, access_token, access_token_expires_at, added_at, needs_reauth, is_boss)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
-      ON CONFLICT(character_id) DO UPDATE SET
-        user_id = excluded.user_id,
-        character_name = excluded.character_name,
-        owner_hash = excluded.owner_hash,
-        scopes = excluded.scopes,
-        refresh_token = excluded.refresh_token,
-        access_token = excluded.access_token,
-        access_token_expires_at = excluded.access_token_expires_at,
-        needs_reauth = 0
-    `).run(
+    characterStore.upsertAuthorized({
       characterId,
       userId,
-      claims.name,
-      claims.owner,
+      characterName: claims.name,
+      ownerHash: claims.owner,
       scopes,
-      tokens.refresh_token,
-      tokens.access_token,
-      expiresAt,
-      Date.now(),
-    );
+      refreshToken: tokens.refresh_token,
+      accessToken: tokens.access_token,
+      accessTokenExpiresAt: expiresAt,
+    });
 
     return reply.type('text/html').send(`
       <!doctype html><html><body style="font-family:sans-serif;background:#111;color:#eee;padding:2rem">
