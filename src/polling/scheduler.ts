@@ -1,4 +1,4 @@
-import { db } from '../db.ts';
+import { createSqliteCharacterStore } from '../characters/store.ts';
 import type { CharacterRow, CharacterStatus } from '../types.ts';
 import { getLocation, getOnline, getShip } from '../esi/location.ts';
 import { getWallet } from '../esi/wallet.ts';
@@ -12,6 +12,17 @@ import { bus } from './events.ts';
 
 const MIN_POLL_MS = 5_000;
 const MAX_POLL_MS = 120_000;
+
+type MaybePromise<T> = T | Promise<T>;
+
+interface PollingCharacterStore {
+  listAll(): MaybePromise<CharacterRow[]>;
+  getById(characterId: number): MaybePromise<CharacterRow | undefined>;
+}
+
+interface PollingDeps {
+  characters?: PollingCharacterStore;
+}
 
 // Cache TTL fallbacks (seconds) when no Expires header arrives.
 const FALLBACK_TTL = {
@@ -49,6 +60,7 @@ interface CharacterState {
 
 const state = new Map<number, CharacterState>();
 const timers = new Map<number, NodeJS.Timeout>();
+let activeCharacters: PollingCharacterStore = createSqliteCharacterStore();
 
 // Pins kept out of the SSE/snapshot payload to keep updates lean.
 // Inventory roll-up + colony drill-down read from here directly.
@@ -89,8 +101,13 @@ export function snapshotOne(id: number): CharacterStatus | null {
   return state.get(id)?.cached ?? null;
 }
 
-export function startPolling() {
-  const rows = db.prepare('SELECT * FROM characters').all() as CharacterRow[];
+export function startPolling(deps: PollingDeps = {}) {
+  activeCharacters = deps.characters ?? activeCharacters;
+  void startPollingAsync(activeCharacters).catch(err => console.error(`[poller] bootstrap failed`, err));
+}
+
+async function startPollingAsync(characters: PollingCharacterStore) {
+  const rows = await characters.listAll();
   for (const r of rows) ensureCharacter(r);
   console.log(`[poller] tracking ${rows.length} characters`);
 }
@@ -186,7 +203,7 @@ async function tick(id: number) {
   const s = state.get(id);
   if (!s) return;
 
-  const row = db.prepare('SELECT * FROM characters WHERE character_id = ?').get(id) as CharacterRow | undefined;
+  const row = await activeCharacters.getById(id);
   if (!row) {
     forgetCharacter(id);
     return;
