@@ -5,12 +5,12 @@ import {
   type CurrentUserResolver,
 } from '../auth/pilot-access.ts';
 import { db } from '../db.ts';
-import { createDoctrineStore, type DoctrineDetail, type DoctrineStore } from '../fits/doctrines.ts';
-import { createFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
+import { createDoctrineStore, type AsyncDoctrineStore, type DoctrineDetail, type DoctrineStore } from '../fits/doctrines.ts';
+import { createFitStore, type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
 
 export interface DoctrineRouteDeps {
-  store?: DoctrineStore;
-  fitStore?: FitStore;
+  store?: DoctrineStore | AsyncDoctrineStore;
+  fitStore?: FitStore | AsyncFitStore;
   currentUser?: CurrentUserResolver;
 }
 
@@ -24,7 +24,7 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     if (!user) return reply;
     const query = req.query as { q?: string; visibility?: string };
     const visibility = parseVisibility(query.visibility);
-    return store.list(visibility === 'public'
+    return await store.list(visibility === 'public'
       ? { q: query.q, visibility: 'public' }
       : { q: query.q, visibility: 'private', ownerUserId: user.id });
   });
@@ -35,7 +35,7 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     const body = req.body as { name?: string; description?: string; visibility?: string } | undefined;
     if (!body?.name?.trim()) return reply.code(400).send({ error: 'name is required' });
     try {
-      return store.create({
+      return await store.create({
         name: body.name,
         description: body.description,
         ownerUserId: user.id,
@@ -51,7 +51,7 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid doctrine id is required' });
-    const doctrine = store.get(id);
+    const doctrine = await store.get(id);
     if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canViewDoctrine(doctrine, user)) return reply.code(403).send({ error: 'not allowed' });
     return doctrine;
@@ -62,13 +62,13 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid doctrine id is required' });
-    const existing = store.get(id);
+    const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
     const body = req.body as { name?: string; description?: string } | undefined;
     if (body?.name != null && !body.name.trim()) return reply.code(400).send({ error: 'name is required' });
     try {
-      const doctrine = store.update(id, { name: body?.name, description: body?.description });
+      const doctrine = await store.update(id, { name: body?.name, description: body?.description });
       if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
       return doctrine;
     } catch (err) {
@@ -81,10 +81,10 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid doctrine id is required' });
-    const existing = store.get(id);
+    const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
-    if (!store.delete(id)) return reply.code(404).send({ error: 'doctrine not found' });
+    if (!(await store.delete(id))) return reply.code(404).send({ error: 'doctrine not found' });
     return { ok: true };
   });
 
@@ -93,19 +93,19 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid doctrine id is required' });
-    const existing = store.get(id);
+    const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
     const fitId = cleanPositiveNumber((req.body as { fitId?: number } | undefined)?.fitId);
     if (!fitId) return reply.code(400).send({ error: 'fitId is required' });
-    const fit = fitStore.get(fitId);
+    const fit = await fitStore.get(fitId);
     if (!fit) return reply.code(404).send({ error: 'saved fit not found' });
     if (!canViewFit(fit, user)) return reply.code(403).send({ error: 'not allowed' });
     if (existing.visibility === 'public' && fit.visibility !== 'public') {
       return reply.code(400).send({ error: 'public doctrines can only include public fits' });
     }
     try {
-      const doctrine = store.addFit(id, fitId);
+      const doctrine = await store.addFit(id, fitId);
       if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
       return doctrine;
     } catch (err) {
@@ -121,10 +121,10 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     const fitId = cleanPositiveNumber((req.params as { fitId?: string }).fitId);
     if (!id) return reply.code(400).send({ error: 'valid doctrine id is required' });
     if (!fitId) return reply.code(400).send({ error: 'valid fit id is required' });
-    const existing = store.get(id);
+    const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
-    const doctrine = store.removeFit(id, fitId);
+    const doctrine = await store.removeFit(id, fitId);
     if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
     return doctrine;
   });
@@ -134,11 +134,11 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid doctrine id is required' });
-    const existing = store.get(id);
+    const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
     try {
-      return store.publish(id);
+      return await store.publish(id);
     } catch (err) {
       return reply.code(400).send({ error: errorMessage(err, 'failed to publish doctrine') });
     }
@@ -149,10 +149,10 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid doctrine id is required' });
-    const existing = store.get(id);
+    const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canViewDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
-    return store.copyToPrivate(id, user.id);
+    return await store.copyToPrivate(id, user.id);
   });
 }
 

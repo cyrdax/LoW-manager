@@ -21,6 +21,7 @@ import { registerIndustryRoutes } from './routes/industry.ts';
 import { registerContractRoutes } from './routes/contracts.ts';
 import { registerDoctrineRoutes } from './routes/doctrines.ts';
 import { registerFitRoutes } from './routes/fits.ts';
+import { createPostgresDoctrineStore } from './fits/doctrines.ts';
 import { createPostgresFitStore } from './fits/store.ts';
 import { startPolling } from './polling/scheduler.ts';
 import { bootstrapSystemsCache } from './esi/universe.ts';
@@ -31,6 +32,7 @@ const app = Fastify({ logger: true });
 const characterStore = createPostgresCharacterStore();
 const savedSkillPlans = createPostgresSavedSkillPlanStore();
 const fitStore = createPostgresFitStore();
+const doctrineStore = createPostgresDoctrineStore(undefined, { fitStore });
 
 setPilotAccessCharacterStore(characterStore);
 setAccessTokenCharacterStore(characterStore);
@@ -50,7 +52,7 @@ registerMarketRoutes(app);
 registerIndustryRoutes(app);
 registerContractRoutes(app);
 registerFitRoutes(app, { store: fitStore });
-registerDoctrineRoutes(app);
+registerDoctrineRoutes(app, { store: doctrineStore, fitStore });
 
 // In dev, Vite serves the frontend on its own port. In production, serve the built bundle.
 const distDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'web', 'dist');
