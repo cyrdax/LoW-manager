@@ -10,7 +10,7 @@ import { db } from '../db.ts';
 import { buildFitDraft } from '../fits/assignment.ts';
 import { buildEsiFittingPayload, createCharacterFitting, type EsiFittingCreatePayload } from '../fits/esi.ts';
 import { quoteFit, type FitQuote } from '../fits/pricing.ts';
-import { createFitStore, type FitStore } from '../fits/store.ts';
+import { createFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
 import type { FitDraft } from '../fits/types.ts';
 import { searchFitShips } from '../fits/metadata.ts';
 import { HUBS, type HubKey } from '../market/pricing.ts';
@@ -84,10 +84,19 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
     }
   });
 
-  app.get('/api/fits', async () => store.list());
+  app.get('/api/fits', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+    const visibility = parseVisibility((req.query as { visibility?: string }).visibility);
+    return visibility === 'public'
+      ? store.list({ visibility: 'public' })
+      : store.list({ visibility: 'private', ownerUserId: user.id });
+  });
 
   app.post('/api/fits', async (req, reply) => {
-    const body = req.body as { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string } | undefined;
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+    const body = req.body as { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string; visibility?: string } | undefined;
     if (!body?.rawEft) return reply.code(400).send({ error: 'rawEft is required' });
     try {
       return store.create({
@@ -95,6 +104,8 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
         shipTypeId: cleanPositiveNumber(body.shipTypeId),
         fitName: body.fitName,
         notes: body.notes,
+        ownerUserId: user.id,
+        visibility: parseVisibility(body.visibility),
       });
     } catch (err) {
       return reply.code(400).send({ error: errorMessage(err, 'failed to save fit') });
@@ -102,12 +113,15 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   });
 
   app.post('/api/fits/:id/quote', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid fit id is required' });
     const hub = parseHub((req.body as { hub?: string } | undefined)?.hub);
     if (!hub) return reply.code(400).send({ error: 'hub must be "jita" or "amarr"' });
     const fit = store.get(id);
     if (!fit) return reply.code(404).send({ error: 'fit not found' });
+    if (!canViewFit(fit, user)) return reply.code(403).send({ error: 'not allowed' });
     try {
       return quote(fit, hub);
     } catch (err) {
@@ -126,20 +140,29 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
     if (!requireOwnedCharacter(user.id, characterId, reply, owns)) return reply;
     const fit = store.get(id);
     if (!fit) return reply.code(404).send({ error: 'fit not found' });
+    if (!canViewFit(fit, user)) return reply.code(403).send({ error: 'not allowed' });
     return sendFit(reply, fit, characterId, createFitting);
   });
 
   app.get('/api/fits/:id', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid fit id is required' });
     const fit = store.get(id);
     if (!fit) return reply.code(404).send({ error: 'fit not found' });
+    if (!canViewFit(fit, user)) return reply.code(403).send({ error: 'not allowed' });
     return fit;
   });
 
   app.put('/api/fits/:id', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid fit id is required' });
+    const existing = store.get(id);
+    if (!existing) return reply.code(404).send({ error: 'fit not found' });
+    if (!canEditFit(existing, user)) return reply.code(403).send({ error: 'not allowed' });
     try {
       const body = req.body as { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string } | undefined;
       const fit = store.update(id, {
@@ -156,10 +179,37 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   });
 
   app.delete('/api/fits/:id', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid fit id is required' });
+    const existing = store.get(id);
+    if (!existing) return reply.code(404).send({ error: 'fit not found' });
+    if (!canEditFit(existing, user)) return reply.code(403).send({ error: 'not allowed' });
     if (!store.delete(id)) return reply.code(404).send({ error: 'fit not found' });
     return { ok: true };
+  });
+
+  app.post('/api/fits/:id/publish', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+    const id = parseId(req.params);
+    if (!id) return reply.code(400).send({ error: 'valid fit id is required' });
+    const existing = store.get(id);
+    if (!existing) return reply.code(404).send({ error: 'fit not found' });
+    if (!canEditFit(existing, user)) return reply.code(403).send({ error: 'not allowed' });
+    return store.publish(id);
+  });
+
+  app.post('/api/fits/:id/copy-private', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+    const id = parseId(req.params);
+    if (!id) return reply.code(400).send({ error: 'valid fit id is required' });
+    const existing = store.get(id);
+    if (!existing) return reply.code(404).send({ error: 'fit not found' });
+    if (!canViewFit(existing, user)) return reply.code(403).send({ error: 'not allowed' });
+    return store.copyToPrivate(id, user.id);
   });
 }
 
@@ -207,6 +257,18 @@ function excludedItemCount(fit: FitDraft): number {
 function parseHub(raw: string | undefined): HubKey | null {
   const hub = String(raw ?? '').toLowerCase() as HubKey;
   return HUBS[hub] ? hub : null;
+}
+
+function parseVisibility(raw: string | undefined): LibraryVisibility {
+  return raw === 'public' ? 'public' : 'private';
+}
+
+function canViewFit(fit: SavedFitDetail, user: { id: string; role: 'user' | 'admin' }): boolean {
+  return fit.visibility === 'public' || canEditFit(fit, user);
+}
+
+function canEditFit(fit: SavedFitDetail, user: { id: string; role: 'user' | 'admin' }): boolean {
+  return user.role === 'admin' || fit.ownerUserId === user.id;
 }
 
 function parseId(params: unknown): number | null {

@@ -983,8 +983,13 @@ export interface FitDraft {
   normalizedEft: string;
 }
 
+export type LibraryVisibility = 'private' | 'public';
+
 export interface SavedFitDetail extends FitDraft {
   id: number;
+  ownerUserId: string | null;
+  visibility: LibraryVisibility;
+  sourcePublicFitId: number | null;
   notes: string;
   createdAt: number;
   updatedAt: number;
@@ -992,6 +997,9 @@ export interface SavedFitDetail extends FitDraft {
 
 export interface SavedFitSummary {
   id: number;
+  ownerUserId: string | null;
+  visibility: LibraryVisibility;
+  sourcePublicFitId: number | null;
   shipTypeId: number;
   shipName: string;
   fitName: string;
@@ -1008,6 +1016,9 @@ export interface DoctrineFitMember extends SavedFitSummary {
 
 export interface DoctrineSummary {
   id: number;
+  ownerUserId: string | null;
+  visibility: LibraryVisibility;
+  sourcePublicDoctrineId: number | null;
   name: string;
   description: string;
   createdAt: number;
@@ -1054,15 +1065,17 @@ async function jsonOrError<T>(res: Response): Promise<T | { error: string; reaut
   return res.json();
 }
 
-export async function fetchFits(): Promise<SavedFitSummary[]> {
-  const res = await fetch('/api/fits');
+export async function fetchFits(visibility: LibraryVisibility = 'private'): Promise<SavedFitSummary[]> {
+  const qs = new URLSearchParams({ visibility });
+  const res = await fetch(`/api/fits?${qs}`);
   if (!res.ok) return [];
   return res.json();
 }
 
-export async function fetchDoctrines(q = ''): Promise<DoctrineSummary[]> {
-  const qs = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
-  const res = await fetch(`/api/doctrines${qs}`);
+export async function fetchDoctrines(q = '', visibility: LibraryVisibility = 'private'): Promise<DoctrineSummary[]> {
+  const qs = new URLSearchParams({ visibility });
+  if (q.trim()) qs.set('q', q.trim());
+  const res = await fetch(`/api/doctrines?${qs}`);
   if (!res.ok) return [];
   return res.json();
 }
@@ -1071,7 +1084,7 @@ export async function fetchDoctrine(id: number): Promise<DoctrineDetail | { erro
   return jsonOrError(await fetch(`/api/doctrines/${id}`));
 }
 
-export async function createDoctrine(input: { name: string; description?: string }): Promise<DoctrineDetail | { error: string }> {
+export async function createDoctrine(input: { name: string; description?: string; visibility?: LibraryVisibility }): Promise<DoctrineDetail | { error: string }> {
   return jsonOrError(await fetch('/api/doctrines', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1106,6 +1119,14 @@ export async function removeDoctrineFit(id: number, fitId: number): Promise<Doct
   return jsonOrError(await fetch(`/api/doctrines/${id}/fits/${fitId}`, { method: 'DELETE' }));
 }
 
+export async function publishDoctrine(id: number): Promise<DoctrineDetail | { error: string }> {
+  return jsonOrError(await fetch(`/api/doctrines/${id}/publish`, { method: 'POST' }));
+}
+
+export async function copyDoctrineToPrivate(id: number): Promise<DoctrineDetail | { error: string }> {
+  return jsonOrError(await fetch(`/api/doctrines/${id}/copy-private`, { method: 'POST' }));
+}
+
 export async function fetchFit(id: number): Promise<SavedFitDetail | { error: string }> {
   return jsonOrError(await fetch(`/api/fits/${id}`));
 }
@@ -1123,6 +1144,7 @@ export async function saveFit(input: {
   shipTypeId?: number;
   fitName?: string;
   notes?: string;
+  visibility?: LibraryVisibility;
 }): Promise<SavedFitDetail | { error: string }> {
   return jsonOrError(await fetch('/api/fits', {
     method: 'POST',
@@ -1144,6 +1166,14 @@ export async function updateFit(
 
 export async function deleteFit(id: number): Promise<{ ok: true } | { error: string }> {
   return jsonOrError(await fetch(`/api/fits/${id}`, { method: 'DELETE' }));
+}
+
+export async function publishFit(id: number): Promise<SavedFitDetail | { error: string }> {
+  return jsonOrError(await fetch(`/api/fits/${id}/publish`, { method: 'POST' }));
+}
+
+export async function copyFitToPrivate(id: number): Promise<SavedFitDetail | { error: string }> {
+  return jsonOrError(await fetch(`/api/fits/${id}/copy-private`, { method: 'POST' }));
 }
 
 export async function searchFitShips(q: string, signal?: AbortSignal): Promise<FitShipHit[]> {

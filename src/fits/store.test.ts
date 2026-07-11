@@ -84,4 +84,32 @@ describe('fit store', () => {
     const itemRows = db.prepare('SELECT COUNT(*) AS count FROM saved_fit_items').get() as { count: number };
     assert.equal(itemRows.count, 0);
   });
+
+  it('filters private and public fits and copies public fits into a user library', () => {
+    const db = memoryDb();
+    const store = createFitStore(db, { now: () => 1000 });
+
+    const privateFit = store.create({ rawEft: naglfar, fitName: 'Private Dread', ownerUserId: 'user-a', visibility: 'private' });
+    const publicFit = store.create({ rawEft: naglfar, fitName: 'Public Dread', ownerUserId: 'user-a', visibility: 'public' });
+    store.create({ rawEft: naglfar, fitName: 'Other Private', ownerUserId: 'user-b', visibility: 'private' });
+
+    assert.deepEqual(store.list({ visibility: 'private', ownerUserId: 'user-a' }).map(fit => fit.id), [privateFit.id]);
+    assert.deepEqual(store.list({ visibility: 'public' }).map(fit => fit.id), [publicFit.id]);
+
+    const copied = store.copyToPrivate(publicFit.id, 'user-b');
+    assert.equal(copied?.ownerUserId, 'user-b');
+    assert.equal(copied?.visibility, 'private');
+    assert.equal(copied?.sourcePublicFitId, publicFit.id);
+    assert.equal(copied?.fitName, 'Public Dread');
+  });
+
+  it('publishes fits without changing ownership', () => {
+    const db = memoryDb();
+    const store = createFitStore(db, { now: () => 1000 });
+    const saved = store.create({ rawEft: naglfar, fitName: 'Publish Me', ownerUserId: 'user-a' });
+
+    const published = store.publish(saved.id);
+    assert.equal(published?.ownerUserId, 'user-a');
+    assert.equal(published?.visibility, 'public');
+  });
 });

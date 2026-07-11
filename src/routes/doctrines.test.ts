@@ -18,9 +18,12 @@ function appWithStores() {
   const fits = createFitStore(db);
   const store = createDoctrineStore(db);
   const app = Fastify();
-  registerDoctrineRoutes(app, { store });
+  registerDoctrineRoutes(app, { store, fitStore: fits, currentUser: async () => userA });
   return { app, fits, store };
 }
+
+const userA = { id: 'user-a', email: null, role: 'user' as const, status: 'active' as const };
+const userB = { id: 'user-b', email: null, role: 'user' as const, status: 'active' as const };
 
 test('doctrine CRUD routes create list get update and delete', async () => {
   const { app } = appWithStores();
@@ -46,7 +49,7 @@ test('doctrine CRUD routes create list get update and delete', async () => {
 
 test('doctrine routes add and remove saved fits', async () => {
   const { app, fits } = appWithStores();
-  const fit = fits.create({ rawEft: naglfar, fitName: 'Route Dread DPS' });
+  const fit = fits.create({ rawEft: naglfar, fitName: 'Route Dread DPS', ownerUserId: 'user-a', visibility: 'private' });
   const created = await app.inject({ method: 'POST', url: '/api/doctrines', payload: { name: 'Route Doctrine' } });
   const doctrine = JSON.parse(created.body);
 
@@ -79,4 +82,91 @@ test('doctrine routes validate blank names invalid ids missing doctrine and miss
   const doctrine = JSON.parse(created.body);
   const missingFit = await app.inject({ method: 'POST', url: `/api/doctrines/${doctrine.id}/fits`, payload: { fitId: 99999 } });
   assert.equal(missingFit.statusCode, 404);
+});
+
+test('doctrine routes scope private libraries and copy public doctrines privately', async () => {
+  const { fits, store } = appWithStores();
+  const publicFit = fits.create({ rawEft: naglfar, fitName: 'Public Fit', ownerUserId: 'user-a', visibility: 'public' });
+  const privateDoctrine = store.create({ name: 'Private A', ownerUserId: 'user-a', visibility: 'private' });
+  const publicDoctrine = store.create({ name: 'Public A', ownerUserId: 'user-a', visibility: 'public' });
+  store.addFit(publicDoctrine.id, publicFit.id);
+  store.create({ name: 'Private B', ownerUserId: 'user-b', visibility: 'private' });
+
+  const appA = Fastify();
+  registerDoctrineRoutes(appA, { store, fitStore: fits, currentUser: async () => userA });
+  const privateList = await appA.inject({ method: 'GET', url: '/api/doctrines?visibility=private' });
+  assert.deepEqual(JSON.parse(privateList.body).map((doctrine: { id: number }) => doctrine.id), [privateDoctrine.id]);
+
+  const publicList = await appA.inject({ method: 'GET', url: '/api/doctrines?visibility=public' });
+  assert.deepEqual(JSON.parse(publicList.body).map((doctrine: { id: number }) => doctrine.id), [publicDoctrine.id]);
+
+  const appB = Fastify();
+  registerDoctrineRoutes(appB, { store, fitStore: fits, currentUser: async () => userB });
+  const denied = await appB.inject({
+    method: 'PUT',
+    url: `/api/doctrines/${publicDoctrine.id}`,
+    payload: { name: 'Hijacked' },
+  });
+  assert.equal(denied.statusCode, 403);
+
+  const copied = await appB.inject({ method: 'POST', url: `/api/doctrines/${publicDoctrine.id}/copy-private` });
+  assert.equal(copied.statusCode, 200);
+  const body = JSON.parse(copied.body);
+  assert.equal(body.ownerUserId, 'user-b');
+  assert.equal(body.visibility, 'private');
+  assert.equal(body.sourcePublicDoctrineId, publicDoctrine.id);
+  assert.equal(body.fits[0].ownerUserId, 'user-b');
+});
+
+test('doctrine routes publish only owner doctrines with public member fits', async () => {
+  const { fits, store } = appWithStores();
+  const privateFit = fits.create({ rawEft: naglfar, fitName: 'Private Fit', ownerUserId: 'user-a', visibility: 'private' });
+  const doctrine = store.create({ name: 'Needs Public Fits', ownerUserId: 'user-a', visibility: 'private' });
+  store.addFit(doctrine.id, privateFit.id);
+
+  const appA = Fastify();
+  registerDoctrineRoutes(appA, { store, fitStore: fits, currentUser: async () => userA });
+  const blocked = await appA.inject({ method: 'POST', url: `/api/doctrines/${doctrine.id}/publish` });
+  assert.equal(blocked.statusCode, 400);
+
+  fits.publish(privateFit.id);
+  const published = await appA.inject({ method: 'POST', url: `/api/doctrines/${doctrine.id}/publish` });
+  assert.equal(published.statusCode, 200);
+  assert.equal(JSON.parse(published.body).visibility, 'public');
+});
+
+test('doctrine routes reject member fits the user cannot view', async () => {
+  const { fits, store } = appWithStores();
+  const userAFit = fits.create({ rawEft: naglfar, fitName: 'Private A', ownerUserId: 'user-a', visibility: 'private' });
+  const userBDoctrine = store.create({ name: 'User B Doctrine', ownerUserId: 'user-b', visibility: 'private' });
+
+  const appB = Fastify();
+  registerDoctrineRoutes(appB, { store, fitStore: fits, currentUser: async () => userB });
+  const denied = await appB.inject({
+    method: 'POST',
+    url: `/api/doctrines/${userBDoctrine.id}/fits`,
+    payload: { fitId: userAFit.id },
+  });
+
+  assert.equal(denied.statusCode, 403);
+  assert.equal(store.get(userBDoctrine.id)?.fitCount, 0);
+});
+
+test('doctrine routes reject private member fits in public doctrines', async () => {
+  const { app, fits } = appWithStores();
+  const privateFit = fits.create({ rawEft: naglfar, fitName: 'Private Member', ownerUserId: 'user-a', visibility: 'private' });
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/doctrines',
+    payload: { name: 'Public Shell', visibility: 'public' },
+  });
+  const doctrine = JSON.parse(created.body);
+
+  const rejected = await app.inject({
+    method: 'POST',
+    url: `/api/doctrines/${doctrine.id}/fits`,
+    payload: { fitId: privateFit.id },
+  });
+
+  assert.equal(rejected.statusCode, 400);
 });

@@ -92,3 +92,51 @@ test('removeFit leaves doctrine intact when member is absent', () => {
   assert.equal(result.id, doctrine.id);
   assert.equal(result.fitCount, 0);
 });
+
+test('doctrine store filters private and public doctrines by visibility and owner', () => {
+  const { doctrines } = stores();
+  const privateDoctrine = doctrines.create({ name: 'Private Doctrine', ownerUserId: 'user-a', visibility: 'private' });
+  const publicDoctrine = doctrines.create({ name: 'Public Doctrine', ownerUserId: 'user-a', visibility: 'public' });
+  doctrines.create({ name: 'Other Private', ownerUserId: 'user-b', visibility: 'private' });
+
+  assert.deepEqual(doctrines.list({ visibility: 'private', ownerUserId: 'user-a' }).map(row => row.id), [privateDoctrine.id]);
+  assert.deepEqual(doctrines.list({ visibility: 'public' }).map(row => row.id), [publicDoctrine.id]);
+});
+
+test('publishing a doctrine requires public member fits', () => {
+  const { fits, doctrines } = stores();
+  const privateFit = fits.create({ rawEft: naglfar, ownerUserId: 'user-a', visibility: 'private' });
+  const publicFit = fits.create({ rawEft: archon, ownerUserId: 'user-a', visibility: 'public' });
+  const doctrine = doctrines.create({ name: 'Mixed Doctrine', ownerUserId: 'user-a' });
+  doctrines.addFit(doctrine.id, privateFit.id);
+  doctrines.addFit(doctrine.id, publicFit.id);
+
+  assert.throws(() => doctrines.publish(doctrine.id), /private member fits/);
+  fits.publish(privateFit.id);
+  assert.equal(doctrines.publish(doctrine.id)?.visibility, 'public');
+});
+
+test('public doctrines reject private member fits', () => {
+  const { fits, doctrines } = stores();
+  const privateFit = fits.create({ rawEft: naglfar, ownerUserId: 'user-a', visibility: 'private' });
+  const publicDoctrine = doctrines.create({ name: 'Public Doctrine', ownerUserId: 'user-a', visibility: 'public' });
+
+  assert.throws(() => doctrines.addFit(publicDoctrine.id, privateFit.id), /public doctrine/i);
+  assert.equal(doctrines.get(publicDoctrine.id)?.fitCount, 0);
+});
+
+test('copies public doctrines with private copies of member fits', () => {
+  const { fits, doctrines } = stores();
+  const publicFit = fits.create({ rawEft: naglfar, fitName: 'Public Dread', ownerUserId: 'user-a', visibility: 'public' });
+  const publicDoctrine = doctrines.create({ name: 'Public Comp', ownerUserId: 'user-a', visibility: 'public' });
+  doctrines.addFit(publicDoctrine.id, publicFit.id);
+
+  const copied = doctrines.copyToPrivate(publicDoctrine.id, 'user-b');
+  assert.equal(copied?.ownerUserId, 'user-b');
+  assert.equal(copied?.visibility, 'private');
+  assert.equal(copied?.sourcePublicDoctrineId, publicDoctrine.id);
+  assert.equal(copied?.fits.length, 1);
+  assert.equal(copied?.fits[0].ownerUserId, 'user-b');
+  assert.equal(copied?.fits[0].visibility, 'private');
+  assert.equal(copied?.fits[0].sourcePublicFitId, publicFit.id);
+});

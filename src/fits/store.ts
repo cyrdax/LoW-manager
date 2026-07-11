@@ -13,12 +13,16 @@ import type {
 } from './types.ts';
 
 type SqliteDatabase = Database.Database;
+export type LibraryVisibility = 'private' | 'public';
 
 export interface SaveFitInput {
   rawEft: string;
   shipTypeId?: number;
   fitName?: string;
   notes?: string;
+  ownerUserId?: string | null;
+  visibility?: LibraryVisibility;
+  sourcePublicFitId?: number | null;
 }
 
 export interface UpdateFitInput {
@@ -36,6 +40,9 @@ export interface SavedFitWarningCounts {
 
 export interface SavedFitSummary {
   id: number;
+  ownerUserId: string | null;
+  visibility: LibraryVisibility;
+  sourcePublicFitId: number | null;
   shipTypeId: number;
   shipName: string;
   fitName: string;
@@ -48,16 +55,21 @@ export interface SavedFitSummary {
 
 export interface SavedFitDetail extends FitDraft {
   id: number;
+  ownerUserId: string | null;
+  visibility: LibraryVisibility;
+  sourcePublicFitId: number | null;
   notes: string;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface FitStore {
-  list(): SavedFitSummary[];
+  list(filters?: { visibility?: LibraryVisibility; ownerUserId?: string }): SavedFitSummary[];
   get(id: number): SavedFitDetail | null;
   create(input: SaveFitInput): SavedFitDetail;
   update(id: number, input: UpdateFitInput): SavedFitDetail | null;
+  publish(id: number): SavedFitDetail | null;
+  copyToPrivate(id: number, ownerUserId: string): SavedFitDetail | null;
   delete(id: number): boolean;
 }
 
@@ -67,6 +79,9 @@ interface FitStoreOptions {
 
 interface SavedFitRow {
   id: number;
+  owner_user_id: string | null;
+  visibility: LibraryVisibility;
+  source_public_fit_id: number | null;
   ship_type_id: number;
   ship_name: string;
   fit_name: string;
@@ -122,13 +137,17 @@ export function migrateFitsDb(database: SqliteDatabase): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS saved_fits (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      owner_user_id TEXT,
+      visibility   TEXT NOT NULL DEFAULT 'private',
+      source_public_fit_id INTEGER,
       ship_type_id INTEGER NOT NULL,
       ship_name    TEXT NOT NULL,
       fit_name     TEXT NOT NULL,
       notes        TEXT NOT NULL DEFAULT '',
       raw_eft      TEXT NOT NULL,
       created_at   INTEGER NOT NULL,
-      updated_at   INTEGER NOT NULL
+      updated_at   INTEGER NOT NULL,
+      FOREIGN KEY (source_public_fit_id) REFERENCES saved_fits(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS saved_fit_items (
@@ -152,6 +171,14 @@ export function migrateFitsDb(database: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_saved_fits_ship ON saved_fits(ship_name);
     CREATE INDEX IF NOT EXISTS idx_saved_fit_items_fit ON saved_fit_items(fit_id);
   `);
+  const columns = database.prepare('PRAGMA table_info(saved_fits)').all() as Array<{ name: string }>;
+  if (!columns.some(col => col.name === 'owner_user_id')) database.prepare('ALTER TABLE saved_fits ADD COLUMN owner_user_id TEXT').run();
+  if (!columns.some(col => col.name === 'visibility')) database.prepare("ALTER TABLE saved_fits ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'").run();
+  if (!columns.some(col => col.name === 'source_public_fit_id')) database.prepare('ALTER TABLE saved_fits ADD COLUMN source_public_fit_id INTEGER REFERENCES saved_fits(id) ON DELETE SET NULL').run();
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_saved_fits_owner_visibility ON saved_fits(owner_user_id, visibility, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_saved_fits_public ON saved_fits(updated_at) WHERE visibility = 'public';
+  `);
 }
 
 export function createFitStore(database: SqliteDatabase, options: FitStoreOptions = {}): FitStore {
@@ -160,8 +187,14 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
   const selectFit = database.prepare('SELECT * FROM saved_fits WHERE id = ?');
   const selectItems = database.prepare('SELECT * FROM saved_fit_items WHERE fit_id = ? ORDER BY id');
   const insertFit = database.prepare(`
-    INSERT INTO saved_fits (ship_type_id, ship_name, fit_name, notes, raw_eft, created_at, updated_at)
-    VALUES (@shipTypeId, @shipName, @fitName, @notes, @rawEft, @createdAt, @updatedAt)
+    INSERT INTO saved_fits (
+      owner_user_id, visibility, source_public_fit_id,
+      ship_type_id, ship_name, fit_name, notes, raw_eft, created_at, updated_at
+    )
+    VALUES (
+      @ownerUserId, @visibility, @sourcePublicFitId,
+      @shipTypeId, @shipName, @fitName, @notes, @rawEft, @createdAt, @updatedAt
+    )
   `);
   const updateFit = database.prepare(`
     UPDATE saved_fits
@@ -211,6 +244,9 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
     const timestamp = now();
     const fitName = cleanText(input.fitName) || draft.fitName;
     const info = insertFit.run({
+      ownerUserId: input.ownerUserId ?? null,
+      visibility: input.visibility ?? 'private',
+      sourcePublicFitId: input.sourcePublicFitId ?? null,
       shipTypeId: draft.ship.typeId,
       shipName: draft.ship.name,
       fitName,
@@ -248,8 +284,19 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
   });
 
   return {
-    list(): SavedFitSummary[] {
-      const rows = database.prepare('SELECT id FROM saved_fits ORDER BY updated_at DESC, id DESC').all() as Array<{ id: number }>;
+    list(filters = {}): SavedFitSummary[] {
+      const params: unknown[] = [];
+      const where: string[] = [];
+      if (filters.visibility) {
+        where.push('visibility = ?');
+        params.push(filters.visibility);
+      }
+      if (filters.ownerUserId) {
+        where.push('owner_user_id = ?');
+        params.push(filters.ownerUserId);
+      }
+      const sql = `SELECT id FROM saved_fits${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY updated_at DESC, id DESC`;
+      const rows = database.prepare(sql).all(...params) as Array<{ id: number }>;
       return rows
         .map(row => detailToSummary(readDetail(database, row.id)))
         .filter((row): row is SavedFitSummary => row != null);
@@ -266,6 +313,25 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
     update(id: number, input: UpdateFitInput): SavedFitDetail | null {
       const updatedId = updateTx(id, input);
       return updatedId == null ? null : readDetail(database, updatedId);
+    },
+
+    publish(id: number): SavedFitDetail | null {
+      const result = database.prepare("UPDATE saved_fits SET visibility = 'public', updated_at = ? WHERE id = ?").run(now(), id);
+      return result.changes > 0 ? readDetail(database, id) : null;
+    },
+
+    copyToPrivate(id: number, ownerUserId: string): SavedFitDetail | null {
+      const source = readDetail(database, id);
+      if (!source) return null;
+      return readDetail(database, createTx({
+        rawEft: source.rawEft,
+        shipTypeId: source.ship?.typeId,
+        fitName: source.fitName,
+        notes: source.notes,
+        ownerUserId,
+        visibility: 'private',
+        sourcePublicFitId: source.id,
+      }));
     },
 
     delete(id: number): boolean {
@@ -291,6 +357,9 @@ function readDetail(database: SqliteDatabase, id: number): SavedFitDetail | null
 
   return {
     id: fit.id,
+    ownerUserId: fit.owner_user_id,
+    visibility: fit.visibility ?? 'private',
+    sourcePublicFitId: fit.source_public_fit_id,
     rawEft: fit.raw_eft,
     fitName: fit.fit_name,
     headerShipName: fit.ship_name,
@@ -330,6 +399,9 @@ function detailToSummary(detail: SavedFitDetail | null): SavedFitSummary | null 
   if (!detail?.ship) return null;
   return {
     id: detail.id,
+    ownerUserId: detail.ownerUserId,
+    visibility: detail.visibility,
+    sourcePublicFitId: detail.sourcePublicFitId,
     shipTypeId: detail.ship.typeId,
     shipName: detail.ship.name,
     fitName: detail.fitName,

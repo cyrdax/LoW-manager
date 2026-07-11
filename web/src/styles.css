@@ -2389,6 +2389,31 @@ body {
   color: #0b0e13;
   font-weight: 700;
 }
+.library-scope-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  background: #11141a;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.library-scope-switch button {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dim);
+  padding: 7px 9px;
+  font: inherit;
+  cursor: pointer;
+}
+.library-scope-switch button.active {
+  background: var(--accent);
+  color: #0b0e13;
+  font-weight: 700;
+}
+.fits-state.private { color: var(--accent); border-color: #2e4d74; }
+.fits-state.public { color: var(--amber); border-color: #5a4622; }
 .doctrine-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 180px;

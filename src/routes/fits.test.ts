@@ -31,6 +31,9 @@ const ownedPilotDeps = {
   ownsCharacter: () => true,
 };
 
+const userA = { id: 'user-a', email: null, role: 'user' as const, status: 'active' as const };
+const userB = { id: 'user-b', email: null, role: 'user' as const, status: 'active' as const };
+
 test('POST /api/fits/preview returns a draft with unmatched warnings', async () => {
   const app = Fastify();
   registerFitRoutes(app, { store: testStore() });
@@ -49,7 +52,7 @@ test('POST /api/fits/preview returns a draft with unmatched warnings', async () 
 
 test('saved fit CRUD routes create list get update and delete', async () => {
   const app = Fastify();
-  registerFitRoutes(app, { store: testStore() });
+  registerFitRoutes(app, { store: testStore(), currentUser: async () => userA });
 
   const created = await app.inject({
     method: 'POST',
@@ -78,12 +81,65 @@ test('saved fit CRUD routes create list get update and delete', async () => {
   assert.equal(JSON.parse(deleted.body).ok, true);
 });
 
+test('fit routes scope private libraries and let public fits be copied privately', async () => {
+  const store = testStore();
+  const privateFit = store.create({ rawEft: naglfar, fitName: 'Private A', ownerUserId: 'user-a', visibility: 'private' });
+  const publicFit = store.create({ rawEft: naglfar, fitName: 'Public A', ownerUserId: 'user-a', visibility: 'public' });
+  store.create({ rawEft: naglfar, fitName: 'Private B', ownerUserId: 'user-b', visibility: 'private' });
+
+  const appA = Fastify();
+  registerFitRoutes(appA, { store, currentUser: async () => userA });
+  const privateList = await appA.inject({ method: 'GET', url: '/api/fits?visibility=private' });
+  assert.deepEqual(JSON.parse(privateList.body).map((fit: { id: number }) => fit.id), [privateFit.id]);
+
+  const publicList = await appA.inject({ method: 'GET', url: '/api/fits?visibility=public' });
+  assert.deepEqual(JSON.parse(publicList.body).map((fit: { id: number }) => fit.id), [publicFit.id]);
+
+  const appB = Fastify();
+  registerFitRoutes(appB, { store, currentUser: async () => userB });
+  const denied = await appB.inject({
+    method: 'PUT',
+    url: `/api/fits/${publicFit.id}`,
+    payload: { fitName: 'Hijacked' },
+  });
+  assert.equal(denied.statusCode, 403);
+
+  const copied = await appB.inject({ method: 'POST', url: `/api/fits/${publicFit.id}/copy-private` });
+  assert.equal(copied.statusCode, 200);
+  const copiedBody = JSON.parse(copied.body);
+  assert.equal(copiedBody.ownerUserId, 'user-b');
+  assert.equal(copiedBody.visibility, 'private');
+  assert.equal(copiedBody.sourcePublicFitId, publicFit.id);
+});
+
+test('fit routes publish owner fits and allow admins to edit public fits', async () => {
+  const store = testStore();
+  const saved = store.create({ rawEft: naglfar, fitName: 'Private A', ownerUserId: 'user-a', visibility: 'private' });
+
+  const appA = Fastify();
+  registerFitRoutes(appA, { store, currentUser: async () => userA });
+  const published = await appA.inject({ method: 'POST', url: `/api/fits/${saved.id}/publish` });
+  assert.equal(published.statusCode, 200);
+  assert.equal(JSON.parse(published.body).visibility, 'public');
+
+  const appAdmin = Fastify();
+  registerFitRoutes(appAdmin, { store, currentUser: async () => ({ ...userB, role: 'admin' as const }) });
+  const updated = await appAdmin.inject({
+    method: 'PUT',
+    url: `/api/fits/${saved.id}`,
+    payload: { fitName: 'Admin Edited' },
+  });
+  assert.equal(updated.statusCode, 200);
+  assert.equal(JSON.parse(updated.body).fitName, 'Admin Edited');
+});
+
 test('quote route delegates saved fit pricing with hub validation', async () => {
   const app = Fastify();
   const store = testStore();
-  const saved = store.create({ rawEft: naglfar });
+  const saved = store.create({ rawEft: naglfar, ownerUserId: 'user-a' });
   registerFitRoutes(app, {
     store,
+    currentUser: async () => userA,
     quoteFit: async (fit, hub): Promise<FitQuote> => ({
       hub,
       systemName: 'Jita',
@@ -107,7 +163,7 @@ test('quote route delegates saved fit pricing with hub validation', async () => 
 test('send route creates an in-game fitting and reports excluded rows', async () => {
   const app = Fastify();
   const store = testStore();
-  const saved = store.create({ rawEft: `${naglfar}\nDefinitely Not A Real Module` });
+  const saved = store.create({ rawEft: `${naglfar}\nDefinitely Not A Real Module`, ownerUserId: 'user-1' });
   const observed: EsiFittingCreatePayload[] = [];
   registerFitRoutes(app, {
     store,
@@ -133,7 +189,7 @@ test('send route creates an in-game fitting and reports excluded rows', async ()
 test('send route returns a reauth hint for missing fitting scope', async () => {
   const app = Fastify();
   const store = testStore();
-  const saved = store.create({ rawEft: naglfar });
+  const saved = store.create({ rawEft: naglfar, ownerUserId: 'user-1' });
   registerFitRoutes(app, {
     store,
     ...ownedPilotDeps,

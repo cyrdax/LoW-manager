@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  copyFitToPrivate,
   deleteFit,
   fetchFit,
   fetchFits,
   previewFit,
+  publishFit,
   quoteDraftFit,
   quoteSavedFit,
   saveFit,
@@ -13,22 +15,26 @@ import {
   updateFit,
   type AssignedFitItem,
   type CharacterStatus,
+  type CurrentUser,
   type FitDraft,
   type FitHub,
   type FitQuote,
   type FitSectionRole,
   type FitShipHit,
+  type LibraryVisibility,
   type SavedFitDetail,
   type SavedFitSummary,
 } from '../api.ts';
 import { DoctrinesView } from './DoctrinesView.tsx';
 import { FitModeSwitch, type FitMode } from './FitModeSwitch.tsx';
+import { LibraryScopeSwitch } from './LibraryScopeSwitch.tsx';
 
-interface Props { chars: CharacterStatus[] }
+interface Props { chars: CharacterStatus[]; currentUser: CurrentUser }
 
 const FITS_HUB_KEY = 'efd.fits.hub';
 const FITS_MODE_KEY = 'efd.fits.mode';
 const FITS_PILOT_KEY = 'efd.fits.pilot';
+const FITS_VISIBILITY_KEY = 'efd.fits.visibility';
 
 const SLOT_ROLES: FitSectionRole[] = ['low', 'mid', 'high', 'rig', 'service', 'subsystem'];
 const EXTRA_ROLES: FitSectionRole[] = ['droneBay', 'fighterBay', 'extras', 'unmatched'];
@@ -74,19 +80,20 @@ function iconUrl(typeId: number): string {
   return `https://images.evetech.net/types/${typeId}/icon?size=64`;
 }
 
-export function FitsView({ chars }: Props) {
+export function FitsView({ chars, currentUser }: Props) {
   const [mode, setMode] = useState<FitMode>(() => (localStorage.getItem(FITS_MODE_KEY) as FitMode) || 'fits');
   useEffect(() => { localStorage.setItem(FITS_MODE_KEY, mode); }, [mode]);
-  if (mode === 'doctrines') return <DoctrinesView mode={mode} onMode={setMode} />;
-  return <SavedFitsView chars={chars} mode={mode} onMode={setMode} />;
+  if (mode === 'doctrines') return <DoctrinesView mode={mode} onMode={setMode} currentUser={currentUser} />;
+  return <SavedFitsView chars={chars} mode={mode} onMode={setMode} currentUser={currentUser} />;
 }
 
-function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode: (mode: FitMode) => void }) {
+function SavedFitsView({ chars, mode, onMode, currentUser }: Props & { mode: FitMode; onMode: (mode: FitMode) => void }) {
   const [fits, setFits] = useState<SavedFitSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<SavedFitDetail | null>(null);
   const [draft, setDraft] = useState<FitDraft | null>(null);
   const [search, setSearch] = useState('');
+  const [visibility, setVisibility] = useState<LibraryVisibility>(() => (localStorage.getItem(FITS_VISIBILITY_KEY) as LibraryVisibility) || 'private');
   const [hub, setHub] = useState<FitHub>(() => (localStorage.getItem(FITS_HUB_KEY) as FitHub) || 'jita');
   const [quote, setQuote] = useState<FitQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -120,12 +127,18 @@ function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode:
     }
   }, [sortedChars, pilotId]);
 
-  const reloadList = async () => {
-    const rows = await fetchFits();
+  const reloadList = async (scope = visibility) => {
+    const rows = await fetchFits(scope);
     setFits(rows);
-    if (selectedId == null && !draft && rows.length > 0) setSelectedId(rows[0].id);
+    setSelectedId(current => (current != null && rows.some(row => row.id === current)) ? current : rows[0]?.id ?? null);
   };
-  useEffect(() => { reloadList(); }, []);
+  useEffect(() => { localStorage.setItem(FITS_VISIBILITY_KEY, visibility); }, [visibility]);
+  useEffect(() => {
+    setDraft(null);
+    setDetail(null);
+    setSelectedId(null);
+    reloadList(visibility);
+  }, [visibility]);
 
   useEffect(() => {
     if (selectedId == null || draft) { setDetail(null); return; }
@@ -140,6 +153,9 @@ function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode:
 
   const active = draft ?? detail;
   const activeSavedId = draft ? null : detail?.id ?? null;
+  const canEditActive = !detail || currentUser.role === 'admin' || detail.ownerUserId === currentUser.id;
+  const canPublishActive = activeSavedId != null && canEditActive && detail?.visibility === 'private';
+  const canCopyPrivate = activeSavedId != null && detail?.visibility === 'public';
   const unmatchedItems = active?.items.filter(item => item.role === 'unmatched') ?? [];
   const tooltipHandlers: FitTooltipHandlers = {
     show: (label, target) => {
@@ -196,7 +212,7 @@ function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode:
     setBusy(true);
     setStatus(null);
     const res = draft
-      ? await saveFit({ rawEft: draft.rawEft, shipTypeId: draft.ship?.typeId, fitName, notes })
+      ? await saveFit({ rawEft: draft.rawEft, shipTypeId: draft.ship?.typeId, fitName, notes, visibility })
       : activeSavedId != null
         ? await updateFit(activeSavedId, { fitName, notes })
         : { error: 'No fit selected.' };
@@ -206,7 +222,37 @@ function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode:
     setDetail(res);
     setSelectedId(res.id);
     setStatus('Saved.');
-    await reloadList();
+    await reloadList(res.visibility);
+  };
+
+  const publishCurrent = async () => {
+    if (activeSavedId == null) return;
+    setBusy(true);
+    setStatus(null);
+    const res = await publishFit(activeSavedId);
+    setBusy(false);
+    if ('error' in res) { setStatus(res.error); return; }
+    setVisibility('public');
+    setDraft(null);
+    setDetail(res);
+    setSelectedId(res.id);
+    setStatus('Published.');
+    await reloadList('public');
+  };
+
+  const copyCurrentToPrivate = async () => {
+    if (activeSavedId == null) return;
+    setBusy(true);
+    setStatus(null);
+    const res = await copyFitToPrivate(activeSavedId);
+    setBusy(false);
+    if ('error' in res) { setStatus(res.error); return; }
+    setVisibility('private');
+    setDraft(null);
+    setDetail(res);
+    setSelectedId(res.id);
+    setStatus('Copied to private library.');
+    await reloadList('private');
   };
 
   const deleteCurrent = async () => {
@@ -253,7 +299,7 @@ function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode:
       setBusy(false);
       if ('error' in res) { setStatus(res.error); return; }
       setDetail(res);
-      await reloadList();
+      await reloadList(res.visibility);
       return;
     }
     setBusy(false);
@@ -268,6 +314,7 @@ function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode:
           <strong>Fits</strong>
           <button className="fl-refresh" onClick={() => setImportOpen(true)}>Import</button>
         </div>
+        <LibraryScopeSwitch value={visibility} onChange={setVisibility} />
         <input
           className="fits-search"
           value={search}
@@ -298,7 +345,7 @@ function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode:
               <span className="fits-row-ship">{row.shipName}</span>
               <span className="fits-row-name">{row.fitName}</span>
               <span className="fits-row-meta">
-                {row.itemCount} items
+                {row.itemCount} items - {row.visibility === 'public' ? 'Public' : 'Private'}
                 {(row.warningCounts.unmatched + row.warningCounts.overSlot + row.warningCounts.unassignable) > 0 && (
                   <b> - warnings</b>
                 )}
@@ -320,6 +367,10 @@ function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode:
               quote={quote}
               quoteLoading={quoteLoading}
               saved={activeSavedId != null}
+              visibility={draft ? visibility : detail?.visibility ?? visibility}
+              editable={canEditActive}
+              canPublish={canPublishActive}
+              canCopyPrivate={canCopyPrivate}
               busy={busy}
               chars={sortedChars}
               pilotId={pilotId}
@@ -331,6 +382,8 @@ function SavedFitsView({ chars, mode, onMode }: Props & { mode: FitMode; onMode:
               onPilot={setPilotId}
               onSave={saveCurrent}
               onDelete={deleteCurrent}
+              onPublish={publishCurrent}
+              onCopyPrivate={copyCurrentToPrivate}
               onCopy={copyEft}
               onSend={sendToPilot}
               onRefresh={() => refreshQuote(active)}
@@ -386,6 +439,10 @@ function FitHeader(props: {
   quote: FitQuote | null;
   quoteLoading: boolean;
   saved: boolean;
+  visibility: LibraryVisibility;
+  editable: boolean;
+  canPublish: boolean;
+  canCopyPrivate: boolean;
   busy: boolean;
   chars: CharacterStatus[];
   pilotId: number | null;
@@ -397,6 +454,8 @@ function FitHeader(props: {
   onPilot: (v: number | null) => void;
   onSave: () => void;
   onDelete: () => void;
+  onPublish: () => void;
+  onCopyPrivate: () => void;
   onCopy: () => void;
   onSend: () => void;
   onRefresh: () => void;
@@ -410,21 +469,24 @@ function FitHeader(props: {
         <div className="fits-title-line">
           <strong>{fit.ship?.name ?? fit.headerShipName}</strong>
           <span className={props.saved ? 'fits-state saved' : 'fits-state draft'}>{props.saved ? 'Saved' : 'Draft'}</span>
+          <span className={`fits-state ${props.visibility}`}>{props.visibility === 'public' ? 'Public' : 'Private'}</span>
           {fit.warnings.map((w, i) => <span key={`${w.code}-${i}`} className="fits-warn-badge">{w.code}</span>)}
         </div>
         <div className="fits-edit-grid">
-          <input value={props.fitName} onChange={e => props.onName(e.target.value)} />
-          <input value={props.notes} onChange={e => props.onNotes(e.target.value)} placeholder="Notes" />
-          <ShipPicker onSelect={props.onShip} />
+          <input value={props.fitName} onChange={e => props.onName(e.target.value)} readOnly={!props.editable} />
+          <input value={props.notes} onChange={e => props.onNotes(e.target.value)} placeholder="Notes" readOnly={!props.editable} />
+          {props.editable ? <ShipPicker onSelect={props.onShip} /> : <input value="Public copy" readOnly />}
         </div>
       </div>
       <div className="fits-actions">
         <strong>{props.quote ? `${formatIsk(props.quote.totals.grand)} ISK` : props.quoteLoading ? 'Pricing...' : '-'}</strong>
         <div className="fits-action-row">
-          <button onClick={props.onSave} disabled={props.busy}>{props.saved ? 'Save' : 'Save fit'}</button>
+          {props.editable && <button onClick={props.onSave} disabled={props.busy}>{props.saved ? 'Save' : 'Save fit'}</button>}
+          {props.canPublish && <button onClick={props.onPublish} disabled={props.busy}>Publish</button>}
+          {props.canCopyPrivate && <button onClick={props.onCopyPrivate} disabled={props.busy}>Copy private</button>}
           <button onClick={props.onCopy}>Copy EFT</button>
           <button onClick={props.onRefresh} disabled={props.quoteLoading}>Refresh Price</button>
-          {props.saved && <button className="danger" onClick={props.onDelete}>Delete</button>}
+          {props.saved && props.editable && <button className="danger" onClick={props.onDelete}>Delete</button>}
         </div>
         <div className="fits-send-row">
           <select value={props.pilotId ?? ''} onChange={e => props.onPilot(Number(e.target.value) || null)}>

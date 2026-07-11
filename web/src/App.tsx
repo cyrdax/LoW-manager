@@ -205,7 +205,7 @@ export function App() {
       {view === 'market' && <MarketView chars={list} />}
       {view === 'industry' && <IndustryView chars={list} />}
       {view === 'contracts' && <ContractsView />}
-      {view === 'fits' && <FitsView chars={list} />}
+      {view === 'fits' && <FitsView chars={list} currentUser={currentUser} />}
     </div>
   );
 }
