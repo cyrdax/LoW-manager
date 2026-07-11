@@ -25,6 +25,7 @@ export interface PasswordUser {
 export interface UserStore {
   createPasswordUser(email: string, passwordHash: string): Promise<AppUser>;
   findByEmailWithPassword(email: string): Promise<PasswordUser | null>;
+  findOrCreateGoogleUser(input: { googleSub: string; email: string; emailVerified: boolean }): Promise<AppUser>;
   markEmailVerified(userId: string): Promise<AppUser | null>;
   markActive(userId: string): Promise<AppUser | null>;
   updatePassword(userId: string, passwordHash: string): Promise<boolean>;
@@ -108,6 +109,83 @@ export function createUserStore(
       );
       const row = rows.rows[0];
       return row ? { user: mapUser(row), passwordHash: row.password_hash } : null;
+    },
+
+    async findOrCreateGoogleUser(input) {
+      const normalizedEmail = normalizeEmail(input.email);
+      return withTransaction(source, async client => {
+        const linkedRows = await client.query<AppUserRow>(
+          `
+            SELECT u.id, u.email, u.email_verified_at, u.role, u.status, u.main_character_id,
+              u.last_active_at, u.created_at, u.updated_at, u.deleted_at
+            FROM user_google_accounts g
+            JOIN app_users u ON u.id = g.user_id
+            WHERE g.google_sub = $1
+          `,
+          [input.googleSub],
+        );
+        if (linkedRows.rows[0]) return mapUser(linkedRows.rows[0]);
+
+        const timestamp = now();
+        const existingRows = await client.query<AppUserRow>(
+          `
+            SELECT id, email, email_verified_at, role, status, main_character_id,
+              last_active_at, created_at, updated_at, deleted_at
+            FROM app_users
+            WHERE email = $1
+          `,
+          [normalizedEmail],
+        );
+
+        let user = existingRows.rows[0] ? mapUser(existingRows.rows[0]) : null;
+        if (!user) {
+          const roleRows = await client.query<{ role: UserRole }>(`
+            SELECT CASE
+              WHEN EXISTS (
+                SELECT 1 FROM app_users WHERE role = 'admin' AND status <> 'deleted'
+              )
+              THEN 'user'::user_role
+              ELSE 'admin'::user_role
+            END AS role
+          `);
+          const createdRows = await client.query<AppUserRow>(
+            `
+              INSERT INTO app_users (email, email_verified_at, role, created_at, updated_at)
+              VALUES ($1, $2, $3, $4, $4)
+              RETURNING id, email, email_verified_at, role, status, main_character_id,
+                last_active_at, created_at, updated_at, deleted_at
+            `,
+            [normalizedEmail, input.emailVerified ? timestamp : null, roleRows.rows[0]?.role ?? 'user', timestamp],
+          );
+          user = mapUser(createdRows.rows[0]!);
+        } else if (input.emailVerified && !user.emailVerifiedAt) {
+          const verifiedRows = await client.query<AppUserRow>(
+            `
+              UPDATE app_users
+              SET email_verified_at = COALESCE(email_verified_at, $2),
+                updated_at = $2
+              WHERE id = $1
+              RETURNING id, email, email_verified_at, role, status, main_character_id,
+                last_active_at, created_at, updated_at, deleted_at
+            `,
+            [user.id, timestamp],
+          );
+          user = verifiedRows.rows[0] ? mapUser(verifiedRows.rows[0]) : user;
+        }
+
+        await client.query(
+          `
+            INSERT INTO user_google_accounts (google_sub, user_id, email, email_verified, linked_at)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (google_sub) DO UPDATE SET
+              user_id = excluded.user_id,
+              email = excluded.email,
+              email_verified = excluded.email_verified
+          `,
+          [input.googleSub, user.id, normalizedEmail, input.emailVerified, timestamp],
+        );
+        return user;
+      });
     },
 
     async markEmailVerified(userId) {

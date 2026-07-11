@@ -6,6 +6,7 @@ import type { QueryClient } from '../db/migrations.ts';
 class FakeClient implements QueryClient {
   users = new Map<string, UserRow>();
   credentials = new Map<string, { user_id: string; email: string; password_hash: string }>();
+  googleAccounts = new Map<string, { google_sub: string; user_id: string; email: string; email_verified: boolean }>();
   adminCount = 0;
   nextId = 1;
   inTransaction = false;
@@ -22,17 +23,29 @@ class FakeClient implements QueryClient {
     if (text.includes('SELECT CASE') && text.includes('FROM app_users')) {
       return { rows: [{ role: this.adminCount > 0 ? 'user' : 'admin' }], rowCount: 1 } as T;
     }
+    if (text.includes('FROM user_google_accounts')) {
+      const account = this.googleAccounts.get(String(params?.[0]));
+      const user = account ? this.users.get(account.user_id) : undefined;
+      return { rows: user ? [user] : [], rowCount: user ? 1 : 0 } as T;
+    }
+    if (text.includes('FROM app_users') && text.includes('WHERE email')) {
+      const user = Array.from(this.users.values()).find(row => row.email === params?.[0]);
+      return { rows: user ? [user] : [], rowCount: user ? 1 : 0 } as T;
+    }
     if (text.includes('INSERT INTO app_users')) {
+      const isGoogleUser = text.includes('INSERT INTO app_users (email, email_verified_at');
+      const role = (isGoogleUser ? params?.[2] : params?.[1]) as 'user' | 'admin';
+      const timestamp = (isGoogleUser ? params?.[3] : params?.[2]) as Date;
       const row: UserRow = {
         id: `user-${this.nextId++}`,
         email: String(params?.[0]),
-        email_verified_at: null,
-        role: params?.[1] as 'user' | 'admin',
+        email_verified_at: isGoogleUser ? params?.[1] as Date | null : null,
+        role,
         status: 'active',
         main_character_id: null,
         last_active_at: null,
-        created_at: params?.[2] as Date,
-        updated_at: params?.[2] as Date,
+        created_at: timestamp,
+        updated_at: timestamp,
         deleted_at: null,
       };
       if (row.role === 'admin') this.adminCount += 1;
@@ -44,6 +57,15 @@ class FakeClient implements QueryClient {
         user_id: String(params?.[0]),
         email: String(params?.[1]),
         password_hash: String(params?.[2]),
+      });
+      return { rows: [], rowCount: 1 } as T;
+    }
+    if (text.includes('INSERT INTO user_google_accounts')) {
+      this.googleAccounts.set(String(params?.[0]), {
+        google_sub: String(params?.[0]),
+        user_id: String(params?.[1]),
+        email: String(params?.[2]),
+        email_verified: Boolean(params?.[3]),
       });
       return { rows: [], rowCount: 1 } as T;
     }
@@ -125,6 +147,35 @@ test('UserStore updates password credentials for active users', async () => {
   assert.equal(await store.updatePassword(user.id, 'new-hash'), true);
   assert.equal((await store.findByEmailWithPassword('pilot@example.com'))?.passwordHash, 'new-hash');
   assert.equal(await store.updatePassword('missing-user', 'newer-hash'), false);
+});
+
+test('UserStore links Google accounts and reuses existing users by email', async () => {
+  const client = new FakeClient();
+  const now = new Date('2026-07-11T12:00:00Z');
+  const store = createUserStore(client, { now: () => now });
+
+  const passwordUser = await store.createPasswordUser('Pilot@Example.com', 'hash');
+  const linked = await store.findOrCreateGoogleUser({
+    googleSub: 'google-sub-1',
+    email: ' pilot@example.COM ',
+    emailVerified: true,
+  });
+  const sameGoogle = await store.findOrCreateGoogleUser({
+    googleSub: 'google-sub-1',
+    email: 'pilot@example.com',
+    emailVerified: true,
+  });
+  const newGoogle = await store.findOrCreateGoogleUser({
+    googleSub: 'google-sub-2',
+    email: 'new@example.com',
+    emailVerified: true,
+  });
+
+  assert.equal(linked.id, passwordUser.id);
+  assert.equal(sameGoogle.id, passwordUser.id);
+  assert.equal(linked.emailVerifiedAt?.toISOString(), now.toISOString());
+  assert.equal(newGoogle.email, 'new@example.com');
+  assert.equal(newGoogle.role, 'user');
 });
 
 interface UserRow {

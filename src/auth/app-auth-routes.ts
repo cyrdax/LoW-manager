@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { FastifyBaseLogger, FastifyInstance, FastifyReply } from 'fastify';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { z } from 'zod';
 import { createAppTokenStore, type AppTokenStore } from './app-token-store.ts';
 import { readSessionToken, SESSION_COOKIE } from './current-user.ts';
@@ -10,6 +11,10 @@ import { createUserStore, type AppUser, type UserStore } from './user-store.ts';
 const SESSION_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+const GOOGLE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const GOOGLE_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
 const signupSchema = z.object({
   email: z.string().trim().email(),
@@ -28,11 +33,32 @@ export interface AuthMailer {
   sendPasswordReset(input: { to: string; resetUrl: string }): Promise<void>;
 }
 
+export interface GoogleIdentity {
+  sub: string;
+  email: string;
+  emailVerified: boolean;
+}
+
+export interface GoogleTokenResult {
+  idToken: string;
+}
+
+export interface GoogleAuthConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri?: string;
+  authorizeUrl?: string;
+  tokenUrl?: string;
+  exchangeCode?: (code: string, input: { clientId: string; clientSecret: string; redirectUri: string; tokenUrl: string }) => Promise<GoogleTokenResult>;
+  verifyIdToken?: (idToken: string, clientId: string) => Promise<GoogleIdentity>;
+}
+
 export interface AppAuthRouteDeps {
   users?: UserStore;
   sessions?: SessionStore;
   appTokens?: AppTokenStore;
   mailer?: AuthMailer;
+  google?: GoogleAuthConfig | null;
   appBaseUrl?: string;
   hashPassword?: (password: string) => Promise<string>;
   verifyPassword?: (password: string, hash: string) => Promise<boolean>;
@@ -50,6 +76,7 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
   const cookieName = deps.sessionCookieName ?? SESSION_COOKIE;
   const appBaseUrl = deps.appBaseUrl ?? defaultAppBaseUrl();
   const secureCookies = deps.secureCookies ?? process.env.NODE_ENV === 'production';
+  const google = deps.google === undefined ? googleConfigFromEnv() : deps.google;
 
   app.post('/api/auth/signup', async (req, reply) => {
     const parsed = signupSchema.safeParse(req.body);
@@ -86,6 +113,55 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
     setSessionCookie(reply, cookieName, issued.token, secureCookies);
     await users.markActive(found.user.id);
     return { user: publicUser(found.user) };
+  });
+
+  app.get('/auth/google/start', async (_req, reply) => {
+    const configured = normalizedGoogleConfig(google, appBaseUrl);
+    if (!configured) return reply.code(503).send({ error: 'google_auth_not_configured' });
+    const state = await appTokens.issue({
+      purpose: 'google_oauth_state',
+      metadata: { provider: 'google' },
+      ttlMs: GOOGLE_OAUTH_STATE_TTL_MS,
+    });
+    const url = new URL(configured.authorizeUrl);
+    url.searchParams.set('client_id', configured.clientId);
+    url.searchParams.set('redirect_uri', configured.redirectUri);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', 'openid email profile');
+    url.searchParams.set('state', state);
+    url.searchParams.set('prompt', 'select_account');
+    return reply.redirect(url.toString());
+  });
+
+  app.get<{ Querystring: { code?: string; state?: string; error?: string } }>('/auth/google/callback', async (req, reply) => {
+    const configured = normalizedGoogleConfig(google, appBaseUrl);
+    if (!configured) return reply.code(503).send({ error: 'google_auth_not_configured' });
+    if (req.query.error) return reply.redirect(`/?auth_error=${encodeURIComponent(req.query.error)}`);
+    if (!req.query.code || !req.query.state) return reply.code(400).send({ error: 'missing_google_oauth_code_or_state' });
+
+    const consumed = await appTokens.consume('google_oauth_state', req.query.state);
+    if (!consumed) return reply.code(400).send({ error: 'invalid_or_expired_google_state' });
+
+    const tokens = await configured.exchangeCode(req.query.code, configured);
+    const identity = await configured.verifyIdToken(tokens.idToken, configured.clientId);
+    if (!identity.email || !identity.emailVerified) return reply.code(403).send({ error: 'google_email_not_verified' });
+
+    const user = await users.findOrCreateGoogleUser({
+      googleSub: identity.sub,
+      email: identity.email,
+      emailVerified: identity.emailVerified,
+    });
+    if (user.status !== 'active') return reply.code(403).send({ error: 'account_not_active' });
+
+    const issued = await sessions.create(user.id, {
+      ipHash: hashOptional(req.ip),
+      userAgentHash: hashOptional(req.headers['user-agent']),
+    });
+    if (!issued) return reply.code(403).send({ error: 'account_not_active' });
+
+    setSessionCookie(reply, cookieName, issued.token, secureCookies);
+    await users.markActive(user.id);
+    return reply.redirect('/');
   });
 
   app.post('/api/auth/logout', async (req, reply) => {
@@ -184,6 +260,62 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
     url.searchParams.set('token', token);
     await mailer.sendPasswordReset({ to: user.email, resetUrl: url.toString() });
   }
+}
+
+function googleConfigFromEnv(): GoogleAuthConfig | null {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return null;
+  return {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    redirectUri: process.env.GOOGLE_REDIRECT_URI,
+  };
+}
+
+function normalizedGoogleConfig(config: GoogleAuthConfig | null | undefined, appBaseUrl: string) {
+  if (!config?.clientId || !config.clientSecret) return null;
+  return {
+    clientId: config.clientId,
+    clientSecret: config.clientSecret,
+    redirectUri: config.redirectUri ?? new URL('/auth/google/callback', appBaseUrl).toString(),
+    authorizeUrl: config.authorizeUrl ?? GOOGLE_AUTHORIZE_URL,
+    tokenUrl: config.tokenUrl ?? GOOGLE_TOKEN_URL,
+    exchangeCode: config.exchangeCode ?? exchangeGoogleCode,
+    verifyIdToken: config.verifyIdToken ?? verifyGoogleIdToken,
+  };
+}
+
+async function exchangeGoogleCode(
+  code: string,
+  input: { clientId: string; clientSecret: string; redirectUri: string; tokenUrl: string },
+): Promise<GoogleTokenResult> {
+  const res = await fetch(input.tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: input.clientId,
+      client_secret: input.clientSecret,
+      redirect_uri: input.redirectUri,
+      grant_type: 'authorization_code',
+    }),
+  });
+  const body = await res.json().catch(() => ({})) as { id_token?: string; error?: string };
+  if (!res.ok || !body.id_token) throw new Error(body.error ?? 'failed_google_token_exchange');
+  return { idToken: body.id_token };
+}
+
+async function verifyGoogleIdToken(idToken: string, clientId: string): Promise<GoogleIdentity> {
+  const { payload } = await jwtVerify(idToken, GOOGLE_JWKS, {
+    audience: clientId,
+    issuer: ['https://accounts.google.com', 'accounts.google.com'],
+  });
+  if (typeof payload.sub !== 'string') throw new Error('google_token_missing_subject');
+  if (typeof payload.email !== 'string') throw new Error('google_token_missing_email');
+  return {
+    sub: payload.sub,
+    email: payload.email,
+    emailVerified: payload.email_verified === true || payload.email_verified === 'true',
+  };
 }
 
 export function createDevAuthMailer(logger?: Pick<FastifyBaseLogger, 'info'>): AuthMailer {

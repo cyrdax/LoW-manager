@@ -158,6 +158,47 @@ test('password reset request does not reveal whether an email exists', async () 
   await app.close();
 });
 
+test('google auth start redirects to Google with an oauth state token', async () => {
+  const deps = testDeps();
+  deps.google = testGoogleConfig();
+  const app = await appWithAuth(deps);
+
+  const res = await app.inject({ method: 'GET', url: '/auth/google/start' });
+
+  assert.equal(res.statusCode, 302);
+  const location = String(res.headers.location);
+  assert.match(location, /^https:\/\/accounts\.google\.test\/o\/oauth2\/v2\/auth\?/);
+  assert.match(location, /client_id=google-client/);
+  assert.match(location, /redirect_uri=http%3A%2F%2Ftest\.local%2Fauth%2Fgoogle%2Fcallback/);
+  assert.match(location, /scope=openid\+email\+profile/);
+  assert.match(location, /state=google-token-1/);
+
+  await app.close();
+});
+
+test('google auth callback creates a session for a verified Google account', async () => {
+  const deps = testDeps();
+  deps.google = testGoogleConfig();
+  const app = await appWithAuth(deps);
+
+  await app.inject({ method: 'GET', url: '/auth/google/start' });
+  const callback = await app.inject({ method: 'GET', url: '/auth/google/callback?state=google-token-1&code=oauth-code' });
+
+  assert.equal(callback.statusCode, 302);
+  assert.equal(callback.headers.location, '/');
+  assert.deepEqual(deps.google.exchangedCodes, ['oauth-code']);
+  assert.deepEqual(deps.google.verifiedTokens, ['google-id-token']);
+  const cookieHeader = callback.headers['set-cookie'];
+  assert.ok(cookieHeader);
+  const sessionCookie = Array.isArray(cookieHeader) ? cookieHeader[0].split(';')[0] : cookieHeader.split(';')[0];
+
+  const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: sessionCookie } });
+  assert.equal(me.statusCode, 200);
+  assert.equal(me.json().user.email, 'google-pilot@example.com');
+
+  await app.close();
+});
+
 async function appWithAuth(deps: ReturnType<typeof testDeps>) {
   const app = Fastify();
   await app.register(cookie, { secret: 'test-secret' });
@@ -169,7 +210,8 @@ async function appWithAuth(deps: ReturnType<typeof testDeps>) {
     appBaseUrl: 'http://test.local',
     hashPassword: async password => `hashed:${password}`,
     verifyPassword: async (password, hash) => hash === `hashed:${password}`,
-  });
+    ...(deps.google ? { google: deps.google } : {}),
+  } as Parameters<typeof registerAppAuthRoutes>[1]);
   return app;
 }
 
@@ -178,12 +220,34 @@ function testDeps() {
   const sessions = new FakeSessionStore(users);
   const tokens = new FakeTokenStore();
   const mailer = new FakeMailer();
-  return { users, sessions, tokens, mailer };
+  return { users, sessions, tokens, mailer, google: undefined as ReturnType<typeof testGoogleConfig> | undefined };
+}
+
+function testGoogleConfig() {
+  const exchangedCodes: string[] = [];
+  const verifiedTokens: string[] = [];
+  return {
+    clientId: 'google-client',
+    clientSecret: 'google-secret',
+    authorizeUrl: 'https://accounts.google.test/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.google.test/token',
+    exchangedCodes,
+    verifiedTokens,
+    exchangeCode: async (code: string) => {
+      exchangedCodes.push(code);
+      return { idToken: 'google-id-token' };
+    },
+    verifyIdToken: async (idToken: string) => {
+      verifiedTokens.push(idToken);
+      return { sub: 'google-sub-1', email: 'google-pilot@example.com', emailVerified: true };
+    },
+  };
 }
 
 class FakeUserStore implements UserStore {
   users = new Map<string, AppUser>();
   credentials = new Map<string, string>();
+  googleAccounts = new Map<string, string>();
   nextId = 1;
 
   async createPasswordUser(email: string, passwordHash: string): Promise<AppUser> {
@@ -232,6 +296,28 @@ class FakeUserStore implements UserStore {
     if (!user || !user.email) return false;
     this.credentials.set(user.email, passwordHash);
     return true;
+  }
+
+  async findOrCreateGoogleUser(input: { googleSub: string; email: string; emailVerified: boolean }): Promise<AppUser> {
+    const existingUserId = this.googleAccounts.get(input.googleSub);
+    if (existingUserId) return this.users.get(existingUserId)!;
+    const now = new Date('2026-07-11T12:00:00Z');
+    const existingByEmail = Array.from(this.users.values()).find(user => user.email === input.email);
+    const user = existingByEmail ?? {
+      id: `user-${this.nextId++}`,
+      email: input.email,
+      emailVerifiedAt: input.emailVerified ? now : null,
+      role: this.users.size === 0 ? 'admin' as const : 'user' as const,
+      status: 'active' as const,
+      mainCharacterId: null,
+      lastActiveAt: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+    if (!existingByEmail) this.users.set(user.id, user);
+    this.googleAccounts.set(input.googleSub, user.id);
+    return user;
   }
 }
 
@@ -290,7 +376,12 @@ class FakeTokenStore implements AppTokenStore {
   nextId = 1;
 
   async issue(input: IssueAppTokenInput): Promise<string> {
-    const raw = `${input.purpose === 'password_reset' ? 'reset' : 'verify'}-token-${this.nextId}`;
+    const prefix = input.purpose === 'password_reset'
+      ? 'reset'
+      : input.purpose === 'google_oauth_state'
+        ? 'google'
+        : 'verify';
+    const raw = `${prefix}-token-${this.nextId}`;
     this.tokens.set(raw, {
       id: `token-${this.nextId++}`,
       userId: input.userId ?? null,

@@ -39,6 +39,26 @@ test('app auth stores persist users sessions and app tokens in Postgres', { skip
     assert.equal(first.role, 'admin');
     assert.equal(second.role, 'user');
 
+    const linkedGoogle = await users.findOrCreateGoogleUser({
+      googleSub: 'google-owner-sub',
+      email: 'owner@example.com',
+      emailVerified: true,
+    });
+    const newGoogle = await users.findOrCreateGoogleUser({
+      googleSub: 'google-new-sub',
+      email: 'google-pilot@example.com',
+      emailVerified: true,
+    });
+    const sameGoogle = await users.findOrCreateGoogleUser({
+      googleSub: 'google-new-sub',
+      email: 'google-pilot@example.com',
+      emailVerified: true,
+    });
+    assert.equal(linkedGoogle.id, first.id);
+    assert.equal(linkedGoogle.emailVerifiedAt?.toISOString(), now.toISOString());
+    assert.equal(newGoogle.role, 'user');
+    assert.equal(sameGoogle.id, newGoogle.id);
+
     const found = await users.findByEmailWithPassword('owner@example.com');
     assert.equal(found?.user.id, first.id);
     assert.equal(found?.passwordHash, 'password-hash');

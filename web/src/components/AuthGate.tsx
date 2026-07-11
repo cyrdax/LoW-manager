@@ -104,6 +104,8 @@ export function AuthGate({ onAuthenticated }: Props) {
         {message && <div className="auth-note">{message}</div>}
         {error && <div className="auth-error">{error}</div>}
 
+        <a className="google-auth-button" href="/auth/google/start">Continue with Google</a>
+
         {mode === 'login' && (
           <form className="auth-form" onSubmit={submitLogin}>
             <label>Email<input value={email} onChange={e => setEmail(e.target.value)} type="email" autoComplete="email" required /></label>

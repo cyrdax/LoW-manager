@@ -60,6 +60,19 @@ body {
   font: inherit;
 }
 .auth-tabs button.active { background: var(--accent); color: #0b0e13; font-weight: 700; }
+.google-auth-button {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #111827;
+  padding: 10px 12px;
+  text-align: center;
+  text-decoration: none;
+  font-weight: 700;
+}
+.google-auth-button:hover { background: #e5e7eb; }
 .auth-form {
   display: flex;
   flex-direction: column;
