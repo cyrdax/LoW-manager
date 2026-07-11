@@ -60,6 +60,14 @@ export function listUsableCharacters(userId: string): CharacterRow[] {
   return defaultCharacters.listUsableByUser(userId);
 }
 
+export function getFleetBossCharacter(userId: string): CharacterRow | undefined {
+  return defaultCharacters.listByUser(userId).find(row => row.is_boss === 1);
+}
+
+export function listFleetInviteCharacters(userId: string): CharacterRow[] {
+  return defaultCharacters.listUsableByUser(userId).filter(row => row.is_boss === 0);
+}
+
 export function userCharacterIds(userId: string): Set<number> {
   return new Set(defaultCharacters.listIdsByUser(userId));
 }

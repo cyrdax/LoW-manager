@@ -9,8 +9,10 @@ test('fleet routes scope boss and actor lookups to the current app user', () => 
   assert.match(fleet, /routeCurrentUser/);
   assert.match(fleet, /requireUser/);
   assert.match(fleet, /getOwnedCharacter/);
-  assert.match(fleet, /SELECT \* FROM characters WHERE is_boss = 1 AND user_id = \?/);
-  assert.match(fleet, /SELECT \* FROM characters WHERE user_id = \? AND is_boss = 0 AND needs_reauth = 0/);
+  assert.match(fleet, /getFleetBossCharacter/);
+  assert.match(fleet, /listFleetInviteCharacters/);
+  assert.doesNotMatch(fleet, /from ['"]\.\.\/db\.ts['"]/);
+  assert.doesNotMatch(fleet, /SELECT \* FROM characters/);
   assert.doesNotMatch(fleet, /SELECT \* FROM characters WHERE is_boss = 1'\)/);
   assert.doesNotMatch(fleet, /SELECT \* FROM characters WHERE character_id = \?'\)/);
 });
