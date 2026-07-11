@@ -123,7 +123,7 @@ export function registerPlanetRoutes(app: FastifyInstance, deps: PlanetRouteDeps
       }
       const user = await requireUser(req, reply, currentUser);
       if (!user) return reply;
-      if (!requireOwnedCharacter(user.id, charId, reply, owns)) return reply;
+      if (!(await requireOwnedCharacter(user.id, charId, reply, owns))) return reply;
       const entry = getColonyPins(charId, planetId);
       if (!entry) {
         return reply.code(404).send({ error: 'colony not yet polled — try again in a few seconds' });

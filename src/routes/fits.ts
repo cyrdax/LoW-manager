@@ -75,7 +75,7 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
     if (!body?.rawEft) return reply.code(400).send({ error: 'rawEft is required' });
     const characterId = cleanPositiveNumber(body.characterId);
     if (!characterId) return reply.code(400).send({ error: 'characterId is required' });
-    if (!requireOwnedCharacter(user.id, characterId, reply, owns)) return reply;
+    if (!(await requireOwnedCharacter(user.id, characterId, reply, owns))) return reply;
     try {
       const draft = draftBuilder(body.rawEft, cleanPositiveNumber(body.shipTypeId));
       return sendFit(reply, applyDraftOverrides(draft, body), characterId, createFitting);
@@ -137,7 +137,7 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
     if (!id) return reply.code(400).send({ error: 'valid fit id is required' });
     const characterId = cleanPositiveNumber((req.body as { characterId?: number } | undefined)?.characterId);
     if (!characterId) return reply.code(400).send({ error: 'characterId is required' });
-    if (!requireOwnedCharacter(user.id, characterId, reply, owns)) return reply;
+    if (!(await requireOwnedCharacter(user.id, characterId, reply, owns))) return reply;
     const fit = store.get(id);
     if (!fit) return reply.code(404).send({ error: 'fit not found' });
     if (!canViewFit(fit, user)) return reply.code(403).send({ error: 'not allowed' });

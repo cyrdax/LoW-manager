@@ -150,7 +150,7 @@ export function registerIndustryRoutes(app: FastifyInstance, deps: IndustryRoute
     if (characterId !== 'max') {
       const user = await requireUser(req, reply, currentUser);
       if (!user) return reply;
-      if (!requireOwnedCharacter(user.id, characterId, reply, owns)) return reply;
+      if (!(await requireOwnedCharacter(user.id, characterId, reply, owns))) return reply;
     }
 
     const pilot = pilotSkills(characterId);
@@ -183,7 +183,7 @@ export function registerIndustryRoutes(app: FastifyInstance, deps: IndustryRoute
     if (characterId !== 'max') {
       const user = await requireUser(req, reply, currentUser);
       if (!user) return reply;
-      if (!requireOwnedCharacter(user.id, characterId, reply, owns)) return reply;
+      if (!(await requireOwnedCharacter(user.id, characterId, reply, owns))) return reply;
     }
 
     const pilot = pilotSkills(characterId);

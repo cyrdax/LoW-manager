@@ -266,7 +266,7 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
       }
       const user = await requireUser(req, reply, currentUser);
       if (!user) return reply;
-      if (!requireOwnedCharacter(user.id, charId, reply, owns)) return reply;
+      if (!(await requireOwnedCharacter(user.id, charId, reply, owns))) return reply;
       const item = data.items[String(itemId)];
       if (!item) return reply.code(404).send({ error: 'item not found' });
 
@@ -312,7 +312,7 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
       }
       const user = await requireUser(req, reply, currentUser);
       if (!user) return reply;
-      if (!requireOwnedCharacter(user.id, charId, reply, owns)) return reply;
+      if (!(await requireOwnedCharacter(user.id, charId, reply, owns))) return reply;
       const ship = data.ships[String(shipId)];
       if (!ship) return reply.code(404).send({ error: 'ship not found' });
 
@@ -339,7 +339,7 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
 
     const data = loadMasteryData();
     const charId = Number(req.query.characterId);
-    if (Number.isFinite(charId) && !requireOwnedCharacter(user.id, charId, reply, owns)) return reply;
+    if (Number.isFinite(charId) && !(await requireOwnedCharacter(user.id, charId, reply, owns))) return reply;
     const rows = await savedPlans.list(user.id, Number.isFinite(charId) ? charId : undefined);
     return rows.map(r => {
       const ship = data.ships[String(r.ship_id)];
@@ -368,7 +368,7 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
     const { character_id, ship_id, mastery_level, label } = parsed.data;
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
-    if (!requireOwnedCharacter(user.id, character_id, reply, owns)) return reply;
+    if (!(await requireOwnedCharacter(user.id, character_id, reply, owns))) return reply;
     await savedPlans.save({
       userId: user.id,
       characterId: character_id,
@@ -400,7 +400,7 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
     const { character_id, type_id, kind } = parsed.data;
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
-    if (!requireOwnedCharacter(user.id, character_id, reply, owns)) return reply;
+    if (!(await requireOwnedCharacter(user.id, character_id, reply, owns))) return reply;
     try {
       if (kind === 'info') await openInformationWindow(character_id, type_id);
       else await openMarketDetailsWindow(character_id, type_id);

@@ -336,7 +336,7 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
 
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'bad id' });
-    if (!requireOwnedCharacter(user.id, id, reply, owns)) return reply;
+    if (!(await requireOwnedCharacter(user.id, id, reply, owns))) return reply;
     const charFleet = await getCharacterFleet(id);
     if (!charFleet) return { character_id: id, fleet: null, wings: null, error: 'character not in a fleet' };
     try {
@@ -355,7 +355,7 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
 
     const altId = Number(req.query.alt);
     if (!Number.isFinite(altId)) return reply.code(400).send({ error: 'pass ?alt=<character_id>' });
-    if (!requireOwnedCharacter(user.id, altId, reply, owns)) return reply;
+    if (!(await requireOwnedCharacter(user.id, altId, reply, owns))) return reply;
     const boss = getFleetBossCharacter(user.id);
     if (!boss) return reply.code(400).send({ error: 'no boss' });
     const fleet = await getCharacterFleet(boss.character_id);

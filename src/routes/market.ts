@@ -122,7 +122,7 @@ export function registerMarketRoutes(app: FastifyInstance, deps: MarketRouteDeps
     if (!Number.isFinite(recipientId) || recipientId <= 0) {
       return reply.code(400).send({ error: 'recipientCharacterId required' });
     }
-    if (!requireOwnedCharacter(user.id, recipientId, reply, owns)) return reply;
+    if (!(await requireOwnedCharacter(user.id, recipientId, reply, owns))) return reply;
 
     try {
       const quote = await quoteShoppingListItems(hubKey, rawItems, { log: req.log });

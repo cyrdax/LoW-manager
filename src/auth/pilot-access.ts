@@ -9,7 +9,7 @@ import {
 
 export type { CurrentUserResolver } from './current-user.ts';
 
-export type OwnsCharacter = (userId: string, characterId: number) => boolean;
+export type OwnsCharacter = (userId: string, characterId: number) => boolean | Promise<boolean>;
 export type GetOwnedCharacter = (userId: string, characterId: number) => CharacterRow | undefined;
 export type ListUsableCharacters = (userId: string) => CharacterRow[];
 
@@ -45,13 +45,13 @@ export function getOwnedCharacter(userId: string, characterId: number): Characte
   return defaultCharacters.getOwned(userId, characterId);
 }
 
-export function requireOwnedCharacter(
+export async function requireOwnedCharacter(
   userId: string,
   characterId: number,
   reply: FastifyReply,
   check: OwnsCharacter | undefined = ownsCharacter,
-): boolean {
-  if ((check ?? ownsCharacter)(userId, characterId)) return true;
+): Promise<boolean> {
+  if (await (check ?? ownsCharacter)(userId, characterId)) return true;
   reply.code(403).send({ error: 'character_not_owned' });
   return false;
 }

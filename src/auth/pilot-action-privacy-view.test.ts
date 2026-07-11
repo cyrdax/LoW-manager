@@ -12,6 +12,7 @@ test('private pilot action routes verify character ownership before using ESI da
   const skills = readFileSync(resolve('src/routes/skills.ts'), 'utf8');
 
   assert.match(helper, /export function ownsCharacter/);
+  assert.match(helper, /export async function requireOwnedCharacter/);
   assert.match(helper, /createSqliteCharacterStore/);
   assert.match(helper, /\.owns\(userId, characterId\)/);
   assert.match(helper, /\.listUsableByUser\(userId\)/);
@@ -23,6 +24,10 @@ test('private pilot action routes verify character ownership before using ESI da
   assert.match(market, /requireOwnedCharacter/);
   assert.match(fits, /requireOwnedCharacter/);
   assert.match(skills, /requireOwnedCharacter/);
+  assert.match(market, /await requireOwnedCharacter/);
+  assert.match(fits, /await requireOwnedCharacter/);
+  assert.match(skills, /await requireOwnedCharacter/);
+  assert.doesNotMatch([autopilot, market, fits, skills].join('\n'), /if \(!requireOwnedCharacter/);
   assert.match(skills, /createSavedSkillPlanStore/);
   assert.match(skills, /savedPlans\.list\(user\.id/);
   assert.doesNotMatch(skills, /saved_skill_plans/);
