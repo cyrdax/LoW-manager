@@ -1,4 +1,7 @@
 import type Database from 'better-sqlite3';
+import type { QueryClient } from '../db/migrations.ts';
+import { getPostgresPool } from '../db/postgres.ts';
+import { withTransaction, type TransactionSource } from '../db/transaction.ts';
 import { buildFitDraft } from './assignment.ts';
 import { getShipLayout, resolveShipByTypeId } from './metadata.ts';
 import type {
@@ -73,8 +76,22 @@ export interface FitStore {
   delete(id: number): boolean;
 }
 
+export interface AsyncFitStore {
+  list(filters?: { visibility?: LibraryVisibility; ownerUserId?: string }): Promise<SavedFitSummary[]>;
+  get(id: number): Promise<SavedFitDetail | null>;
+  create(input: SaveFitInput): Promise<SavedFitDetail>;
+  update(id: number, input: UpdateFitInput): Promise<SavedFitDetail | null>;
+  publish(id: number): Promise<SavedFitDetail | null>;
+  copyToPrivate(id: number, ownerUserId: string): Promise<SavedFitDetail | null>;
+  delete(id: number): Promise<boolean>;
+}
+
 interface FitStoreOptions {
   now?: () => number;
+}
+
+interface PostgresFitStoreOptions {
+  now?: () => Date;
 }
 
 interface SavedFitRow {
@@ -105,6 +122,36 @@ interface SavedFitItemRow {
   role: FitSectionRole;
   slot_flag: EsiFitFlag | null;
   warning: string | null;
+}
+
+interface PostgresSavedFitRow {
+  id: string | number;
+  owner_user_id: string | null;
+  visibility: LibraryVisibility;
+  source_public_fit_id: string | number | null;
+  ship_type_id: string | number;
+  ship_name: string;
+  fit_name: string;
+  notes: string;
+  raw_eft: string;
+  created_at: Date | string | number;
+  updated_at: Date | string | number;
+}
+
+interface PostgresSavedFitItemRow {
+  id: string | number;
+  fit_id: string | number;
+  source: AssignedFitItem['source'];
+  section_index: string | number;
+  line_index: string | number;
+  raw_line: string;
+  input_name: string;
+  resolved_name: string | null;
+  type_id: string | number | null;
+  quantity: string | number;
+  role: FitSectionRole;
+  slot_flag: EsiFitFlag | null;
+  warning: unknown;
 }
 
 const DISPLAY_ROLES: FitSectionRole[] = [
@@ -341,10 +388,212 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
   };
 }
 
+const FIT_COLUMNS = `
+  id, owner_user_id, visibility, source_public_fit_id,
+  ship_type_id, ship_name, fit_name, notes, raw_eft, created_at, updated_at
+`;
+
+const FIT_ITEM_COLUMNS = `
+  id, fit_id, source, section_index, line_index, raw_line, input_name, resolved_name,
+  type_id, quantity, role, slot_flag, warning
+`;
+
+export function createPostgresFitStore(
+  source: TransactionSource = getPostgresPool(),
+  options: PostgresFitStoreOptions = {},
+): AsyncFitStore {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async list(filters = {}) {
+      const params: unknown[] = [];
+      const where: string[] = [];
+      if (filters.visibility) {
+        params.push(filters.visibility);
+        where.push(`visibility = $${params.length}`);
+      }
+      if (filters.ownerUserId) {
+        params.push(filters.ownerUserId);
+        where.push(`owner_user_id = $${params.length}`);
+      }
+      const result = await source.query<{ id: string | number }>(
+        `SELECT id FROM saved_fits${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY updated_at DESC, id DESC`,
+        params,
+      );
+      const details = await Promise.all(result.rows.map(row => readPostgresDetail(source, Number(row.id))));
+      return details
+        .map(detailToSummary)
+        .filter((row): row is SavedFitSummary => row != null);
+    },
+
+    async get(id) {
+      return readPostgresDetail(source, id);
+    },
+
+    async create(input) {
+      return withTransaction(source, async client => {
+        const id = await insertPostgresFit(client, input, now());
+        return (await readPostgresDetail(client, id))!;
+      });
+    },
+
+    async update(id, input) {
+      return withTransaction(source, async client => {
+        const existing = await readPostgresFitRow(client, id);
+        if (!existing) return null;
+
+        const rawEft = input.rawEft ?? existing.raw_eft;
+        const shipTypeId = input.shipTypeId ?? Number(existing.ship_type_id);
+        const draft = buildFitDraft(rawEft, shipTypeId);
+        if (!draft.ship) throw new Error('Cannot save a fit without a resolved ship.');
+        const timestamp = now();
+        const fitName = cleanText(input.fitName) || existing.fit_name || draft.fitName;
+        const result = await client.query<{ id: string | number }>(
+          `
+            UPDATE saved_fits
+            SET ship_type_id = $1,
+                ship_name = $2,
+                fit_name = $3,
+                notes = $4,
+                raw_eft = $5,
+                updated_at = $6
+            WHERE id = $7
+            RETURNING id
+          `,
+          [
+            draft.ship.typeId,
+            draft.ship.name,
+            fitName,
+            input.notes ?? existing.notes,
+            rawEft,
+            timestamp,
+            id,
+          ],
+        );
+        if (result.rows.length === 0) return null;
+        await persistPostgresItems(client, id, draft.items);
+        return readPostgresDetail(client, id);
+      });
+    },
+
+    async publish(id) {
+      const result = await source.query<{ id: string | number }>(
+        "UPDATE saved_fits SET visibility = 'public', updated_at = $1 WHERE id = $2 RETURNING id",
+        [now(), id],
+      );
+      return result.rows.length > 0 ? readPostgresDetail(source, id) : null;
+    },
+
+    async copyToPrivate(id, ownerUserId) {
+      return withTransaction(source, async client => {
+        const sourceFit = await readPostgresDetail(client, id);
+        if (!sourceFit) return null;
+        const copiedId = await insertPostgresFit(client, {
+          rawEft: sourceFit.rawEft,
+          shipTypeId: sourceFit.ship?.typeId,
+          fitName: sourceFit.fitName,
+          notes: sourceFit.notes,
+          ownerUserId,
+          visibility: 'private',
+          sourcePublicFitId: sourceFit.id,
+        }, now());
+        return readPostgresDetail(client, copiedId);
+      });
+    },
+
+    async delete(id) {
+      const result = await source.query('DELETE FROM saved_fits WHERE id = $1', [id]);
+      return (result.rowCount ?? 0) > 0;
+    },
+  };
+}
+
 function readDetail(database: SqliteDatabase, id: number): SavedFitDetail | null {
   const fit = database.prepare('SELECT * FROM saved_fits WHERE id = ?').get(id) as SavedFitRow | undefined;
   if (!fit) return null;
   const rows = database.prepare('SELECT * FROM saved_fit_items WHERE fit_id = ? ORDER BY id').all(id) as SavedFitItemRow[];
+  return buildDetail(fit, rows);
+}
+
+async function readPostgresFitRow(client: QueryClient, id: number): Promise<SavedFitRow | null> {
+  const result = await client.query<PostgresSavedFitRow>(
+    `SELECT ${FIT_COLUMNS} FROM saved_fits WHERE id = $1`,
+    [id],
+  );
+  return result.rows[0] ? mapPostgresFitRow(result.rows[0]) : null;
+}
+
+async function readPostgresDetail(client: QueryClient, id: number): Promise<SavedFitDetail | null> {
+  const fit = await readPostgresFitRow(client, id);
+  if (!fit) return null;
+  const rows = await client.query<PostgresSavedFitItemRow>(
+    `SELECT ${FIT_ITEM_COLUMNS} FROM saved_fit_items WHERE fit_id = $1 ORDER BY id`,
+    [id],
+  );
+  return buildDetail(fit, rows.rows.map(mapPostgresFitItemRow));
+}
+
+async function insertPostgresFit(client: QueryClient, input: SaveFitInput, timestamp: Date): Promise<number> {
+  const draft = buildFitDraft(input.rawEft, input.shipTypeId);
+  if (!draft.ship) throw new Error('Cannot save a fit without a resolved ship.');
+  const fitName = cleanText(input.fitName) || draft.fitName;
+  const result = await client.query<{ id: string | number }>(
+    `
+      INSERT INTO saved_fits (
+        owner_user_id, visibility, source_public_fit_id,
+        ship_type_id, ship_name, fit_name, notes, raw_eft, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id
+    `,
+    [
+      input.ownerUserId ?? null,
+      input.visibility ?? 'private',
+      input.sourcePublicFitId ?? null,
+      draft.ship.typeId,
+      draft.ship.name,
+      fitName,
+      input.notes ?? '',
+      input.rawEft,
+      timestamp,
+      timestamp,
+    ],
+  );
+  const id = Number(result.rows[0].id);
+  await persistPostgresItems(client, id, draft.items);
+  return id;
+}
+
+async function persistPostgresItems(client: QueryClient, fitId: number, items: AssignedFitItem[]): Promise<void> {
+  await client.query('DELETE FROM saved_fit_items WHERE fit_id = $1', [fitId]);
+  for (const item of items) {
+    await client.query(
+      `
+        INSERT INTO saved_fit_items (
+          fit_id, source, section_index, line_index, raw_line, input_name, resolved_name,
+          type_id, quantity, role, slot_flag, warning
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+      `,
+      [
+        fitId,
+        item.source,
+        item.sectionIndex,
+        item.lineIndex,
+        item.rawLine,
+        item.inputName,
+        item.resolvedName,
+        item.typeId,
+        item.quantity,
+        item.role,
+        item.slotFlag,
+        item.warning ? JSON.stringify(item.warning) : null,
+      ],
+    );
+  }
+}
+
+function buildDetail(fit: SavedFitRow, rows: SavedFitItemRow[]): SavedFitDetail {
   const ship = resolveShipByTypeId(fit.ship_type_id) ?? {
     typeId: fit.ship_type_id,
     name: fit.ship_name,
@@ -375,6 +624,44 @@ function readDetail(database: SqliteDatabase, id: number): SavedFitDetail | null
     notes: fit.notes,
     createdAt: fit.created_at,
     updatedAt: fit.updated_at,
+  };
+}
+
+function mapPostgresFitRow(row: PostgresSavedFitRow): SavedFitRow {
+  return {
+    id: Number(row.id),
+    owner_user_id: row.owner_user_id,
+    visibility: row.visibility ?? 'private',
+    source_public_fit_id: row.source_public_fit_id == null ? null : Number(row.source_public_fit_id),
+    ship_type_id: Number(row.ship_type_id),
+    ship_name: row.ship_name,
+    fit_name: row.fit_name,
+    notes: row.notes,
+    raw_eft: row.raw_eft,
+    created_at: toEpochMs(row.created_at),
+    updated_at: toEpochMs(row.updated_at),
+  };
+}
+
+function mapPostgresFitItemRow(row: PostgresSavedFitItemRow): SavedFitItemRow {
+  return {
+    id: Number(row.id),
+    fit_id: Number(row.fit_id),
+    source: row.source,
+    section_index: Number(row.section_index),
+    line_index: Number(row.line_index),
+    raw_line: row.raw_line,
+    input_name: row.input_name,
+    resolved_name: row.resolved_name,
+    type_id: row.type_id == null ? null : Number(row.type_id),
+    quantity: Number(row.quantity),
+    role: row.role,
+    slot_flag: row.slot_flag,
+    warning: row.warning == null
+      ? null
+      : typeof row.warning === 'string'
+        ? row.warning
+        : JSON.stringify(row.warning),
   };
 }
 
@@ -470,4 +757,10 @@ function parseWarning(raw: string | null): FitWarning | null {
 
 function cleanText(value: string | undefined): string {
   return value?.trim() ?? '';
+}
+
+function toEpochMs(value: Date | string | number): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  return new Date(value).getTime();
 }
