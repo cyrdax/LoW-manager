@@ -332,8 +332,8 @@ Fill in:
 | `PORT`               | `3100` (change only if you have a conflict; also update the callback)    |
 | `CONTACT_EMAIL`      | your email — sent to CCP as part of the User-Agent per ESI's best practice |
 | `COOKIE_SECRET`      | any long random string                                                   |
-| `DATABASE_URL`       | Postgres connection string for multi-tenant app data                     |
-| `TEST_DATABASE_URL`  | Postgres connection string for integration tests                         |
+| `DATABASE_URL`       | Postgres connection string for multi-tenant app data; local compose uses `127.0.0.1:55432` |
+| `TEST_DATABASE_URL`  | Postgres connection string for integration tests; local compose uses `127.0.0.1:55432` |
 | `TOKEN_ENCRYPTION_KEY` | 32-byte base64 key for encrypted EVE tokens                            |
 | `EMAIL_MODE`         | `dev` prints verification/reset links to logs                            |
 | `RESEND_API_KEY`     | Resend API key for hosted email                                          |
