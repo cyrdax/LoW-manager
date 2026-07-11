@@ -11,21 +11,25 @@
     "start": "node --loader tsx dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "db:migrate": "tsx scripts/db-migrate.ts",
     "build:mastery": "tsx scripts/build-mastery-data.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^9.3.1",
     "@fastify/static": "^7.0.4",
+    "@node-rs/argon2": "^2.0.2",
     "better-sqlite3": "^11.3.0",
     "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
     "jose": "^5.9.6",
+    "pg": "^8.22.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.7.5",
+    "@types/pg": "^8.20.0",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",

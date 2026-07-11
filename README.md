@@ -332,17 +332,28 @@ Fill in:
 | `PORT`               | `3100` (change only if you have a conflict; also update the callback)    |
 | `CONTACT_EMAIL`      | your email — sent to CCP as part of the User-Agent per ESI's best practice |
 | `COOKIE_SECRET`      | any long random string                                                   |
+| `DATABASE_URL`       | Postgres connection string for multi-tenant app data                     |
+| `TEST_DATABASE_URL`  | Postgres connection string for integration tests                         |
+| `TOKEN_ENCRYPTION_KEY` | 32-byte base64 key for encrypted EVE tokens                            |
+| `EMAIL_MODE`         | `dev` prints verification/reset links to logs                            |
+| `RESEND_API_KEY`     | Resend API key for hosted email                                          |
+| `EMAIL_FROM`         | verified sender address for hosted email                                 |
+| `GOOGLE_CLIENT_ID`   | Google OAuth client ID; leave blank to disable locally                   |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret; leave blank to disable locally             |
 
 ### 3. Install & run
 
 ```bash
 npm install
+docker compose up -d postgres
+npm run db:migrate
 npm run dev
 ```
 
 - Backend (Fastify + polling): http://localhost:3100
 - Vite dev server (frontend): http://localhost:5173
 - Vite proxies `/api` and `/auth` to `http://127.0.0.1:3100` by default. Override with `VITE_API_TARGET=http://127.0.0.1:<port>` if you run the backend on a different port.
+- The current runtime still uses SQLite while the multi-tenant Postgres cutover is in progress. `npm run db:migrate` prepares the target Postgres schema for the upcoming phases.
 
 Open http://localhost:5173. Click **Add character** once per alt.
 
@@ -373,7 +384,8 @@ If you move the boss into a squad mid-op, subsequent `Invite all` calls will fai
 
 ## Data, privacy, security
 
-- Tokens (access + refresh) are stored in a local SQLite file at `data/app.db`. Anyone with that file can impersonate your characters within the scope set until you revoke the grants.
+- During the multi-tenant cutover, the legacy local runtime still stores tokens in `data/app.db`. The target hosted runtime stores EVE refresh tokens encrypted in Postgres.
+- Anyone with an unencrypted legacy SQLite file can impersonate your characters within the scope set until you revoke the grants.
 - To fully reset: stop the server, delete `data/app.db`, revoke third-party grants at <https://community.eveonline.com/support/third-party-applications/>, then re-authenticate.
 - The server binds to `127.0.0.1` only — it's not reachable from other machines by default.
 - `.env` is gitignored. If you accidentally commit a client secret, rotate it on CCP's developer portal.

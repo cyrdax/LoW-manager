@@ -1,0 +1,286 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+DO $$ BEGIN
+  CREATE TYPE user_role AS ENUM ('user', 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE user_status AS ENUM ('active', 'disabled', 'deleted');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE auth_token_purpose AS ENUM (
+    'email_verification',
+    'password_reset',
+    'google_oauth_state',
+    'eve_oauth_state'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE library_visibility AS ENUM ('private', 'public', 'archived');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS app_users (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email text UNIQUE,
+  email_verified_at timestamptz,
+  role user_role NOT NULL DEFAULT 'user',
+  status user_status NOT NULL DEFAULT 'active',
+  main_character_id bigint,
+  last_active_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_users_last_active ON app_users(last_active_at);
+CREATE INDEX IF NOT EXISTS idx_app_users_status ON app_users(status);
+
+CREATE TABLE IF NOT EXISTS user_password_credentials (
+  user_id uuid PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
+  email text NOT NULL UNIQUE,
+  password_hash text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_google_accounts (
+  google_sub text PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  email text NOT NULL,
+  email_verified boolean NOT NULL DEFAULT false,
+  linked_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_google_accounts_user ON user_google_accounts(user_id);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  token_hash text NOT NULL UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  last_seen_at timestamptz,
+  ip_hash text,
+  user_agent_hash text
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
+
+CREATE TABLE IF NOT EXISTS auth_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES app_users(id) ON DELETE CASCADE,
+  purpose auth_token_purpose NOT NULL,
+  token_hash text NOT NULL UNIQUE,
+  metadata jsonb NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_purpose ON auth_tokens(purpose, expires_at);
+
+CREATE TABLE IF NOT EXISTS characters (
+  character_id bigint PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  character_name text NOT NULL,
+  owner_hash text NOT NULL,
+  corporation_id bigint,
+  corporation_name text,
+  corporation_ticker text,
+  portrait_url text,
+  scopes text NOT NULL,
+  refresh_token_enc jsonb NOT NULL,
+  access_token_enc jsonb,
+  access_token_expires_at timestamptz,
+  added_at timestamptz NOT NULL DEFAULT now(),
+  needs_reauth boolean NOT NULL DEFAULT false,
+  is_boss boolean NOT NULL DEFAULT false,
+  last_polled_at timestamptz,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_characters_user ON characters(user_id);
+CREATE INDEX IF NOT EXISTS idx_characters_polling ON characters(user_id, needs_reauth, last_polled_at);
+
+CREATE TABLE IF NOT EXISTS character_status_snapshots (
+  character_id bigint PRIMARY KEY REFERENCES characters(character_id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  payload jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_character_status_snapshots_user ON character_status_snapshots(user_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS universe_names (
+  category text NOT NULL,
+  id bigint NOT NULL,
+  name text NOT NULL,
+  PRIMARY KEY (category, id)
+);
+
+CREATE TABLE IF NOT EXISTS corporations (
+  id bigint PRIMARY KEY,
+  name text NOT NULL,
+  ticker text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS saved_systems (
+  system_id bigint PRIMARY KEY,
+  system_name text NOT NULL,
+  saved_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS saved_skill_plans (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  character_id bigint REFERENCES characters(character_id) ON DELETE CASCADE,
+  ship_id bigint NOT NULL,
+  mastery_level integer NOT NULL,
+  label text,
+  saved_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(user_id, character_id, ship_id, mastery_level)
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_skill_plans_user ON saved_skill_plans(user_id);
+
+CREATE TABLE IF NOT EXISTS saved_fits (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id uuid NOT NULL REFERENCES app_users(id),
+  visibility library_visibility NOT NULL DEFAULT 'private',
+  source_public_fit_id uuid REFERENCES saved_fits(id) ON DELETE SET NULL,
+  ship_type_id bigint NOT NULL,
+  ship_name text NOT NULL,
+  fit_name text NOT NULL,
+  notes text NOT NULL DEFAULT '',
+  raw_eft text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  archived_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_fits_private_owner ON saved_fits(owner_user_id, updated_at DESC) WHERE visibility = 'private';
+CREATE INDEX IF NOT EXISTS idx_saved_fits_public ON saved_fits(updated_at DESC) WHERE visibility = 'public';
+CREATE INDEX IF NOT EXISTS idx_saved_fits_ship ON saved_fits(ship_name);
+
+CREATE TABLE IF NOT EXISTS saved_fit_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  fit_id uuid NOT NULL REFERENCES saved_fits(id) ON DELETE CASCADE,
+  source text NOT NULL DEFAULT 'fit-line',
+  section_index integer NOT NULL,
+  line_index integer NOT NULL,
+  raw_line text NOT NULL,
+  input_name text NOT NULL,
+  resolved_name text,
+  type_id bigint,
+  quantity integer NOT NULL,
+  role text NOT NULL,
+  slot_flag text,
+  warning jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_fit_items_fit ON saved_fit_items(fit_id);
+
+CREATE TABLE IF NOT EXISTS doctrines (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id uuid NOT NULL REFERENCES app_users(id),
+  visibility library_visibility NOT NULL DEFAULT 'private',
+  source_public_doctrine_id uuid REFERENCES doctrines(id) ON DELETE SET NULL,
+  name text NOT NULL,
+  description text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  archived_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_doctrines_private_owner ON doctrines(owner_user_id, updated_at DESC) WHERE visibility = 'private';
+CREATE INDEX IF NOT EXISTS idx_doctrines_public ON doctrines(updated_at DESC) WHERE visibility = 'public';
+
+CREATE TABLE IF NOT EXISTS doctrine_fits (
+  doctrine_id uuid NOT NULL REFERENCES doctrines(id) ON DELETE CASCADE,
+  fit_id uuid NOT NULL REFERENCES saved_fits(id) ON DELETE CASCADE,
+  sort_order integer NOT NULL,
+  PRIMARY KEY (doctrine_id, fit_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_doctrine_fits_doctrine ON doctrine_fits(doctrine_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_doctrine_fits_fit ON doctrine_fits(fit_id);
+
+CREATE TABLE IF NOT EXISTS contract_index_regions (
+  region_id bigint PRIMARY KEY,
+  region_name text NOT NULL,
+  refreshed_at timestamptz,
+  expires_at timestamptz,
+  next_refresh_at timestamptz NOT NULL DEFAULT now(),
+  page_count integer,
+  priority integer NOT NULL DEFAULT 0,
+  last_error text
+);
+
+CREATE TABLE IF NOT EXISTS contract_index_summaries (
+  contract_id bigint PRIMARY KEY,
+  region_id bigint NOT NULL REFERENCES contract_index_regions(region_id),
+  region_name text NOT NULL,
+  issuer_id bigint NOT NULL,
+  issuer_corporation_id bigint NOT NULL,
+  type text NOT NULL,
+  date_issued timestamptz NOT NULL,
+  date_expired timestamptz NOT NULL,
+  title text,
+  price double precision,
+  buyout double precision,
+  start_location_id bigint,
+  end_location_id bigint,
+  location_id bigint,
+  location_system_id bigint,
+  location_system_name text,
+  location_name text,
+  location_known boolean NOT NULL,
+  active boolean NOT NULL,
+  last_seen_at timestamptz NOT NULL,
+  summary_expires_at timestamptz NOT NULL,
+  items_fetched_at timestamptz,
+  items_expires_at timestamptz,
+  items_error text
+);
+
+CREATE INDEX IF NOT EXISTS idx_contract_index_summaries_region_active ON contract_index_summaries(region_id, active);
+CREATE INDEX IF NOT EXISTS idx_contract_index_summaries_expires ON contract_index_summaries(date_expired);
+CREATE INDEX IF NOT EXISTS idx_contract_index_summaries_items_due ON contract_index_summaries(active, items_expires_at);
+
+CREATE TABLE IF NOT EXISTS contract_index_items (
+  contract_id bigint NOT NULL REFERENCES contract_index_summaries(contract_id) ON DELETE CASCADE,
+  record_id bigint NOT NULL,
+  type_id bigint NOT NULL,
+  quantity integer NOT NULL,
+  is_included boolean NOT NULL,
+  fetched_at timestamptz NOT NULL,
+  expires_at timestamptz NOT NULL,
+  PRIMARY KEY (contract_id, record_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contract_index_items_type ON contract_index_items(type_id, is_included, quantity);
+CREATE INDEX IF NOT EXISTS idx_contract_index_items_contract ON contract_index_items(contract_id);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_user_id uuid REFERENCES app_users(id) ON DELETE SET NULL,
+  target_user_id uuid REFERENCES app_users(id) ON DELETE SET NULL,
+  event_type text NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}',
+  ip_hash text,
+  user_agent_hash text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_created ON audit_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events(actor_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_target ON audit_events(target_user_id, created_at DESC);
