@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { createSqliteCharacterStore, type CharacterStore } from '../characters/store.ts';
+import { createSqliteCharacterStore, type AsyncCharacterStore, type CharacterStore } from '../characters/store.ts';
 import { SCOPE_STRING } from './scopes.ts';
 import { characterIdFromSub, verifyEveJwt } from './jwt.ts';
 import { createCurrentUserResolver, type CurrentUserResolver } from './current-user.ts';
@@ -28,7 +28,7 @@ interface TokenResponse {
 export interface SsoRouteDeps {
   oauthStates?: OAuthStateStore;
   currentUser?: CurrentUserResolver;
-  characters?: CharacterStore;
+  characters?: CharacterStore | AsyncCharacterStore;
 }
 
 export async function exchangeCode(code: string): Promise<TokenResponse> {
@@ -103,7 +103,7 @@ export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps = {})
     const scopes = Array.isArray(claims.scp) ? claims.scp.join(' ') : claims.scp;
     const expiresAt = Date.now() + tokens.expires_in * 1000;
 
-    characterStore.upsertAuthorized({
+    await characterStore.upsertAuthorized({
       characterId,
       userId,
       characterName: claims.name,

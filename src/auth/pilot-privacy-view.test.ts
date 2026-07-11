@@ -11,15 +11,18 @@ test('pilot authorization and realtime character routes are scoped to the curren
 
   assert.match(db, /user_id\s+TEXT/);
   assert.match(sso, /issue\(\{ userId: user\.id \}\)/);
-  assert.match(sso, /upsertAuthorized/);
+  assert.match(sso, /type AsyncCharacterStore/);
+  assert.match(sso, /await characterStore\.upsertAuthorized/);
 
   assert.match(characters, /createSqliteCharacterStore/);
-  assert.match(characters, /listByUser\(user\.id\)/);
-  assert.match(characters, /deleteOwned\(user\.id, id\)/);
-  assert.match(characters, /setBoss\(user\.id, parsed\.data\.character_id\)/);
+  assert.match(characters, /type AsyncCharacterStore/);
+  assert.match(characters, /await characterStore\.listByUser\(user\.id\)/);
+  assert.match(characters, /await characterStore\.deleteOwned\(user\.id, id\)/);
+  assert.match(characters, /await characterStore\.setBoss\(user\.id, parsed\.data\.character_id\)/);
   assert.match(characters, /\/api\/characters\/main/);
   assert.match(characters, /setMainCharacter/);
 
-  assert.match(stream, /listIdsByUser\(user\.id\)/);
+  assert.match(stream, /type AsyncCharacterStore/);
+  assert.match(stream, /await characterStore\.listIdsByUser\(user\.id\)/);
   assert.match(stream, /characterId/);
 });

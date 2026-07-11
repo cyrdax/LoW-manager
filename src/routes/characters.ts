@@ -4,12 +4,12 @@ import { forgetCharacter, ensureCharacter, snapshot } from '../polling/scheduler
 import { bus } from '../polling/events.ts';
 import { createCurrentUserResolver, type CurrentUserResolver } from '../auth/current-user.ts';
 import { createUserStore, type UserStore } from '../auth/user-store.ts';
-import { createSqliteCharacterStore, type CharacterStore } from '../characters/store.ts';
+import { createSqliteCharacterStore, type AsyncCharacterStore, type CharacterStore } from '../characters/store.ts';
 
 export interface CharacterRouteDeps {
   currentUser?: CurrentUserResolver;
   users?: Pick<UserStore, 'setMainCharacter'>;
-  characters?: CharacterStore;
+  characters?: CharacterStore | AsyncCharacterStore;
 }
 
 export function registerCharacterRoutes(app: FastifyInstance, deps: CharacterRouteDeps = {}) {
@@ -22,7 +22,7 @@ export function registerCharacterRoutes(app: FastifyInstance, deps: CharacterRou
     if (!user) return reply.code(401).send({ error: 'authentication_required' });
 
     // Ensure every DB character has polling state (e.g. right after first SSO)
-    const rows = characterStore.listByUser(user.id);
+    const rows = await characterStore.listByUser(user.id);
     for (const r of rows) ensureCharacter(r);
     const ids = new Set(rows.map(r => r.character_id));
     return snapshot().filter(c => ids.has(c.characterId));
@@ -33,7 +33,7 @@ export function registerCharacterRoutes(app: FastifyInstance, deps: CharacterRou
     if (!user) return reply.code(401).send({ error: 'authentication_required' });
 
     const id = Number(req.params.id);
-    if (characterStore.deleteOwned(user.id, id)) {
+    if (await characterStore.deleteOwned(user.id, id)) {
       if (user.mainCharacterId === id) await users.setMainCharacter(user.id, null);
       forgetCharacter(id);
     }
@@ -49,7 +49,7 @@ export function registerCharacterRoutes(app: FastifyInstance, deps: CharacterRou
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
 
     const characterId = parsed.data.character_id;
-    if (characterId != null && !characterStore.owns(user.id, characterId)) {
+    if (characterId != null && !(await characterStore.owns(user.id, characterId))) {
       return reply.code(404).send({ error: 'character_not_found' });
     }
 
@@ -66,7 +66,7 @@ export function registerCharacterRoutes(app: FastifyInstance, deps: CharacterRou
     const parsed = bossSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
 
-    for (const row of characterStore.setBoss(user.id, parsed.data.character_id)) {
+    for (const row of await characterStore.setBoss(user.id, parsed.data.character_id)) {
       ensureCharacter(row);
       bus.emit('status', { characterId: row.character_id, isBoss: row.is_boss === 1 });
     }
