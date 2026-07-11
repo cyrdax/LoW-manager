@@ -4,6 +4,7 @@ import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { registerAppAuthRoutes } from './auth/app-auth-routes.ts';
 import { registerSsoRoutes } from './auth/sso.ts';
 import { registerCharacterRoutes } from './routes/characters.ts';
 import { registerFleetRoutes } from './routes/fleet.ts';
@@ -25,6 +26,7 @@ const app = Fastify({ logger: true });
 
 await app.register(cookie, { secret: process.env.COOKIE_SECRET ?? 'dev-secret' });
 
+registerAppAuthRoutes(app);
 registerSsoRoutes(app);
 registerCharacterRoutes(app);
 registerFleetRoutes(app);
