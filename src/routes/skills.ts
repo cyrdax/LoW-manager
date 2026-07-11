@@ -10,7 +10,11 @@ import {
 import { openInformationWindow, openMarketDetailsWindow } from '../esi/ui.ts';
 import { getCharacterAttributes, getCharacterSkills } from '../polling/scheduler.ts';
 import { loadMasteryData, type MasteryData, type MasteryItem, type MasteryShip } from '../skills/mastery-data.ts';
-import { createSavedSkillPlanStore, type SavedSkillPlanStore } from '../skills/saved-plans-store.ts';
+import {
+  createSavedSkillPlanStore,
+  type AsyncSavedSkillPlanStore,
+  type SavedSkillPlanStore,
+} from '../skills/saved-plans-store.ts';
 import { trainingSecondsForSp, type CharacterAttributes } from '../skills/training-time.ts';
 
 // Standard EVE SP requirement per skill level (multiplied by skill rank).
@@ -194,7 +198,7 @@ function buildItemPlan(
 export interface SkillRouteDeps {
   currentUser?: CurrentUserResolver;
   ownsCharacter?: OwnsCharacter;
-  savedPlans?: SavedSkillPlanStore;
+  savedPlans?: SavedSkillPlanStore | AsyncSavedSkillPlanStore;
 }
 
 export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps = {}) {
@@ -336,7 +340,7 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
     const data = loadMasteryData();
     const charId = Number(req.query.characterId);
     if (Number.isFinite(charId) && !requireOwnedCharacter(user.id, charId, reply, owns)) return reply;
-    const rows = savedPlans.list(user.id, Number.isFinite(charId) ? charId : undefined);
+    const rows = await savedPlans.list(user.id, Number.isFinite(charId) ? charId : undefined);
     return rows.map(r => {
       const ship = data.ships[String(r.ship_id)];
       return {
@@ -365,7 +369,7 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
     if (!requireOwnedCharacter(user.id, character_id, reply, owns)) return reply;
-    savedPlans.save({
+    await savedPlans.save({
       userId: user.id,
       characterId: character_id,
       shipId: ship_id,
@@ -381,7 +385,7 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
 
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'invalid id' });
-    savedPlans.delete(user.id, id);
+    await savedPlans.delete(user.id, id);
     return { ok: true };
   });
 

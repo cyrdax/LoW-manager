@@ -1,5 +1,7 @@
 import type Database from 'better-sqlite3';
 import { db as defaultDb } from '../db.ts';
+import type { QueryClient } from '../db/migrations.ts';
+import { getPostgresPool } from '../db/postgres.ts';
 
 type SqliteDatabase = Database.Database;
 
@@ -27,8 +29,28 @@ export interface SavedSkillPlanStore {
   delete(userId: string, id: number): boolean;
 }
 
+export interface AsyncSavedSkillPlanStore {
+  list(userId: string, characterId?: number): Promise<SavedSkillPlanRow[]>;
+  save(input: SaveSkillPlanInput): Promise<SavedSkillPlanRow>;
+  delete(userId: string, id: number): Promise<boolean>;
+}
+
 export interface SavedSkillPlanStoreOptions {
   now?: () => number;
+}
+
+export interface PostgresSavedSkillPlanStoreOptions {
+  now?: () => Date;
+}
+
+interface PostgresSavedSkillPlanRow {
+  id: string | number;
+  user_id: string;
+  character_id: string | number;
+  ship_id: string | number;
+  mastery_level: string | number;
+  label: string | null;
+  saved_at: Date | string | number;
 }
 
 export function migrateSavedSkillPlansDb(database: SqliteDatabase): void {
@@ -94,4 +116,76 @@ export function createSavedSkillPlanStore(
       return result.changes > 0;
     },
   };
+}
+
+export function createPostgresSavedSkillPlanStore(
+  client: QueryClient = getPostgresPool(),
+  options: PostgresSavedSkillPlanStoreOptions = {},
+): AsyncSavedSkillPlanStore {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async list(userId, characterId) {
+      const result = characterId == null
+        ? await client.query<PostgresSavedSkillPlanRow>(
+          `
+            SELECT id, user_id, character_id, ship_id, mastery_level, label, saved_at
+            FROM saved_skill_plans
+            WHERE user_id = $1
+            ORDER BY saved_at DESC
+          `,
+          [userId],
+        )
+        : await client.query<PostgresSavedSkillPlanRow>(
+          `
+            SELECT id, user_id, character_id, ship_id, mastery_level, label, saved_at
+            FROM saved_skill_plans
+            WHERE user_id = $1 AND character_id = $2
+            ORDER BY saved_at DESC
+          `,
+          [userId, characterId],
+        );
+      return result.rows.map(mapPostgresRow);
+    },
+
+    async save(input) {
+      const result = await client.query<PostgresSavedSkillPlanRow>(
+        `
+          INSERT INTO saved_skill_plans (user_id, character_id, ship_id, mastery_level, label, saved_at)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT(user_id, character_id, ship_id, mastery_level)
+          DO UPDATE SET label = excluded.label, saved_at = excluded.saved_at
+          RETURNING id, user_id, character_id, ship_id, mastery_level, label, saved_at
+        `,
+        [input.userId, input.characterId, input.shipId, input.masteryLevel, input.label ?? null, now()],
+      );
+      return mapPostgresRow(result.rows[0]);
+    },
+
+    async delete(userId, id) {
+      const result = await client.query(
+        'DELETE FROM saved_skill_plans WHERE id = $1 AND user_id = $2',
+        [id, userId],
+      );
+      return (result.rowCount ?? 0) > 0;
+    },
+  };
+}
+
+function mapPostgresRow(row: PostgresSavedSkillPlanRow): SavedSkillPlanRow {
+  return {
+    id: Number(row.id),
+    user_id: row.user_id,
+    character_id: Number(row.character_id),
+    ship_id: Number(row.ship_id),
+    mastery_level: Number(row.mastery_level),
+    label: row.label,
+    saved_at: toEpochMs(row.saved_at),
+  };
+}
+
+function toEpochMs(value: Date | string | number): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  return new Date(value).getTime();
 }
