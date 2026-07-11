@@ -10,8 +10,8 @@ import {
 export type { CurrentUserResolver } from './current-user.ts';
 
 export type OwnsCharacter = (userId: string, characterId: number) => boolean | Promise<boolean>;
-export type GetOwnedCharacter = (userId: string, characterId: number) => CharacterRow | undefined;
-export type ListUsableCharacters = (userId: string) => CharacterRow[];
+export type GetOwnedCharacter = (userId: string, characterId: number) => CharacterRow | undefined | Promise<CharacterRow | undefined>;
+export type ListUsableCharacters = (userId: string) => CharacterRow[] | Promise<CharacterRow[]>;
 
 export interface PilotAccessRouteDeps {
   currentUser?: CurrentUserResolver;
@@ -41,7 +41,7 @@ export function ownsCharacter(userId: string, characterId: number): boolean {
   return defaultCharacters.owns(userId, characterId);
 }
 
-export function getOwnedCharacter(userId: string, characterId: number): CharacterRow | undefined {
+export async function getOwnedCharacter(userId: string, characterId: number): Promise<CharacterRow | undefined> {
   return defaultCharacters.getOwned(userId, characterId);
 }
 
@@ -56,18 +56,18 @@ export async function requireOwnedCharacter(
   return false;
 }
 
-export function listUsableCharacters(userId: string): CharacterRow[] {
+export async function listUsableCharacters(userId: string): Promise<CharacterRow[]> {
   return defaultCharacters.listUsableByUser(userId);
 }
 
-export function getFleetBossCharacter(userId: string): CharacterRow | undefined {
+export async function getFleetBossCharacter(userId: string): Promise<CharacterRow | undefined> {
   return defaultCharacters.listByUser(userId).find(row => row.is_boss === 1);
 }
 
-export function listFleetInviteCharacters(userId: string): CharacterRow[] {
+export async function listFleetInviteCharacters(userId: string): Promise<CharacterRow[]> {
   return defaultCharacters.listUsableByUser(userId).filter(row => row.is_boss === 0);
 }
 
-export function userCharacterIds(userId: string): Set<number> {
+export async function userCharacterIds(userId: string): Promise<Set<number>> {
   return new Set(defaultCharacters.listIdsByUser(userId));
 }

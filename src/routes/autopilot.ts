@@ -40,7 +40,7 @@ export function registerAutopilotRoutes(app: FastifyInstance, deps: AutopilotRou
     const { destination_id, clear_other_waypoints = true, add_to_beginning = false, only_online = true, character_ids } = parsed.data;
     const selection = character_ids ? new Set(character_ids) : null;
 
-    const all = listCharacters(user.id);
+    const all = await listCharacters(user.id);
     const chars = selection ? all.filter(c => selection.has(c.character_id)) : all;
     const results: Array<{ characterId: number; name: string; ok: boolean; error?: string }> = [];
 

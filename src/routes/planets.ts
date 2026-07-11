@@ -101,7 +101,7 @@ export function registerPlanetRoutes(app: FastifyInstance, deps: PlanetRouteDeps
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'invalid system id' });
 
     try {
-      const characterIds = userCharacterIds(user.id);
+      const characterIds = await userCharacterIds(user.id);
       const block = await buildSystemPlanetList(id, overlayByPlanetId(characterIds));
       return {
         system: { id: block.systemId, name: block.systemName, securityStatus: block.securityStatus },
@@ -144,7 +144,7 @@ export function registerPlanetRoutes(app: FastifyInstance, deps: PlanetRouteDeps
     if (!user) return reply;
 
     const rows = await savedSystems().list();
-    const characterIds = userCharacterIds(user.id);
+    const characterIds = await userCharacterIds(user.id);
     const overlay = overlayByPlanetId(characterIds);
     const systems = await Promise.all(rows.map(async r => {
       const block = await buildSystemPlanetList(r.systemId, overlay).catch(() => null);
@@ -193,7 +193,7 @@ export function registerPlanetRoutes(app: FastifyInstance, deps: PlanetRouteDeps
     type Bucket = { tier: PiTier; name: string; total: number; locations: Array<{ characterId: number; characterName: string; planetId: number; amount: number }> };
     const buckets = new Map<string, Bucket>();
     const charNames = new Map<number, string>();
-    const characterIds = userCharacterIds(user.id);
+    const characterIds = await userCharacterIds(user.id);
     for (const c of snapshot().filter(c => characterIds.has(c.characterId))) charNames.set(c.characterId, c.name);
 
     const typeNameCache = new Map<number, string>();

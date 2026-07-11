@@ -21,6 +21,7 @@ test('private pilot action routes verify character ownership before using ESI da
   assert.match(db, /CREATE INDEX IF NOT EXISTS idx_saved_skill_plans_user/);
 
   assert.match(autopilot, /listUsableCharacters/);
+  assert.match(autopilot, /await listCharacters\(user\.id\)/);
   assert.match(market, /requireOwnedCharacter/);
   assert.match(fits, /requireOwnedCharacter/);
   assert.match(skills, /requireOwnedCharacter/);

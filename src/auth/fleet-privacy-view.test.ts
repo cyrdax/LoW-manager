@@ -8,9 +8,9 @@ test('fleet routes scope boss and actor lookups to the current app user', () => 
 
   assert.match(fleet, /routeCurrentUser/);
   assert.match(fleet, /requireUser/);
-  assert.match(fleet, /getOwnedCharacter/);
-  assert.match(fleet, /getFleetBossCharacter/);
-  assert.match(fleet, /listFleetInviteCharacters/);
+  assert.match(fleet, /await getOwnedCharacter/);
+  assert.match(fleet, /await getFleetBossCharacter/);
+  assert.match(fleet, /await listFleetInviteCharacters/);
   assert.doesNotMatch(fleet, /from ['"]\.\.\/db\.ts['"]/);
   assert.doesNotMatch(fleet, /SELECT \* FROM characters/);
   assert.doesNotMatch(fleet, /SELECT \* FROM characters WHERE is_boss = 1'\)/);

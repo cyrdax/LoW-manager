@@ -53,7 +53,7 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
     const selection = parsed.data.character_ids ? new Set(parsed.data.character_ids) : null;
     const explicitWing = parsed.data.wing_id;
     const explicitSquad = parsed.data.squad_id;
-    const boss = getFleetBossCharacter(user.id);
+    const boss = await getFleetBossCharacter(user.id);
     if (!boss) return reply.code(400).send({ error: 'No fleet boss selected' });
     if (boss.needs_reauth) return reply.code(400).send({ error: 'Fleet boss needs to re-authenticate' });
 
@@ -84,7 +84,7 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
       }
     }
 
-    const allAlts = listFleetInviteCharacters(user.id);
+    const allAlts = await listFleetInviteCharacters(user.id);
     const alts = selection ? allAlts.filter(a => selection.has(a.character_id)) : allAlts;
     const results: InviteResult[] = [];
 
@@ -146,10 +146,10 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
     // Actor (whose token to call ESI with): explicit override → falls back to boss flag.
     let actor: CharacterRow | undefined;
     if (parsed.data.actor_character_id != null) {
-      actor = getOwnedCharacter(user.id, parsed.data.actor_character_id);
+      actor = await getOwnedCharacter(user.id, parsed.data.actor_character_id);
       if (!actor) return reply.code(400).send({ error: 'actor_character_id is not an authed character' });
     } else {
-      actor = getFleetBossCharacter(user.id);
+      actor = await getFleetBossCharacter(user.id);
       if (!actor) return reply.code(400).send({ error: 'No fleet boss selected' });
     }
     if (actor.needs_reauth) return reply.code(400).send({ error: `${actor.character_name} needs to re-authenticate` });
@@ -164,7 +164,7 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
 
     const results: InviteResult[] = [];
     for (const id of parsed.data.character_ids) {
-      const charRow = getOwnedCharacter(user.id, id);
+      const charRow = await getOwnedCharacter(user.id, id);
       const name = charRow?.character_name ?? `#${id}`;
       if (!charRow) {
         results.push({ characterId: id, name, ok: false, error: 'character_not_owned' });
@@ -197,10 +197,10 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
     let actor: CharacterRow | undefined;
     const actorOverride = Number(req.query.actor);
     if (Number.isFinite(actorOverride) && actorOverride > 0) {
-      actor = getOwnedCharacter(user.id, actorOverride);
+      actor = await getOwnedCharacter(user.id, actorOverride);
       if (!actor) return reply.code(400).send({ error: 'actor is not an authed character' });
     } else {
-      actor = getFleetBossCharacter(user.id);
+      actor = await getFleetBossCharacter(user.id);
       if (!actor) return reply.code(400).send({ error: 'No actor selected (pick a pilot)' });
     }
     if (actor.needs_reauth) return reply.code(400).send({ error: `${actor.character_name} needs to re-authenticate` });
@@ -292,9 +292,9 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
     let actor: CharacterRow | undefined;
     if (parsed.data.actor_character_id != null) {
-      actor = getOwnedCharacter(user.id, parsed.data.actor_character_id);
+      actor = await getOwnedCharacter(user.id, parsed.data.actor_character_id);
     } else {
-      actor = getFleetBossCharacter(user.id);
+      actor = await getFleetBossCharacter(user.id);
     }
     if (!actor) return reply.code(400).send({ error: 'no actor' });
     const fleet = await getCharacterFleet(actor.character_id);
@@ -314,7 +314,7 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
 
-    const boss = getFleetBossCharacter(user.id);
+    const boss = await getFleetBossCharacter(user.id);
     if (!boss) return reply.code(400).send({ error: 'No fleet boss selected' });
     const fleet = await getCharacterFleet(boss.character_id);
     if (!fleet) return { fleet: null, wings: [] };
@@ -356,7 +356,7 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
     const altId = Number(req.query.alt);
     if (!Number.isFinite(altId)) return reply.code(400).send({ error: 'pass ?alt=<character_id>' });
     if (!(await requireOwnedCharacter(user.id, altId, reply, owns))) return reply;
-    const boss = getFleetBossCharacter(user.id);
+    const boss = await getFleetBossCharacter(user.id);
     if (!boss) return reply.code(400).send({ error: 'no boss' });
     const fleet = await getCharacterFleet(boss.character_id);
     if (!fleet) return { boss: boss.character_name, error: 'boss not in fleet' };
@@ -380,7 +380,7 @@ export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps =
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
 
-    const boss = getFleetBossCharacter(user.id);
+    const boss = await getFleetBossCharacter(user.id);
     if (!boss) return reply.code(400).send({ error: 'No boss selected' });
     const fleet = await getCharacterFleet(boss.character_id);
     if (!fleet) return { boss: boss.character_name, fleet: null };
