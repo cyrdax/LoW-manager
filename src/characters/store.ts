@@ -1,5 +1,9 @@
 import type Database from 'better-sqlite3';
+import { decryptSecret, encryptSecret, tokenEncryptionKey, type EncryptedSecret } from '../auth/secret-box.ts';
 import { db as defaultDb } from '../db.ts';
+import type { QueryClient } from '../db/migrations.ts';
+import { getPostgresPool } from '../db/postgres.ts';
+import { withTransaction } from '../db/transaction.ts';
 import type { CharacterRow } from '../types.ts';
 
 type SqliteDatabase = Database.Database;
@@ -28,8 +32,40 @@ export interface CharacterStore {
   deleteOwned(userId: string, characterId: number): boolean;
 }
 
+export interface AsyncCharacterStore {
+  listAll(): Promise<CharacterRow[]>;
+  listByUser(userId: string): Promise<CharacterRow[]>;
+  listUsableByUser(userId: string): Promise<CharacterRow[]>;
+  listIdsByUser(userId: string): Promise<number[]>;
+  getById(characterId: number): Promise<CharacterRow | undefined>;
+  getOwned(userId: string, characterId: number): Promise<CharacterRow | undefined>;
+  owns(userId: string, characterId: number): Promise<boolean>;
+  upsertAuthorized(input: AuthorizedCharacterInput): Promise<CharacterRow>;
+  setBoss(userId: string, characterId: number): Promise<CharacterRow[]>;
+  deleteOwned(userId: string, characterId: number): Promise<boolean>;
+}
+
 export interface CharacterStoreOptions {
   now?: () => number;
+}
+
+export interface PostgresCharacterStoreOptions {
+  now?: () => Date;
+  secretKey?: Buffer;
+}
+
+interface PostgresCharacterRow {
+  character_id: string | number;
+  user_id: string;
+  character_name: string;
+  owner_hash: string;
+  scopes: string;
+  refresh_token_enc: EncryptedSecret;
+  access_token_enc: EncryptedSecret | null;
+  access_token_expires_at: Date | string | null;
+  added_at: Date | string;
+  needs_reauth: boolean;
+  is_boss: boolean;
 }
 
 export function migrateCharactersDb(database: SqliteDatabase): void {
@@ -140,4 +176,183 @@ export function createSqliteCharacterStore(
       return result.changes > 0;
     },
   };
+}
+
+export function createPostgresCharacterStore(
+  client: QueryClient = getPostgresPool(),
+  options: PostgresCharacterStoreOptions = {},
+): AsyncCharacterStore {
+  const now = options.now ?? (() => new Date());
+  const key = options.secretKey ?? tokenEncryptionKey();
+
+  const store: AsyncCharacterStore = {
+    async listAll() {
+      const rows = await client.query<PostgresCharacterRow>(`
+        SELECT character_id, user_id, character_name, owner_hash, scopes,
+          refresh_token_enc, access_token_enc, access_token_expires_at, added_at,
+          needs_reauth, is_boss
+        FROM characters
+        ORDER BY added_at
+      `);
+      return rows.rows.map(row => mapPostgresCharacter(row, key));
+    },
+
+    async listByUser(userId) {
+      const rows = await client.query<PostgresCharacterRow>(
+        `
+          SELECT character_id, user_id, character_name, owner_hash, scopes,
+            refresh_token_enc, access_token_enc, access_token_expires_at, added_at,
+            needs_reauth, is_boss
+          FROM characters
+          WHERE user_id = $1
+          ORDER BY added_at
+        `,
+        [userId],
+      );
+      return rows.rows.map(row => mapPostgresCharacter(row, key));
+    },
+
+    async listUsableByUser(userId) {
+      const rows = await client.query<PostgresCharacterRow>(
+        `
+          SELECT character_id, user_id, character_name, owner_hash, scopes,
+            refresh_token_enc, access_token_enc, access_token_expires_at, added_at,
+            needs_reauth, is_boss
+          FROM characters
+          WHERE user_id = $1 AND needs_reauth = false
+          ORDER BY added_at
+        `,
+        [userId],
+      );
+      return rows.rows.map(row => mapPostgresCharacter(row, key));
+    },
+
+    async listIdsByUser(userId) {
+      const rows = await client.query<{ character_id: string | number }>(
+        `
+          SELECT character_id FROM characters
+          WHERE user_id = $1
+          ORDER BY added_at
+        `,
+        [userId],
+      );
+      return rows.rows.map(row => Number(row.character_id));
+    },
+
+    async getById(characterId) {
+      const rows = await client.query<PostgresCharacterRow>(
+        `
+          SELECT character_id, user_id, character_name, owner_hash, scopes,
+            refresh_token_enc, access_token_enc, access_token_expires_at, added_at,
+            needs_reauth, is_boss
+          FROM characters
+          WHERE character_id = $1
+        `,
+        [characterId],
+      );
+      return rows.rows[0] ? mapPostgresCharacter(rows.rows[0], key) : undefined;
+    },
+
+    async getOwned(userId, characterId) {
+      const rows = await client.query<PostgresCharacterRow>(
+        `
+          SELECT character_id, user_id, character_name, owner_hash, scopes,
+            refresh_token_enc, access_token_enc, access_token_expires_at, added_at,
+            needs_reauth, is_boss
+          FROM characters
+          WHERE character_id = $1 AND user_id = $2
+        `,
+        [characterId, userId],
+      );
+      return rows.rows[0] ? mapPostgresCharacter(rows.rows[0], key) : undefined;
+    },
+
+    async owns(userId, characterId) {
+      const rows = await client.query<{ ok: number }>(
+        'SELECT 1 AS ok FROM characters WHERE character_id = $1 AND user_id = $2',
+        [characterId, userId],
+      );
+      return rows.rows.length > 0;
+    },
+
+    async upsertAuthorized(input) {
+      const addedAt = now();
+      const rows = await client.query<PostgresCharacterRow>(
+        `
+          INSERT INTO characters (
+            character_id, user_id, character_name, owner_hash, scopes,
+            refresh_token_enc, access_token_enc, access_token_expires_at,
+            added_at, needs_reauth, is_boss, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, false, $9)
+          ON CONFLICT (character_id) DO UPDATE SET
+            user_id = excluded.user_id,
+            character_name = excluded.character_name,
+            owner_hash = excluded.owner_hash,
+            scopes = excluded.scopes,
+            refresh_token_enc = excluded.refresh_token_enc,
+            access_token_enc = excluded.access_token_enc,
+            access_token_expires_at = excluded.access_token_expires_at,
+            needs_reauth = false,
+            updated_at = excluded.updated_at
+          RETURNING character_id, user_id, character_name, owner_hash, scopes,
+            refresh_token_enc, access_token_enc, access_token_expires_at, added_at,
+            needs_reauth, is_boss
+        `,
+        [
+          input.characterId,
+          input.userId,
+          input.characterName,
+          input.ownerHash,
+          input.scopes,
+          encryptSecret(input.refreshToken, key),
+          input.accessToken ? encryptSecret(input.accessToken, key) : null,
+          input.accessTokenExpiresAt == null ? null : new Date(input.accessTokenExpiresAt),
+          addedAt,
+        ],
+      );
+      return mapPostgresCharacter(rows.rows[0]!, key);
+    },
+
+    async setBoss(userId, characterId) {
+      await withTransaction(client, async tx => {
+        await tx.query('UPDATE characters SET is_boss = false, updated_at = now() WHERE user_id = $1', [userId]);
+        await tx.query(
+          'UPDATE characters SET is_boss = true, updated_at = now() WHERE character_id = $1 AND user_id = $2',
+          [characterId, userId],
+        );
+      });
+      return store.listByUser(userId);
+    },
+
+    async deleteOwned(userId, characterId) {
+      const result = await client.query(
+        'DELETE FROM characters WHERE character_id = $1 AND user_id = $2',
+        [characterId, userId],
+      );
+      return (result.rowCount ?? 0) > 0;
+    },
+  };
+
+  return store;
+}
+
+function mapPostgresCharacter(row: PostgresCharacterRow, key: Buffer): CharacterRow {
+  return {
+    character_id: Number(row.character_id),
+    user_id: row.user_id,
+    character_name: row.character_name,
+    owner_hash: row.owner_hash,
+    scopes: row.scopes,
+    refresh_token: decryptSecret(row.refresh_token_enc, key),
+    access_token: row.access_token_enc ? decryptSecret(row.access_token_enc, key) : null,
+    access_token_expires_at: row.access_token_expires_at == null ? null : dateMs(row.access_token_expires_at),
+    added_at: dateMs(row.added_at),
+    needs_reauth: row.needs_reauth ? 1 : 0,
+    is_boss: row.is_boss ? 1 : 0,
+  };
+}
+
+function dateMs(value: Date | string): number {
+  return value instanceof Date ? value.getTime() : new Date(value).getTime();
 }
