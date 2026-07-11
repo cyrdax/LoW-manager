@@ -23,5 +23,7 @@ test('private pilot action routes verify character ownership before using ESI da
   assert.match(market, /requireOwnedCharacter/);
   assert.match(fits, /requireOwnedCharacter/);
   assert.match(skills, /requireOwnedCharacter/);
-  assert.match(skills, /saved_skill_plans WHERE user_id = \?/);
+  assert.match(skills, /createSavedSkillPlanStore/);
+  assert.match(skills, /savedPlans\.list\(user\.id/);
+  assert.doesNotMatch(skills, /saved_skill_plans/);
 });

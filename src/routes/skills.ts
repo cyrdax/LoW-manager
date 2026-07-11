@@ -7,21 +7,11 @@ import {
   type CurrentUserResolver,
   type OwnsCharacter,
 } from '../auth/pilot-access.ts';
-import { db } from '../db.ts';
 import { openInformationWindow, openMarketDetailsWindow } from '../esi/ui.ts';
 import { getCharacterAttributes, getCharacterSkills } from '../polling/scheduler.ts';
 import { loadMasteryData, type MasteryData, type MasteryItem, type MasteryShip } from '../skills/mastery-data.ts';
+import { createSavedSkillPlanStore, type SavedSkillPlanStore } from '../skills/saved-plans-store.ts';
 import { trainingSecondsForSp, type CharacterAttributes } from '../skills/training-time.ts';
-
-interface SavedPlanRow {
-  id: number;
-  user_id: string | null;
-  character_id: number;
-  ship_id: number;
-  mastery_level: number;
-  label: string | null;
-  saved_at: number;
-}
 
 // Standard EVE SP requirement per skill level (multiplied by skill rank).
 // Level index 0..5 — index 0 = "untrained", values 1..5 = SP needed for that level.
@@ -204,11 +194,13 @@ function buildItemPlan(
 export interface SkillRouteDeps {
   currentUser?: CurrentUserResolver;
   ownsCharacter?: OwnsCharacter;
+  savedPlans?: SavedSkillPlanStore;
 }
 
 export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps = {}) {
   const currentUser = routeCurrentUser(deps);
   const owns = deps.ownsCharacter;
+  const savedPlans = deps.savedPlans ?? createSavedSkillPlanStore();
 
   app.get('/api/skills/meta', async () => {
     const data = loadMasteryData();
@@ -344,10 +336,7 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
     const data = loadMasteryData();
     const charId = Number(req.query.characterId);
     if (Number.isFinite(charId) && !requireOwnedCharacter(user.id, charId, reply, owns)) return reply;
-    const rows = (Number.isFinite(charId)
-      ? db.prepare('SELECT * FROM saved_skill_plans WHERE user_id = ? AND character_id = ? ORDER BY saved_at DESC').all(user.id, charId)
-      : db.prepare('SELECT * FROM saved_skill_plans WHERE user_id = ? ORDER BY saved_at DESC').all(user.id)
-    ) as SavedPlanRow[];
+    const rows = savedPlans.list(user.id, Number.isFinite(charId) ? charId : undefined);
     return rows.map(r => {
       const ship = data.ships[String(r.ship_id)];
       return {
@@ -376,12 +365,13 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
     if (!requireOwnedCharacter(user.id, character_id, reply, owns)) return reply;
-    db.prepare(`
-      INSERT INTO saved_skill_plans (user_id, character_id, ship_id, mastery_level, label, saved_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(character_id, ship_id, mastery_level)
-      DO UPDATE SET user_id = excluded.user_id, label = excluded.label, saved_at = excluded.saved_at
-    `).run(user.id, character_id, ship_id, mastery_level, label ?? null, Date.now());
+    savedPlans.save({
+      userId: user.id,
+      characterId: character_id,
+      shipId: ship_id,
+      masteryLevel: mastery_level,
+      label,
+    });
     return { ok: true };
   });
 
@@ -391,7 +381,7 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
 
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'invalid id' });
-    db.prepare('DELETE FROM saved_skill_plans WHERE id = ? AND user_id = ?').run(id, user.id);
+    savedPlans.delete(user.id, id);
     return { ok: true };
   });
 
