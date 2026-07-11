@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchCharacters, type CharacterStatus } from '../api.ts';
 
-export function useCharacters() {
+export function useCharacters(enabled = true) {
   const [chars, setChars] = useState<Map<number, CharacterStatus>>(new Map());
   const [loading, setLoading] = useState(true);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setChars(new Map());
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
 
     fetchCharacters()
@@ -52,7 +57,7 @@ export function useCharacters() {
       cancelled = true;
       es.close();
     };
-  }, []);
+  }, [enabled]);
 
   const refresh = async () => {
     const list = await fetchCharacters();

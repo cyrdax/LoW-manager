@@ -38,6 +38,68 @@ export interface CharacterStatus {
   updatedAt: number;
 }
 
+export interface CurrentUser {
+  id: string;
+  email: string | null;
+  emailVerifiedAt?: string | null;
+  role: 'user' | 'admin';
+  status: 'active' | 'disabled' | 'deleted';
+  mainCharacterId?: number | null;
+}
+
+export type AuthResult = { user: CurrentUser; verificationSent?: boolean } | { error: string };
+
+export async function fetchCurrentUser(): Promise<CurrentUser | null> {
+  const res = await fetch('/api/auth/me');
+  if (!res.ok) return null;
+  const body = await res.json() as { user: CurrentUser | null };
+  return body.user;
+}
+
+export async function signup(email: string, password: string): Promise<AuthResult> {
+  return jsonOrError(await fetch('/api/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  }));
+}
+
+export async function login(email: string, password: string): Promise<AuthResult> {
+  return jsonOrError(await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  }));
+}
+
+export async function logout(): Promise<{ ok: true } | { error: string }> {
+  return jsonOrError(await fetch('/api/auth/logout', { method: 'POST' }));
+}
+
+export async function requestEmailVerification(email: string): Promise<{ ok: true } | { error: string }> {
+  return jsonOrError(await fetch('/api/auth/email/verify/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  }));
+}
+
+export async function requestPasswordReset(email: string): Promise<{ ok: true } | { error: string }> {
+  return jsonOrError(await fetch('/api/auth/password/reset/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  }));
+}
+
+export async function completePasswordReset(token: string, password: string): Promise<{ ok: true } | { error: string }> {
+  return jsonOrError(await fetch('/api/auth/password/reset/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, password }),
+  }));
+}
+
 export interface ColonyInfo {
   planetId: number;
   planetType: string;

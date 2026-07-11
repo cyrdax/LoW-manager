@@ -10,7 +10,8 @@ import { MarketView } from './components/MarketView.tsx';
 import { IndustryView } from './components/IndustryView.tsx';
 import { ContractsView } from './components/ContractsView.tsx';
 import { FitsView } from './components/FitsView.tsx';
-import { deleteCharacter, setBoss, type CharacterStatus } from './api.ts';
+import { AuthGate } from './components/AuthGate.tsx';
+import { deleteCharacter, fetchCurrentUser, logout, setBoss, type CharacterStatus, type CurrentUser } from './api.ts';
 
 type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits';
 
@@ -65,8 +66,17 @@ function compare(a: CharacterStatus, b: CharacterStatus, key: SortKey): number {
 }
 
 export function App() {
-  const { chars, loading, refresh } = useCharacters();
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null | undefined>(undefined);
+  const { chars, loading, refresh } = useCharacters(currentUser != null);
   const table = useTableState();
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCurrentUser()
+      .then(user => { if (!cancelled) setCurrentUser(user); })
+      .catch(() => { if (!cancelled) setCurrentUser(null); });
+    return () => { cancelled = true; };
+  }, []);
 
   const [view, setView] = useState<View>(() => (localStorage.getItem('efd.view') as View) || 'pilots');
   useEffect(() => { localStorage.setItem('efd.view', view); }, [view]);
@@ -125,15 +135,28 @@ export function App() {
   const totalSp = list.reduce((n, c) => n + (c.totalSp ?? 0), 0);
   const totalUnalloc = list.reduce((n, c) => n + (c.unallocatedSp ?? 0), 0);
 
+  const onLogout = async () => {
+    await logout();
+    setCurrentUser(null);
+  };
+
   const totals: Partial<Record<SortKey, string>> = {
     wallet: list.length ? formatShortIsk(totalWallet) : undefined,
     sp: list.length ? formatShortSp(totalSp) : undefined,
     unallocated: list.length && totalUnalloc > 0 ? formatShortSp(totalUnalloc) : undefined,
   };
 
+  if (currentUser === undefined) {
+    return <div className="auth-page"><div className="auth-panel"><div className="empty">Loading...</div></div></div>;
+  }
+
+  if (!currentUser) {
+    return <AuthGate onAuthenticated={setCurrentUser} />;
+  }
+
   return (
     <div className="layout">
-      <ControlPanel chars={list} selection={selection} onRefresh={refresh} view={view} setView={setView} />
+      <ControlPanel chars={list} selection={selection} onRefresh={refresh} view={view} setView={setView} currentUser={currentUser} onLogout={onLogout} />
 
       {view === 'pilots' && (
         <main className="rows-wrap">

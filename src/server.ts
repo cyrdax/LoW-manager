@@ -46,7 +46,10 @@ const distDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'web', 'd
 try {
   await app.register(fastifyStatic, { root: distDir, prefix: '/' });
   app.setNotFoundHandler((req, reply) => {
-    if (req.url.startsWith('/api') || req.url.startsWith('/auth')) return reply.code(404).send({ error: 'Not found' });
+    const isPasswordResetPage = req.url.startsWith('/auth/password/reset');
+    if (req.url.startsWith('/api') || (req.url.startsWith('/auth') && !isPasswordResetPage)) {
+      return reply.code(404).send({ error: 'Not found' });
+    }
     return reply.sendFile('index.html');
   });
 } catch {

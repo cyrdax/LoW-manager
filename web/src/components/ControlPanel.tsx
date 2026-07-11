@@ -6,6 +6,7 @@ import {
   searchSystems,
   setWaypointAll,
   type CharacterStatus,
+  type CurrentUser,
   type FleetStructure,
   type InviteResult,
   type SystemHit,
@@ -20,9 +21,11 @@ interface Props {
   onRefresh: () => void;
   view: View;
   setView: (v: View) => void;
+  currentUser?: CurrentUser;
+  onLogout?: () => void;
 }
 
-export function ControlPanel({ chars, selection, onRefresh, view, setView }: Props) {
+export function ControlPanel({ chars, selection, onRefresh, view, setView, currentUser, onLogout }: Props) {
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<InviteResult[] | null>(null);
   const [resultsLabel, setResultsLabel] = useState<'invited' | 'moved' | 'ok'>('ok');
@@ -113,6 +116,16 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView }: Pro
         <h1>Legion of Wayne Manger</h1>
         <small>{chars.length} characters · {selection.size} selected</small>
       </div>
+
+      {currentUser && (
+        <div className="account-box">
+          <div>
+            <span>{currentUser.email}</span>
+            <small>{currentUser.role}</small>
+          </div>
+          <button onClick={onLogout}>Log out</button>
+        </div>
+      )}
 
       <div className="view-nav view-nav-8">
         <button
