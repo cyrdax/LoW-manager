@@ -1,5 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  getOwnedCharacter,
+  requireOwnedCharacter,
+  requireUser,
+  routeCurrentUser,
+  type CurrentUserResolver,
+  type OwnsCharacter,
+} from '../auth/pilot-access.ts';
 import { db } from '../db.ts';
 import type { CharacterRow, InviteResult } from '../types.ts';
 import {
@@ -26,14 +34,25 @@ const inviteBody = z.object({
   squad_id: z.number().int().optional(),
 });
 
-export function registerFleetRoutes(app: FastifyInstance) {
+export interface FleetRouteDeps {
+  currentUser?: CurrentUserResolver;
+  ownsCharacter?: OwnsCharacter;
+}
+
+export function registerFleetRoutes(app: FastifyInstance, deps: FleetRouteDeps = {}) {
+  const currentUser = routeCurrentUser(deps);
+  const owns = deps.ownsCharacter;
+
   app.post('/api/fleet/invite-all', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const parsed = inviteBody.safeParse(req.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
     const selection = parsed.data.character_ids ? new Set(parsed.data.character_ids) : null;
     const explicitWing = parsed.data.wing_id;
     const explicitSquad = parsed.data.squad_id;
-    const boss = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
+    const boss = db.prepare('SELECT * FROM characters WHERE is_boss = 1 AND user_id = ?').get(user.id) as CharacterRow | undefined;
     if (!boss) return reply.code(400).send({ error: 'No fleet boss selected' });
     if (boss.needs_reauth) return reply.code(400).send({ error: 'Fleet boss needs to re-authenticate' });
 
@@ -64,7 +83,7 @@ export function registerFleetRoutes(app: FastifyInstance) {
       }
     }
 
-    const allAlts = db.prepare('SELECT * FROM characters WHERE is_boss = 0 AND needs_reauth = 0').all() as CharacterRow[];
+    const allAlts = db.prepare('SELECT * FROM characters WHERE user_id = ? AND is_boss = 0 AND needs_reauth = 0').all(user.id) as CharacterRow[];
     const alts = selection ? allAlts.filter(a => selection.has(a.character_id)) : allAlts;
     const results: InviteResult[] = [];
 
@@ -117,18 +136,19 @@ export function registerFleetRoutes(app: FastifyInstance) {
   // fleet_commander token to move any selected pilot. If the boss isn't FC, fail
   // fast with a clear message.
   app.post('/api/fleet/move', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const parsed = moveSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
 
     // Actor (whose token to call ESI with): explicit override → falls back to boss flag.
     let actor: CharacterRow | undefined;
     if (parsed.data.actor_character_id != null) {
-      actor = db.prepare('SELECT * FROM characters WHERE character_id = ?').get(
-        parsed.data.actor_character_id,
-      ) as CharacterRow | undefined;
+      actor = getOwnedCharacter(user.id, parsed.data.actor_character_id);
       if (!actor) return reply.code(400).send({ error: 'actor_character_id is not an authed character' });
     } else {
-      actor = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
+      actor = db.prepare('SELECT * FROM characters WHERE is_boss = 1 AND user_id = ?').get(user.id) as CharacterRow | undefined;
       if (!actor) return reply.code(400).send({ error: 'No fleet boss selected' });
     }
     if (actor.needs_reauth) return reply.code(400).send({ error: `${actor.character_name} needs to re-authenticate` });
@@ -143,8 +163,12 @@ export function registerFleetRoutes(app: FastifyInstance) {
 
     const results: InviteResult[] = [];
     for (const id of parsed.data.character_ids) {
-      const charRow = db.prepare('SELECT * FROM characters WHERE character_id = ?').get(id) as CharacterRow | undefined;
+      const charRow = getOwnedCharacter(user.id, id);
       const name = charRow?.character_name ?? `#${id}`;
+      if (!charRow) {
+        results.push({ characterId: id, name, ok: false, error: 'character_not_owned' });
+        continue;
+      }
       try {
         await moveMember(fleet.fleet_id, actor.character_id, id, {
           role: parsed.data.role ?? 'squad_member',
@@ -166,13 +190,16 @@ export function registerFleetRoutes(app: FastifyInstance) {
   // Full fleet roster (FC-only). Resolves character/ship/system names so the UI
   // can render without N+1 lookups. Uses the actor's token (override or boss).
   app.get<{ Querystring: { actor?: string } }>('/api/fleet/roster', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     let actor: CharacterRow | undefined;
     const actorOverride = Number(req.query.actor);
     if (Number.isFinite(actorOverride) && actorOverride > 0) {
-      actor = db.prepare('SELECT * FROM characters WHERE character_id = ?').get(actorOverride) as CharacterRow | undefined;
+      actor = getOwnedCharacter(user.id, actorOverride);
       if (!actor) return reply.code(400).send({ error: 'actor is not an authed character' });
     } else {
-      actor = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
+      actor = db.prepare('SELECT * FROM characters WHERE is_boss = 1 AND user_id = ?').get(user.id) as CharacterRow | undefined;
       if (!actor) return reply.code(400).send({ error: 'No actor selected (pick a pilot)' });
     }
     if (actor.needs_reauth) return reply.code(400).send({ error: `${actor.character_name} needs to re-authenticate` });
@@ -257,13 +284,16 @@ export function registerFleetRoutes(app: FastifyInstance) {
     actor_character_id: z.number().int().optional(),
   });
   app.post('/api/fleet/kick', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const parsed = kickSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
     let actor: CharacterRow | undefined;
     if (parsed.data.actor_character_id != null) {
-      actor = db.prepare('SELECT * FROM characters WHERE character_id = ?').get(parsed.data.actor_character_id) as CharacterRow | undefined;
+      actor = getOwnedCharacter(user.id, parsed.data.actor_character_id);
     } else {
-      actor = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
+      actor = db.prepare('SELECT * FROM characters WHERE is_boss = 1 AND user_id = ?').get(user.id) as CharacterRow | undefined;
     }
     if (!actor) return reply.code(400).send({ error: 'no actor' });
     const fleet = await getCharacterFleet(actor.character_id);
@@ -279,8 +309,11 @@ export function registerFleetRoutes(app: FastifyInstance) {
   });
 
   // Fleet structure for the invite-target picker: wings, squads, and the boss's own role.
-  app.get('/api/fleet/structure', async (_req, reply) => {
-    const boss = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
+  app.get('/api/fleet/structure', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
+    const boss = db.prepare('SELECT * FROM characters WHERE is_boss = 1 AND user_id = ?').get(user.id) as CharacterRow | undefined;
     if (!boss) return reply.code(400).send({ error: 'No fleet boss selected' });
     const fleet = await getCharacterFleet(boss.character_id);
     if (!fleet) return { fleet: null, wings: [] };
@@ -297,8 +330,12 @@ export function registerFleetRoutes(app: FastifyInstance) {
   // Diagnostic: try reading a fleet's wings via the specified character's token.
   // Answers: "does a non-FC member's token see fleet structure via ESI?"
   app.get<{ Params: { id: string } }>('/api/fleet/wings-via/:id', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'bad id' });
+    if (!requireOwnedCharacter(user.id, id, reply, owns)) return reply;
     const charFleet = await getCharacterFleet(id);
     if (!charFleet) return { character_id: id, fleet: null, wings: null, error: 'character not in a fleet' };
     try {
@@ -312,9 +349,13 @@ export function registerFleetRoutes(app: FastifyInstance) {
 
   // Diagnostic: try inviting exactly one alt with current state and show the raw ESI response.
   app.get<{ Querystring: { alt?: string } }>('/api/fleet/test-invite', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const altId = Number(req.query.alt);
     if (!Number.isFinite(altId)) return reply.code(400).send({ error: 'pass ?alt=<character_id>' });
-    const boss = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
+    if (!requireOwnedCharacter(user.id, altId, reply, owns)) return reply;
+    const boss = db.prepare('SELECT * FROM characters WHERE is_boss = 1 AND user_id = ?').get(user.id) as CharacterRow | undefined;
     if (!boss) return reply.code(400).send({ error: 'no boss' });
     const fleet = await getCharacterFleet(boss.character_id);
     if (!fleet) return { boss: boss.character_name, error: 'boss not in fleet' };
@@ -334,8 +375,11 @@ export function registerFleetRoutes(app: FastifyInstance) {
   });
 
   // Diagnostic: dump what the boss's token can see on the fleet.
-  app.get('/api/fleet/debug', async (_req, reply) => {
-    const boss = db.prepare('SELECT * FROM characters WHERE is_boss = 1').get() as CharacterRow | undefined;
+  app.get('/api/fleet/debug', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
+    const boss = db.prepare('SELECT * FROM characters WHERE is_boss = 1 AND user_id = ?').get(user.id) as CharacterRow | undefined;
     if (!boss) return reply.code(400).send({ error: 'No boss selected' });
     const fleet = await getCharacterFleet(boss.character_id);
     if (!fleet) return { boss: boss.character_name, fleet: null };
