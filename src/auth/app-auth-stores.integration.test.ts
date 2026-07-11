@@ -43,6 +43,8 @@ test('app auth stores persist users sessions and app tokens in Postgres', { skip
     assert.equal(found?.user.id, first.id);
     assert.equal(found?.passwordHash, 'password-hash');
     assert.equal((await users.markEmailVerified(first.id))?.emailVerifiedAt?.toISOString(), now.toISOString());
+    assert.equal(await users.updatePassword(first.id, 'updated-password-hash'), true);
+    assert.equal((await users.findByEmailWithPassword('owner@example.com'))?.passwordHash, 'updated-password-hash');
 
     const issuedSession = await sessions.create(first.id, { ipHash: 'ip-hash' });
     assert.equal(issuedSession?.token, 'raw-session-token');

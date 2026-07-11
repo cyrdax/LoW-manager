@@ -69,6 +69,12 @@ class FakeClient implements QueryClient {
       user.updated_at = params?.[1] as Date;
       return { rows: [user], rowCount: 1 } as T;
     }
+    if (text.includes('UPDATE user_password_credentials')) {
+      const credential = Array.from(this.credentials.values()).find(c => c.user_id === params?.[0]);
+      if (!credential) return { rows: [], rowCount: 0 } as T;
+      credential.password_hash = String(params?.[1]);
+      return { rows: [{ user_id: credential.user_id }], rowCount: 1 } as T;
+    }
     throw new Error(`unexpected query: ${text}`);
   }
 }
@@ -109,6 +115,16 @@ test('UserStore finds password users by normalized email and verifies email', as
 
   const active = await createUserStore(client, { now: () => later }).markActive(user.id);
   assert.equal(active?.lastActiveAt?.toISOString(), later.toISOString());
+});
+
+test('UserStore updates password credentials for active users', async () => {
+  const client = new FakeClient();
+  const store = createUserStore(client);
+  const user = await store.createPasswordUser('pilot@example.com', 'old-hash');
+
+  assert.equal(await store.updatePassword(user.id, 'new-hash'), true);
+  assert.equal((await store.findByEmailWithPassword('pilot@example.com'))?.passwordHash, 'new-hash');
+  assert.equal(await store.updatePassword('missing-user', 'newer-hash'), false);
 });
 
 interface UserRow {

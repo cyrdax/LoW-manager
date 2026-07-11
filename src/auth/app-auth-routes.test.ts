@@ -97,6 +97,67 @@ test('logout revokes the current session and clears the cookie', async () => {
   await app.close();
 });
 
+test('password reset request sends a token and complete updates login credentials', async () => {
+  const deps = testDeps();
+  const app = await appWithAuth(deps);
+
+  await app.inject({
+    method: 'POST',
+    url: '/api/auth/signup',
+    payload: { email: 'pilot@example.com', password: 'old-password' },
+  });
+  await app.inject('/auth/email/verify?token=verify-token-1');
+
+  const request = await app.inject({
+    method: 'POST',
+    url: '/api/auth/password/reset/request',
+    payload: { email: 'pilot@example.com' },
+  });
+  assert.equal(request.statusCode, 200);
+  assert.equal(deps.mailer.resets.length, 1);
+  assert.match(deps.mailer.resets[0].resetUrl, /^http:\/\/test\.local\/auth\/password\/reset\?token=reset-token-2$/);
+
+  const complete = await app.inject({
+    method: 'POST',
+    url: '/api/auth/password/reset/complete',
+    payload: { token: 'reset-token-2', password: 'new-password' },
+  });
+  assert.equal(complete.statusCode, 200);
+
+  const oldLogin = await app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { email: 'pilot@example.com', password: 'old-password' },
+  });
+  assert.equal(oldLogin.statusCode, 401);
+
+  const newLogin = await app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { email: 'pilot@example.com', password: 'new-password' },
+  });
+  assert.equal(newLogin.statusCode, 200);
+
+  await app.close();
+});
+
+test('password reset request does not reveal whether an email exists', async () => {
+  const deps = testDeps();
+  const app = await appWithAuth(deps);
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/auth/password/reset/request',
+    payload: { email: 'missing@example.com' },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json(), { ok: true });
+  assert.equal(deps.mailer.resets.length, 0);
+
+  await app.close();
+});
+
 async function appWithAuth(deps: ReturnType<typeof testDeps>) {
   const app = Fastify();
   await app.register(cookie, { secret: 'test-secret' });
@@ -165,6 +226,13 @@ class FakeUserStore implements UserStore {
     user.lastActiveAt = new Date('2026-07-11T12:10:00Z');
     return user;
   }
+
+  async updatePassword(userId: string, passwordHash: string): Promise<boolean> {
+    const user = this.users.get(userId);
+    if (!user || !user.email) return false;
+    this.credentials.set(user.email, passwordHash);
+    return true;
+  }
 }
 
 class FakeSessionStore implements SessionStore {
@@ -222,7 +290,7 @@ class FakeTokenStore implements AppTokenStore {
   nextId = 1;
 
   async issue(input: IssueAppTokenInput): Promise<string> {
-    const raw = `verify-token-${this.nextId}`;
+    const raw = `${input.purpose === 'password_reset' ? 'reset' : 'verify'}-token-${this.nextId}`;
     this.tokens.set(raw, {
       id: `token-${this.nextId++}`,
       userId: input.userId ?? null,
@@ -249,8 +317,13 @@ class FakeTokenStore implements AppTokenStore {
 
 class FakeMailer implements AuthMailer {
   sent: Array<{ to: string; verificationUrl: string }> = [];
+  resets: Array<{ to: string; resetUrl: string }> = [];
 
   async sendEmailVerification(input: { to: string; verificationUrl: string }): Promise<void> {
     this.sent.push(input);
+  }
+
+  async sendPasswordReset(input: { to: string; resetUrl: string }): Promise<void> {
+    this.resets.push(input);
   }
 }

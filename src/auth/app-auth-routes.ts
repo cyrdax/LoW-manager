@@ -9,6 +9,7 @@ import { createUserStore, type AppUser, type UserStore } from './user-store.ts';
 const SESSION_COOKIE = 'efd_session';
 const SESSION_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
 const signupSchema = z.object({
   email: z.string().trim().email(),
@@ -17,9 +18,14 @@ const signupSchema = z.object({
 
 const loginSchema = signupSchema;
 const verifyRequestSchema = z.object({ email: z.string().trim().email() });
+const resetCompleteSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8),
+});
 
 export interface AuthMailer {
   sendEmailVerification(input: { to: string; verificationUrl: string }): Promise<void>;
+  sendPasswordReset(input: { to: string; resetUrl: string }): Promise<void>;
 }
 
 export interface AppAuthRouteDeps {
@@ -115,6 +121,31 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
     return { ok: true };
   });
 
+  app.post('/api/auth/password/reset/request', async (req, reply) => {
+    const parsed = verifyRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
+
+    const found = await users.findByEmailWithPassword(parsed.data.email);
+    if (found?.user.email && found.user.emailVerifiedAt && found.user.status === 'active') {
+      await sendPasswordReset(found.user);
+    }
+    return { ok: true };
+  });
+
+  app.post('/api/auth/password/reset/complete', async (req, reply) => {
+    const parsed = resetCompleteSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
+
+    const consumed = await appTokens.consume('password_reset', parsed.data.token);
+    if (!consumed?.userId) return reply.code(400).send({ error: 'invalid_or_expired_token' });
+
+    const passwordHash = await hashPassword(parsed.data.password);
+    if (!await users.updatePassword(consumed.userId, passwordHash)) {
+      return reply.code(400).send({ error: 'invalid_or_expired_token' });
+    }
+    return { ok: true };
+  });
+
   app.get<{ Querystring: { token?: string } }>('/auth/email/verify', async (req, reply) => {
     const token = req.query.token;
     if (!token) return reply.code(400).type('text/html').send(verificationPage('Missing verification token.'));
@@ -140,12 +171,28 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
     url.searchParams.set('token', token);
     await mailer.sendEmailVerification({ to: user.email, verificationUrl: url.toString() });
   }
+
+  async function sendPasswordReset(user: AppUser): Promise<void> {
+    if (!user.email) return;
+    const token = await appTokens.issue({
+      userId: user.id,
+      purpose: 'password_reset',
+      metadata: { email: user.email },
+      ttlMs: PASSWORD_RESET_TTL_MS,
+    });
+    const url = new URL('/auth/password/reset', appBaseUrl);
+    url.searchParams.set('token', token);
+    await mailer.sendPasswordReset({ to: user.email, resetUrl: url.toString() });
+  }
 }
 
 export function createDevAuthMailer(logger?: Pick<FastifyBaseLogger, 'info'>): AuthMailer {
   return {
     async sendEmailVerification(input) {
       logger?.info(`[auth] verification for ${input.to}: ${input.verificationUrl}`);
+    },
+    async sendPasswordReset(input) {
+      logger?.info(`[auth] password reset for ${input.to}: ${input.resetUrl}`);
     },
   };
 }

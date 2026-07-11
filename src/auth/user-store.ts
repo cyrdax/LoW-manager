@@ -27,6 +27,7 @@ export interface UserStore {
   findByEmailWithPassword(email: string): Promise<PasswordUser | null>;
   markEmailVerified(userId: string): Promise<AppUser | null>;
   markActive(userId: string): Promise<AppUser | null>;
+  updatePassword(userId: string, passwordHash: string): Promise<boolean>;
 }
 
 export interface UserStoreOptions {
@@ -138,6 +139,22 @@ export function createUserStore(
         [userId, timestamp],
       );
       return rows.rows[0] ? mapUser(rows.rows[0]) : null;
+    },
+
+    async updatePassword(userId, passwordHash) {
+      const result = await source.query<{ user_id: string }>(
+        `
+          UPDATE user_password_credentials c
+          SET password_hash = $2, updated_at = $3
+          FROM app_users u
+          WHERE c.user_id = $1
+            AND u.id = c.user_id
+            AND u.status = 'active'
+          RETURNING c.user_id
+        `,
+        [userId, passwordHash, now()],
+      );
+      return result.rows.length > 0;
     },
   };
 }
