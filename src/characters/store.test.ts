@@ -78,3 +78,32 @@ test('CharacterStore handles reauth filtering boss selection and scoped deletes'
   assert.equal(store.deleteOwned('user-a', 101), true);
   assert.equal(store.getById(101), undefined);
 });
+
+test('CharacterStore updates refreshed tokens and marks reauth state', () => {
+  const db = memoryDb();
+  const store = createSqliteCharacterStore(db, { now: () => 1000 });
+  store.upsertAuthorized({
+    characterId: 101,
+    userId: 'user-a',
+    characterName: 'Alpha',
+    ownerHash: 'owner-a',
+    scopes: 'scope',
+    refreshToken: 'refresh-a',
+    accessToken: 'access-a',
+    accessTokenExpiresAt: 9000,
+  });
+
+  const updated = store.updateTokens(101, {
+    refreshToken: 'refresh-new',
+    accessToken: 'access-new',
+    accessTokenExpiresAt: 12000,
+  });
+  assert.equal(updated?.refresh_token, 'refresh-new');
+  assert.equal(updated?.access_token, 'access-new');
+  assert.equal(updated?.access_token_expires_at, 12000);
+  assert.equal(updated?.needs_reauth, 0);
+
+  assert.equal(store.markNeedsReauth(101), true);
+  assert.equal(store.getById(101)?.needs_reauth, 1);
+  assert.equal(store.markNeedsReauth(999), false);
+});

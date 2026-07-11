@@ -51,6 +51,21 @@ class FakeClient implements QueryClient {
       row.is_boss = true;
       return { rows: [], rowCount: 1 } as T;
     }
+    if (text.includes('UPDATE characters') && text.includes('SET refresh_token_enc')) {
+      const row = this.rows.get(Number(params?.[3]));
+      if (!row) return { rows: [], rowCount: 0 } as T;
+      row.refresh_token_enc = params?.[0] as EncryptedSecret;
+      row.access_token_enc = params?.[1] as EncryptedSecret;
+      row.access_token_expires_at = params?.[2] as Date;
+      row.needs_reauth = false;
+      return { rows: [row], rowCount: 1 } as T;
+    }
+    if (text.includes('UPDATE characters') && text.includes('SET needs_reauth = true')) {
+      const row = this.rows.get(Number(params?.[0]));
+      if (!row) return { rows: [], rowCount: 0 } as T;
+      row.needs_reauth = true;
+      return { rows: [{ character_id: row.character_id }], rowCount: 1 } as T;
+    }
     if (text.includes('DELETE FROM characters')) {
       const row = this.rows.get(Number(params?.[0]));
       if (!row || row.user_id !== params?.[1]) return { rows: [], rowCount: 0 } as T;
@@ -160,6 +175,39 @@ test('PostgresCharacterStore preserves scoped ownership helpers', async () => {
   assert.equal(await store.deleteOwned('user-b', 101), false);
   assert.equal(await store.deleteOwned('user-a', 101), true);
   assert.equal(await store.getById(101), undefined);
+});
+
+test('PostgresCharacterStore updates refreshed tokens and marks reauth state', async () => {
+  const client = new FakeClient();
+  const key = Buffer.alloc(32, 3);
+  const store = createPostgresCharacterStore(client, {
+    now: () => new Date('2026-07-11T12:00:00Z'),
+    secretKey: key,
+  });
+  await store.upsertAuthorized({
+    characterId: 101,
+    userId: 'user-a',
+    characterName: 'Alpha',
+    ownerHash: 'owner-a',
+    scopes: 'scope',
+    refreshToken: 'refresh-a',
+    accessToken: 'access-a',
+    accessTokenExpiresAt: 9000,
+  });
+
+  const updated = await store.updateTokens(101, {
+    refreshToken: 'refresh-new',
+    accessToken: 'access-new',
+    accessTokenExpiresAt: Date.parse('2026-07-11T13:00:00Z'),
+  });
+  assert.equal(updated?.refresh_token, 'refresh-new');
+  assert.equal(updated?.access_token, 'access-new');
+  assert.equal(updated?.needs_reauth, 0);
+  assert.notEqual(client.rows.get(101)?.refresh_token_enc.ciphertext, 'refresh-new');
+
+  assert.equal(await store.markNeedsReauth(101), true);
+  assert.equal((await store.getById(101))?.needs_reauth, 1);
+  assert.equal(await store.markNeedsReauth(999), false);
 });
 
 interface PgCharacterRow {

@@ -19,6 +19,12 @@ export interface AuthorizedCharacterInput {
   accessTokenExpiresAt: number | null;
 }
 
+export interface UpdateCharacterTokensInput {
+  refreshToken: string;
+  accessToken: string;
+  accessTokenExpiresAt: number;
+}
+
 export interface CharacterStore {
   listAll(): CharacterRow[];
   listByUser(userId: string): CharacterRow[];
@@ -28,6 +34,8 @@ export interface CharacterStore {
   getOwned(userId: string, characterId: number): CharacterRow | undefined;
   owns(userId: string, characterId: number): boolean;
   upsertAuthorized(input: AuthorizedCharacterInput): CharacterRow;
+  updateTokens(characterId: number, input: UpdateCharacterTokensInput): CharacterRow | undefined;
+  markNeedsReauth(characterId: number): boolean;
   setBoss(userId: string, characterId: number): CharacterRow[];
   deleteOwned(userId: string, characterId: number): boolean;
 }
@@ -41,6 +49,8 @@ export interface AsyncCharacterStore {
   getOwned(userId: string, characterId: number): Promise<CharacterRow | undefined>;
   owns(userId: string, characterId: number): Promise<boolean>;
   upsertAuthorized(input: AuthorizedCharacterInput): Promise<CharacterRow>;
+  updateTokens(characterId: number, input: UpdateCharacterTokensInput): Promise<CharacterRow | undefined>;
+  markNeedsReauth(characterId: number): Promise<boolean>;
   setBoss(userId: string, characterId: number): Promise<CharacterRow[]>;
   deleteOwned(userId: string, characterId: number): Promise<boolean>;
 }
@@ -160,6 +170,20 @@ export function createSqliteCharacterStore(
         addedAt,
       );
       return this.getById(input.characterId)!;
+    },
+
+    updateTokens(characterId, input) {
+      const result = database.prepare(`
+        UPDATE characters
+        SET refresh_token = ?, access_token = ?, access_token_expires_at = ?, needs_reauth = 0
+        WHERE character_id = ?
+      `).run(input.refreshToken, input.accessToken, input.accessTokenExpiresAt, characterId);
+      return result.changes > 0 ? this.getById(characterId) : undefined;
+    },
+
+    markNeedsReauth(characterId) {
+      const result = database.prepare('UPDATE characters SET needs_reauth = 1 WHERE character_id = ?').run(characterId);
+      return result.changes > 0;
     },
 
     setBoss(userId, characterId) {
@@ -312,6 +336,43 @@ export function createPostgresCharacterStore(
         ],
       );
       return mapPostgresCharacter(rows.rows[0]!, key);
+    },
+
+    async updateTokens(characterId, input) {
+      const rows = await client.query<PostgresCharacterRow>(
+        `
+          UPDATE characters
+          SET refresh_token_enc = $1,
+            access_token_enc = $2,
+            access_token_expires_at = $3,
+            needs_reauth = false,
+            updated_at = now()
+          WHERE character_id = $4
+          RETURNING character_id, user_id, character_name, owner_hash, scopes,
+            refresh_token_enc, access_token_enc, access_token_expires_at, added_at,
+            needs_reauth, is_boss
+        `,
+        [
+          encryptSecret(input.refreshToken, key),
+          encryptSecret(input.accessToken, key),
+          new Date(input.accessTokenExpiresAt),
+          characterId,
+        ],
+      );
+      return rows.rows[0] ? mapPostgresCharacter(rows.rows[0], key) : undefined;
+    },
+
+    async markNeedsReauth(characterId) {
+      const result = await client.query<{ character_id: string | number }>(
+        `
+          UPDATE characters
+          SET needs_reauth = true, updated_at = now()
+          WHERE character_id = $1
+          RETURNING character_id
+        `,
+        [characterId],
+      );
+      return result.rows.length > 0;
     },
 
     async setBoss(userId, characterId) {
