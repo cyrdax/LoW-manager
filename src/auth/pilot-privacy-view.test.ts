@@ -12,7 +12,7 @@ test('pilot authorization and realtime character routes are scoped to the curren
   assert.match(db, /user_id\s+TEXT/);
   assert.match(sso, /issue\(\{ userId: user\.id \}\)/);
   assert.match(sso, /type AsyncCharacterStore/);
-  assert.match(sso, /await characterStore\.upsertAuthorized/);
+  assert.match(sso, /await characterStore\(\)\.upsertAuthorized/);
 
   assert.match(characters, /createSqliteCharacterStore/);
   assert.match(characters, /type AsyncCharacterStore/);

@@ -63,7 +63,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 
 export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps = {}) {
   const oauthStates = () => deps.oauthStates ?? createOAuthStateStore();
-  const characterStore = deps.characters ?? createSqliteCharacterStore();
+  const characterStore = () => deps.characters ?? createSqliteCharacterStore();
   let defaultCurrentUser: CurrentUserResolver | null = null;
   const currentUser = () => deps.currentUser ?? (defaultCurrentUser ??= createCurrentUserResolver());
 
@@ -103,7 +103,7 @@ export function registerSsoRoutes(app: FastifyInstance, deps: SsoRouteDeps = {})
     const scopes = Array.isArray(claims.scp) ? claims.scp.join(' ') : claims.scp;
     const expiresAt = Date.now() + tokens.expires_in * 1000;
 
-    await characterStore.upsertAuthorized({
+    await characterStore().upsertAuthorized({
       characterId,
       userId,
       characterName: claims.name,

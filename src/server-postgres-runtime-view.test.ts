@@ -20,3 +20,23 @@ test('server wires Postgres stores into runtime pilot and skill-plan paths', () 
   assert.match(server, /registerDoctrineRoutes\(app, \{ store: doctrineStore, fitStore \}\)/);
   assert.match(server, /startPolling\(\{ characters: characterStore \}\)/);
 });
+
+test('Postgres runtime modules avoid importing the SQLite singleton fallback', () => {
+  const runtimeModules = [
+    'src/routes/fits.ts',
+    'src/routes/doctrines.ts',
+    'src/characters/store.ts',
+    'src/skills/saved-plans-store.ts',
+  ];
+
+  for (const file of runtimeModules) {
+    const source = readFileSync(resolve(file), 'utf8');
+    assert.doesNotMatch(source, /from ['"]\.\.\/db\.ts['"]/);
+  }
+
+  const scheduler = readFileSync(resolve('src/polling/scheduler.ts'), 'utf8');
+  assert.doesNotMatch(scheduler, /let\s+activeCharacters[^=]*=\s*createSqliteCharacterStore\(\)/);
+
+  const sso = readFileSync(resolve('src/auth/sso.ts'), 'utf8');
+  assert.doesNotMatch(sso, /const characterStore = deps\.characters \?\? createSqliteCharacterStore\(\)/);
+});

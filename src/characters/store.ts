@@ -1,6 +1,5 @@
 import type Database from 'better-sqlite3';
 import { decryptSecret, encryptSecret, tokenEncryptionKey, type EncryptedSecret } from '../auth/secret-box.ts';
-import { db as defaultDb } from '../db.ts';
 import type { QueryClient } from '../db/migrations.ts';
 import { getPostgresPool } from '../db/postgres.ts';
 import { withTransaction } from '../db/transaction.ts';
@@ -103,9 +102,10 @@ export function migrateCharactersDb(database: SqliteDatabase): void {
 }
 
 export function createSqliteCharacterStore(
-  database: SqliteDatabase = defaultDb,
+  inputDatabase?: SqliteDatabase,
   options: CharacterStoreOptions = {},
 ): CharacterStore {
+  const database = inputDatabase ?? missingSqliteDatabase('createSqliteCharacterStore');
   const now = options.now ?? (() => Date.now());
 
   return {
@@ -200,6 +200,10 @@ export function createSqliteCharacterStore(
       return result.changes > 0;
     },
   };
+}
+
+function missingSqliteDatabase(factoryName: string): never {
+  throw new Error(`${factoryName} requires an explicit SQLite database`);
 }
 
 export function createPostgresCharacterStore(

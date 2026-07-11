@@ -6,11 +6,10 @@ import {
   type CurrentUserResolver,
   type OwnsCharacter,
 } from '../auth/pilot-access.ts';
-import { db } from '../db.ts';
 import { buildFitDraft } from '../fits/assignment.ts';
 import { buildEsiFittingPayload, createCharacterFitting, type EsiFittingCreatePayload } from '../fits/esi.ts';
 import { quoteFit, type FitQuote } from '../fits/pricing.ts';
-import { createFitStore, type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
+import { type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
 import type { FitDraft } from '../fits/types.ts';
 import { searchFitShips } from '../fits/metadata.ts';
 import { HUBS, type HubKey } from '../market/pricing.ts';
@@ -26,7 +25,7 @@ export interface FitRouteDeps {
 }
 
 export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {}) {
-  const store = deps.store ?? createFitStore(db);
+  const store = deps.store ?? missingFitStore();
   const draftBuilder = deps.buildDraft ?? buildFitDraft;
   const quote = deps.quoteFit ?? quoteFit;
   const createFitting = deps.createFitting ?? createCharacterFitting;
@@ -261,6 +260,10 @@ function parseHub(raw: string | undefined): HubKey | null {
 
 function parseVisibility(raw: string | undefined): LibraryVisibility {
   return raw === 'public' ? 'public' : 'private';
+}
+
+function missingFitStore(): never {
+  throw new Error('registerFitRoutes requires a fit store');
 }
 
 function canViewFit(fit: SavedFitDetail, user: { id: string; role: 'user' | 'admin' }): boolean {

@@ -1,5 +1,4 @@
 import type Database from 'better-sqlite3';
-import { db as defaultDb } from '../db.ts';
 import type { QueryClient } from '../db/migrations.ts';
 import { getPostgresPool } from '../db/postgres.ts';
 
@@ -76,9 +75,10 @@ export function migrateSavedSkillPlansDb(database: SqliteDatabase): void {
 }
 
 export function createSavedSkillPlanStore(
-  database: SqliteDatabase = defaultDb,
+  inputDatabase?: SqliteDatabase,
   options: SavedSkillPlanStoreOptions = {},
 ): SavedSkillPlanStore {
+  const database = inputDatabase ?? missingSqliteDatabase('createSavedSkillPlanStore');
   const now = options.now ?? (() => Date.now());
 
   return {
@@ -116,6 +116,10 @@ export function createSavedSkillPlanStore(
       return result.changes > 0;
     },
   };
+}
+
+function missingSqliteDatabase(factoryName: string): never {
+  throw new Error(`${factoryName} requires an explicit SQLite database`);
 }
 
 export function createPostgresSavedSkillPlanStore(

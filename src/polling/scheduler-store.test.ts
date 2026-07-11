@@ -10,6 +10,8 @@ test('polling scheduler reads pilots through the character store boundary', () =
   assert.match(scheduler, /createSqliteCharacterStore/);
   assert.match(scheduler, /interface PollingCharacterStore/);
   assert.match(scheduler, /startPolling\(deps: PollingDeps = \{\}\)/);
+  assert.match(scheduler, /let activeCharacters: PollingCharacterStore \| null = null/);
   assert.match(scheduler, /await characters\.listAll\(\)/);
-  assert.match(scheduler, /await activeCharacters\.getById\(id\)/);
+  assert.match(scheduler, /const characters = activeCharacters/);
+  assert.match(scheduler, /await characters\.getById\(id\)/);
 });

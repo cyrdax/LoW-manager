@@ -60,7 +60,7 @@ interface CharacterState {
 
 const state = new Map<number, CharacterState>();
 const timers = new Map<number, NodeJS.Timeout>();
-let activeCharacters: PollingCharacterStore = createSqliteCharacterStore();
+let activeCharacters: PollingCharacterStore | null = null;
 
 // Pins kept out of the SSE/snapshot payload to keep updates lean.
 // Inventory roll-up + colony drill-down read from here directly.
@@ -102,7 +102,7 @@ export function snapshotOne(id: number): CharacterStatus | null {
 }
 
 export function startPolling(deps: PollingDeps = {}) {
-  activeCharacters = deps.characters ?? activeCharacters;
+  activeCharacters = deps.characters ?? activeCharacters ?? createSqliteCharacterStore();
   void startPollingAsync(activeCharacters).catch(err => console.error(`[poller] bootstrap failed`, err));
 }
 
@@ -203,7 +203,9 @@ async function tick(id: number) {
   const s = state.get(id);
   if (!s) return;
 
-  const row = await activeCharacters.getById(id);
+  const characters = activeCharacters;
+  if (!characters) return;
+  const row = await characters.getById(id);
   if (!row) {
     forgetCharacter(id);
     return;

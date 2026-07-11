@@ -4,9 +4,8 @@ import {
   routeCurrentUser,
   type CurrentUserResolver,
 } from '../auth/pilot-access.ts';
-import { db } from '../db.ts';
-import { createDoctrineStore, type AsyncDoctrineStore, type DoctrineDetail, type DoctrineStore } from '../fits/doctrines.ts';
-import { createFitStore, type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
+import { type AsyncDoctrineStore, type DoctrineDetail, type DoctrineStore } from '../fits/doctrines.ts';
+import { type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
 
 export interface DoctrineRouteDeps {
   store?: DoctrineStore | AsyncDoctrineStore;
@@ -15,8 +14,8 @@ export interface DoctrineRouteDeps {
 }
 
 export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRouteDeps = {}) {
-  const store = deps.store ?? createDoctrineStore(db);
-  const fitStore = deps.fitStore ?? createFitStore(db);
+  const store = deps.store ?? missingDoctrineStore();
+  const fitStore = deps.fitStore ?? missingFitStore();
   const currentUser = routeCurrentUser(deps);
 
   app.get('/api/doctrines', async (req, reply) => {
@@ -183,4 +182,12 @@ function canEditDoctrine(doctrine: DoctrineDetail, user: { id: string; role: 'us
 
 function canViewFit(fit: SavedFitDetail, user: { id: string; role: 'user' | 'admin' }): boolean {
   return fit.visibility === 'public' || user.role === 'admin' || fit.ownerUserId === user.id;
+}
+
+function missingDoctrineStore(): never {
+  throw new Error('registerDoctrineRoutes requires a doctrine store');
+}
+
+function missingFitStore(): never {
+  throw new Error('registerDoctrineRoutes requires a fit store');
 }
