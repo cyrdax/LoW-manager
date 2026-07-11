@@ -57,3 +57,8 @@ export function requireOwnedCharacter(
 export function listUsableCharacters(userId: string): CharacterRow[] {
   return db.prepare('SELECT * FROM characters WHERE user_id = ? AND needs_reauth = 0').all(userId) as CharacterRow[];
 }
+
+export function userCharacterIds(userId: string): Set<number> {
+  const rows = db.prepare('SELECT character_id FROM characters WHERE user_id = ?').all(userId) as Array<{ character_id: number }>;
+  return new Set(rows.map(row => row.character_id));
+}

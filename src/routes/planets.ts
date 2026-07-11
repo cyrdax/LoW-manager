@@ -1,5 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  requireOwnedCharacter,
+  requireUser,
+  routeCurrentUser,
+  userCharacterIds,
+  type CurrentUserResolver,
+  type OwnsCharacter,
+} from '../auth/pilot-access.ts';
 import { getPlanetPublic, getSystemInfo, resolveSchematic, resolveSystem, resolveType } from '../esi/universe.ts';
 import { allColonyPins, getColonyPins, snapshot } from '../polling/scheduler.ts';
 import { classifyTier, extractablesFor, type PiTier } from '../esi/pi-data.ts';
@@ -38,9 +46,10 @@ async function buildSystemPlanetList(systemId: number, overlay: Map<number, MyCo
   };
 }
 
-function overlayByPlanetId(): Map<number, MyColonyOverlay[]> {
+function overlayByPlanetId(characterIds: Set<number>): Map<number, MyColonyOverlay[]> {
   const m = new Map<number, MyColonyOverlay[]>();
   for (const c of snapshot()) {
+    if (!characterIds.has(c.characterId)) continue;
     for (const col of c.colonies) {
       const list = m.get(col.planetId) ?? [];
       list.push({
@@ -75,17 +84,25 @@ interface MyColonyOverlay {
 
 export interface PlanetRouteDeps {
   savedSystems?: SavedSystemsStore;
+  currentUser?: CurrentUserResolver;
+  ownsCharacter?: OwnsCharacter;
 }
 
 export function registerPlanetRoutes(app: FastifyInstance, deps: PlanetRouteDeps = {}) {
   const savedSystems = () => deps.savedSystems ?? createSavedSystemsStore();
+  const currentUser = routeCurrentUser(deps);
+  const owns = deps.ownsCharacter;
 
   app.get<{ Params: { id: string } }>('/api/planets/system/:id', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'invalid system id' });
 
     try {
-      const block = await buildSystemPlanetList(id, overlayByPlanetId());
+      const characterIds = userCharacterIds(user.id);
+      const block = await buildSystemPlanetList(id, overlayByPlanetId(characterIds));
       return {
         system: { id: block.systemId, name: block.systemName, securityStatus: block.securityStatus },
         planets: block.planets,
@@ -104,6 +121,9 @@ export function registerPlanetRoutes(app: FastifyInstance, deps: PlanetRouteDeps
       if (!Number.isFinite(charId) || !Number.isFinite(planetId)) {
         return reply.code(400).send({ error: 'invalid id' });
       }
+      const user = await requireUser(req, reply, currentUser);
+      if (!user) return reply;
+      if (!requireOwnedCharacter(user.id, charId, reply, owns)) return reply;
       const entry = getColonyPins(charId, planetId);
       if (!entry) {
         return reply.code(404).send({ error: 'colony not yet polled — try again in a few seconds' });
@@ -119,9 +139,13 @@ export function registerPlanetRoutes(app: FastifyInstance, deps: PlanetRouteDeps
     },
   );
 
-  app.get('/api/planets/saved', async () => {
+  app.get('/api/planets/saved', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     const rows = await savedSystems().list();
-    const overlay = overlayByPlanetId();
+    const characterIds = userCharacterIds(user.id);
+    const overlay = overlayByPlanetId(characterIds);
     const systems = await Promise.all(rows.map(async r => {
       const block = await buildSystemPlanetList(r.systemId, overlay).catch(() => null);
       if (!block) {
@@ -134,6 +158,8 @@ export function registerPlanetRoutes(app: FastifyInstance, deps: PlanetRouteDeps
 
   const saveSchema = z.object({ system_id: z.number().int() });
   app.post('/api/planets/saved', async (req, reply) => {
+    if (!await requireUser(req, reply, currentUser)) return reply;
+
     const parsed = saveSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
     const systemId = parsed.data.system_id;
@@ -152,21 +178,27 @@ export function registerPlanetRoutes(app: FastifyInstance, deps: PlanetRouteDeps
   });
 
   app.delete<{ Params: { systemId: string } }>('/api/planets/saved/:systemId', async (req, reply) => {
+    if (!await requireUser(req, reply, currentUser)) return reply;
+
     const systemId = Number(req.params.systemId);
     if (!Number.isFinite(systemId)) return reply.code(400).send({ error: 'invalid system id' });
     await savedSystems().delete(systemId);
     return { ok: true };
   });
 
-  app.get('/api/planets/inventory', async () => {
+  app.get('/api/planets/inventory', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
     type Bucket = { tier: PiTier; name: string; total: number; locations: Array<{ characterId: number; characterName: string; planetId: number; amount: number }> };
     const buckets = new Map<string, Bucket>();
     const charNames = new Map<number, string>();
-    for (const c of snapshot()) charNames.set(c.characterId, c.name);
+    const characterIds = userCharacterIds(user.id);
+    for (const c of snapshot().filter(c => characterIds.has(c.characterId))) charNames.set(c.characterId, c.name);
 
     const typeNameCache = new Map<number, string>();
 
-    for (const entry of allColonyPins()) {
+    for (const entry of allColonyPins().filter(entry => characterIds.has(entry.characterId))) {
       for (const pin of entry.pins) {
         if (!pin.contents || pin.contents.length === 0) continue;
         for (const c of pin.contents) {

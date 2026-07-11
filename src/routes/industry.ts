@@ -1,5 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  requireOwnedCharacter,
+  requireUser,
+  routeCurrentUser,
+  type CurrentUserResolver,
+  type OwnsCharacter,
+} from '../auth/pilot-access.ts';
 import { getAdjustedPrices, getSystemCostIndex } from '../esi/industry.ts';
 import { resolveSystem } from '../esi/universe.ts';
 import { getCharacterAttributes, getCharacterSkills } from '../polling/scheduler.ts';
@@ -111,7 +118,15 @@ function enrichBlueprintSkills(blueprint: IndustryBlueprintData, data: MasteryDa
   };
 }
 
-export function registerIndustryRoutes(app: FastifyInstance) {
+export interface IndustryRouteDeps {
+  currentUser?: CurrentUserResolver;
+  ownsCharacter?: OwnsCharacter;
+}
+
+export function registerIndustryRoutes(app: FastifyInstance, deps: IndustryRouteDeps = {}) {
+  const currentUser = routeCurrentUser(deps);
+  const owns = deps.ownsCharacter;
+
   app.get<{ Querystring: { q?: string } }>('/api/industry/blueprints', async (req, reply) => {
     const parsed = searchQuery.safeParse(req.query);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
@@ -131,6 +146,11 @@ export function registerIndustryRoutes(app: FastifyInstance) {
     const characterId = parsed.data.characterId === 'max' ? 'max' : Number(parsed.data.characterId);
     if (characterId !== 'max' && !Number.isFinite(characterId)) {
       return reply.code(400).send({ error: 'characterId must be "max" or a numeric character id' });
+    }
+    if (characterId !== 'max') {
+      const user = await requireUser(req, reply, currentUser);
+      if (!user) return reply;
+      if (!requireOwnedCharacter(user.id, characterId, reply, owns)) return reply;
     }
 
     const pilot = pilotSkills(characterId);
@@ -159,6 +179,11 @@ export function registerIndustryRoutes(app: FastifyInstance) {
     const characterId = parsed.data.characterId === 'max' ? 'max' : Number(parsed.data.characterId);
     if (characterId !== 'max' && !Number.isFinite(characterId)) {
       return reply.code(400).send({ error: 'characterId must be "max" or a numeric character id' });
+    }
+    if (characterId !== 'max') {
+      const user = await requireUser(req, reply, currentUser);
+      if (!user) return reply;
+      if (!requireOwnedCharacter(user.id, characterId, reply, owns)) return reply;
     }
 
     const pilot = pilotSkills(characterId);
