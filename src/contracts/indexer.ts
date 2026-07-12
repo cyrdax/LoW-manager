@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { setMaxListeners } from 'node:events';
 import { db as appDb } from '../db.ts';
 import { getPublicContractItemsPage, getPublicContracts } from '../esi/contracts.ts';
 import { loadContractMap, type ContractMapTopology } from './map.ts';
@@ -81,6 +82,7 @@ export async function refreshContractRegion(input: RefreshContractRegionInput): 
   const fetchRegionContracts = input.fetchRegionContracts ?? defaultFetchRegionContracts;
   const fetchContractItems = input.fetchContractItems ?? defaultFetchContractItems;
 
+  allowHighFanoutSignal(input.signal);
   throwIfAborted(input.signal);
   const first = await fetchRegionContracts(input.region.id, 1, input.signal);
   const pages = Math.max(1, first.pages || 1);
@@ -268,6 +270,11 @@ function abortError(reason?: unknown): Error {
 
 function throwIfAborted(signal?: AbortSignal | null): void {
   if (signal?.aborted) throw abortError(signal.reason);
+}
+
+function allowHighFanoutSignal(signal?: AbortSignal | null): void {
+  if (!signal) return;
+  setMaxListeners(0, signal);
 }
 
 function isAbortError(err: unknown): boolean {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { getMaxListeners } from 'node:events';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import type { PublicContractItem, PublicContractSummary } from './types.ts';
@@ -126,6 +127,30 @@ test('refreshContractRegion records item failures without failing the region ref
   assert.equal(result.itemFetches, 1);
   assert.equal(result.itemFailures, 1);
   assert.deepEqual(itemRefreshContractIds(db, 10000002, NOW + 1), [2]);
+});
+
+test('refreshContractRegion treats its abort signal as high-fanout for large item crawls', async () => {
+  const db = memoryDb();
+  const topology = topologyFixture();
+  const controller = new AbortController();
+
+  await refreshContractRegion({
+    database: db,
+    region: { id: 10000002, name: 'The Forge' },
+    topology,
+    now: () => NOW,
+    signal: controller.signal,
+    fetchRegionContracts: async () => ({
+      data: Array.from({ length: 16 }, (_, index) => contract(index + 1)),
+      pages: 1,
+      expiresAt: EXPIRES,
+    }),
+    fetchContractItems: async (_contractId, signal) => {
+      assert.equal(getMaxListeners(signal as AbortSignal), 0);
+      signal?.addEventListener('abort', () => undefined, { once: true });
+      return { data: [item(_contractId, 17920, 1, true)], expiresAt: EXPIRES };
+    },
+  });
 });
 
 test('refreshDueContractRegion refreshes prioritized due work and returns null when nothing is due', async () => {
