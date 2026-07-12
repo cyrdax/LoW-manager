@@ -330,8 +330,11 @@ Fill in:
 | `EVE_CLIENT_SECRET`  | from the CCP dev app (keep private)                                      |
 | `EVE_CALLBACK_URL`   | `http://localhost:3100/auth/callback`                                    |
 | `PORT`               | `3100` (change only if you have a conflict; also update the callback)    |
+| `HOST`               | `127.0.0.1` locally; set to `0.0.0.0` for hosted deployments             |
 | `CONTACT_EMAIL`      | your email — sent to CCP as part of the User-Agent per ESI's best practice |
 | `COOKIE_SECRET`      | any long random string                                                   |
+| `APP_BASE_URL`       | frontend origin; use the public `https://...` URL in production          |
+| `NODE_ENV`           | `development` locally; set to `production` for hosted deployments        |
 | `DATABASE_URL`       | Postgres connection string for multi-tenant app data; local compose uses `127.0.0.1:55432` |
 | `TEST_DATABASE_URL`  | Postgres connection string for integration tests; local compose uses `127.0.0.1:55432` |
 | `TOKEN_ENCRYPTION_KEY` | 32-byte base64 key for encrypted EVE tokens                            |
@@ -340,6 +343,7 @@ Fill in:
 | `EMAIL_FROM`         | verified sender address for hosted email                                 |
 | `GOOGLE_CLIENT_ID`   | Google OAuth client ID; leave blank to disable locally                   |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret; leave blank to disable locally             |
+| `GOOGLE_CALLBACK_URL` | `http://localhost:3100/auth/google/callback` locally; use the public HTTPS callback in production |
 
 ### 3. Install & run
 
@@ -364,6 +368,14 @@ For a single-port production-style run:
 npm run build   # builds web/dist
 npm start       # Fastify serves the built frontend on :3100
 ```
+
+### Deployment notes
+
+- Railway needs one Node service and one Postgres database.
+- Set `HOST=0.0.0.0`, `NODE_ENV=production`, and `APP_BASE_URL` to the public HTTPS app URL.
+- Set CCP's callback URL to `<APP_BASE_URL>/auth/callback`.
+- Set Google's authorized redirect URI to `<APP_BASE_URL>/auth/google/callback`.
+- Run `npm run db:migrate` against the production `DATABASE_URL` before the first smoke test.
 
 ---
 

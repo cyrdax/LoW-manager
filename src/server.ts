@@ -27,6 +27,7 @@ import { startPolling } from './polling/scheduler.ts';
 import { bootstrapSystemsCache } from './esi/universe.ts';
 import { startContractIndexer } from './contracts/indexer.ts';
 import { createPostgresSavedSkillPlanStore } from './skills/saved-plans-store.ts';
+import { cookieSecretFromEnv, secureCookiesFromEnv, serverListenOptionsFromEnv } from './server-config.ts';
 
 const app = Fastify({ logger: true });
 const characterStore = createPostgresCharacterStore();
@@ -37,9 +38,9 @@ const doctrineStore = createPostgresDoctrineStore(undefined, { fitStore });
 setPilotAccessCharacterStore(characterStore);
 setAccessTokenCharacterStore(characterStore);
 
-await app.register(cookie, { secret: process.env.COOKIE_SECRET ?? 'dev-secret' });
+await app.register(cookie, { secret: cookieSecretFromEnv() });
 
-registerAppAuthRoutes(app);
+registerAppAuthRoutes(app, { secureCookies: secureCookiesFromEnv() });
 registerSsoRoutes(app, { characters: characterStore });
 registerCharacterRoutes(app, { characters: characterStore });
 registerFleetRoutes(app);
@@ -53,6 +54,8 @@ registerIndustryRoutes(app);
 registerContractRoutes(app);
 registerFitRoutes(app, { store: fitStore });
 registerDoctrineRoutes(app, { store: doctrineStore, fitStore });
+
+app.get('/api/health', async () => ({ ok: true }));
 
 // In dev, Vite serves the frontend on its own port. In production, serve the built bundle.
 const distDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'web', 'dist');
@@ -80,8 +83,7 @@ bootstrapSystemsCache()
   .then(count => app.log.info(`[systems] cache has ${count} solar systems`))
   .catch(err => app.log.warn(`[systems] bootstrap failed: ${err.message}`));
 
-const port = Number(process.env.PORT ?? 3100);
-app.listen({ port, host: '127.0.0.1' }).catch(err => {
+app.listen(serverListenOptionsFromEnv()).catch(err => {
   app.log.error(err);
   process.exit(1);
 });

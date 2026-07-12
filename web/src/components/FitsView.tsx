@@ -3,6 +3,7 @@ import {
   copyFitToPrivate,
   deleteFit,
   fetchFit,
+  fetchDoctrines,
   fetchFits,
   previewFit,
   publishFit,
@@ -16,6 +17,7 @@ import {
   type AssignedFitItem,
   type CharacterStatus,
   type CurrentUser,
+  type DoctrineSummary,
   type FitDraft,
   type FitHub,
   type FitQuote,
@@ -36,7 +38,7 @@ const FITS_MODE_KEY = 'efd.fits.mode';
 const FITS_PILOT_KEY = 'efd.fits.pilot';
 const FITS_VISIBILITY_KEY = 'efd.fits.visibility';
 
-const SLOT_ROLES: FitSectionRole[] = ['low', 'mid', 'high', 'rig', 'service', 'subsystem'];
+const SLOT_ROLES: FitSectionRole[] = ['high', 'mid', 'low', 'rig', 'subsystem', 'service'];
 const EXTRA_ROLES: FitSectionRole[] = ['droneBay', 'fighterBay', 'extras', 'unmatched'];
 const SAMPLE = `[Naglfar, Simulated Naglfar Fitting]
 Republic Fleet Gyrostabilizer
@@ -66,6 +68,8 @@ type FitTooltipHandlers = {
   show: (label: string, target: HTMLElement) => void;
   hide: () => void;
 };
+type FitOpenTarget = { id: number; visibility: LibraryVisibility } | null;
+type DoctrineOpenTarget = { id: number; visibility: LibraryVisibility } | null;
 
 function formatIsk(n: number | null | undefined): string {
   if (n == null) return '-';
@@ -83,19 +87,33 @@ function iconUrl(typeId: number): string {
 export function FitsView({ chars, currentUser }: Props) {
   const [mode, setMode] = useState<FitMode>(() => (localStorage.getItem(FITS_MODE_KEY) as FitMode) || 'fits');
   const [visibility, setVisibility] = useState<LibraryVisibility>(() => (localStorage.getItem(FITS_VISIBILITY_KEY) as LibraryVisibility) || 'private');
+  const [openFitTarget, setOpenFitTarget] = useState<FitOpenTarget>(null);
+  const [openDoctrineTarget, setOpenDoctrineTarget] = useState<DoctrineOpenTarget>(null);
   useEffect(() => { localStorage.setItem(FITS_MODE_KEY, mode); }, [mode]);
   useEffect(() => { localStorage.setItem(FITS_VISIBILITY_KEY, visibility); }, [visibility]);
 
+  function openDoctrineFit(fit: SavedFitSummary) {
+    setOpenFitTarget({ id: fit.id, visibility: fit.visibility });
+    setVisibility(fit.visibility);
+    setMode('fits');
+  }
+
+  function openFitDoctrine(doctrine: DoctrineSummary) {
+    setOpenDoctrineTarget({ id: doctrine.id, visibility: doctrine.visibility });
+    setVisibility(doctrine.visibility);
+    setMode('doctrines');
+  }
+
   return (
-    <>
+    <main className="rows-wrap fits-page">
       <div className="fits-topbar">
         <FitModeSwitch mode={mode} onMode={setMode} />
         <LibraryScopeSwitch value={visibility} onChange={setVisibility} />
       </div>
       {mode === 'doctrines'
-        ? <DoctrinesView currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} />
-        : <SavedFitsView chars={chars} currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} />}
-    </>
+        ? <DoctrinesView currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} onOpenFit={openDoctrineFit} openDoctrineTarget={openDoctrineTarget} />
+        : <SavedFitsView chars={chars} currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} openFitTarget={openFitTarget} onOpenDoctrine={openFitDoctrine} />}
+    </main>
   );
 }
 
@@ -104,7 +122,9 @@ function SavedFitsView({
   currentUser,
   visibility,
   setVisibility,
-}: Props & { visibility: LibraryVisibility; setVisibility: (visibility: LibraryVisibility) => void }) {
+  openFitTarget,
+  onOpenDoctrine,
+}: Props & { visibility: LibraryVisibility; setVisibility: (visibility: LibraryVisibility) => void; openFitTarget: FitOpenTarget; onOpenDoctrine: (doctrine: DoctrineSummary) => void }) {
   const [fits, setFits] = useState<SavedFitSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<SavedFitDetail | null>(null);
@@ -124,6 +144,8 @@ function SavedFitsView({
   const [status, setStatus] = useState<string | null>(null);
   const [sendStatus, setSendStatus] = useState<SendStatus>({ kind: 'idle' });
   const [tooltip, setTooltip] = useState<FitTooltipState>(null);
+  const [fitDoctrines, setFitDoctrines] = useState<DoctrineSummary[]>([]);
+  const [fitDoctrinesLoading, setFitDoctrinesLoading] = useState(false);
 
   const sortedChars = useMemo(() => [...chars].sort((a, b) => a.name.localeCompare(b.name)), [chars]);
   const [pilotId, setPilotId] = useState<number | null>(() => {
@@ -156,6 +178,14 @@ function SavedFitsView({
   }, [visibility]);
 
   useEffect(() => {
+    if (!openFitTarget) return;
+    setDraft(null);
+    setDetail(null);
+    setSearch('');
+    setSelectedId(openFitTarget.id);
+  }, [openFitTarget]);
+
+  useEffect(() => {
     if (selectedId == null || draft) { setDetail(null); return; }
     let cancelled = false;
     fetchFit(selectedId).then(res => {
@@ -168,6 +198,7 @@ function SavedFitsView({
 
   const active = draft ?? detail;
   const activeSavedId = draft ? null : detail?.id ?? null;
+  const activeVisibility = draft ? visibility : detail?.visibility ?? visibility;
   const canEditActive = !detail || currentUser.role === 'admin' || detail.ownerUserId === currentUser.id;
   const canPublishActive = activeSavedId != null && canEditActive && detail?.visibility === 'private';
   const canCopyPrivate = activeSavedId != null && detail?.visibility === 'public';
@@ -193,6 +224,21 @@ function SavedFitsView({
     if (!active) { setQuote(null); return; }
     refreshQuote(active);
   }, [active?.rawEft, activeSavedId, hub]);
+
+  useEffect(() => {
+    if (!activeSavedId) {
+      setFitDoctrines([]);
+      setFitDoctrinesLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setFitDoctrinesLoading(true);
+    fetchDoctrines('', activeVisibility, activeSavedId)
+      .then(rows => { if (!cancelled) setFitDoctrines(rows); })
+      .catch(() => { if (!cancelled) setFitDoctrines([]); })
+      .finally(() => { if (!cancelled) setFitDoctrinesLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeSavedId, activeVisibility]);
 
   const filteredFits = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -322,7 +368,7 @@ function SavedFitsView({
   };
 
   return (
-    <main className="rows-wrap fits-view">
+    <div className="fits-view">
       <aside className="fits-library">
         <div className="fits-lib-head">
           <strong>Fits</strong>
@@ -380,7 +426,7 @@ function SavedFitsView({
               quote={quote}
               quoteLoading={quoteLoading}
               saved={activeSavedId != null}
-              visibility={draft ? visibility : detail?.visibility ?? visibility}
+              visibility={activeVisibility}
               editable={canEditActive}
               canPublish={canPublishActive}
               canCopyPrivate={canCopyPrivate}
@@ -408,7 +454,10 @@ function SavedFitsView({
                 {SLOT_ROLES.map(role => <SlotSection key={role} role={role} fit={active} tooltip={tooltipHandlers} />)}
                 {EXTRA_ROLES.map(role => <ExtraSection key={role} role={role} fit={active} tooltip={tooltipHandlers} />)}
               </div>
-              <PricePanel quote={quote} loading={quoteLoading} error={quoteError} />
+              <div className="fits-side-panels">
+                <PricePanel quote={quote} loading={quoteLoading} error={quoteError} />
+                {activeSavedId != null && <FitDoctrinesPanel doctrines={fitDoctrines} loading={fitDoctrinesLoading} onOpen={onOpenDoctrine} />}
+              </div>
             </div>
           </>
         )}
@@ -441,7 +490,7 @@ function SavedFitsView({
         </Modal>
       )}
       {tooltip && <FitTooltip tooltip={tooltip} />}
-    </main>
+    </div>
   );
 }
 
@@ -475,31 +524,44 @@ function FitHeader(props: {
   onShip: (ship: FitShipHit) => void;
 }) {
   const { fit } = props;
+  const fitCost = props.quote ? `${formatIsk(props.quote.totals.grand)} ISK` : props.quoteLoading ? 'Pricing...' : '-';
   return (
     <div className="fits-fit-head">
-      <img className="fits-ship-icon" src={fit.ship ? iconUrl(fit.ship.typeId) : ''} alt="" />
-      <div className="fits-title-block">
-        <div className="fits-title-line">
-          <strong>{fit.ship?.name ?? fit.headerShipName}</strong>
-          <span className={props.saved ? 'fits-state saved' : 'fits-state draft'}>{props.saved ? 'Saved' : 'Draft'}</span>
-          <span className={`fits-state ${props.visibility}`}>{props.visibility === 'public' ? 'Public' : 'Private'}</span>
-          {fit.warnings.map((w, i) => <span key={`${w.code}-${i}`} className="fits-warn-badge">{w.code}</span>)}
+      <div className="fits-head-main">
+        <div className="fits-ship-summary">
+          <img className="fits-ship-icon" src={fit.ship ? iconUrl(fit.ship.typeId) : ''} alt="" />
         </div>
-        <div className="fits-edit-grid">
-          <input value={props.fitName} onChange={e => props.onName(e.target.value)} readOnly={!props.editable} />
-          <input value={props.notes} onChange={e => props.onNotes(e.target.value)} placeholder="Notes" readOnly={!props.editable} />
-          {props.editable ? <ShipPicker onSelect={props.onShip} /> : <input value="Public copy" readOnly />}
+        <div className="fits-title-block">
+          <div className="fits-title-line">
+            <strong>{fit.ship?.name ?? fit.headerShipName}</strong>
+            <span className={props.saved ? 'fits-state saved' : 'fits-state draft'}>{props.saved ? 'Saved' : 'Draft'}</span>
+            <span className={`fits-state ${props.visibility}`}>{props.visibility === 'public' ? 'Public' : 'Private'}</span>
+            {fit.warnings.map((w, i) => <span key={`${w.code}-${i}`} className="fits-warn-badge">{w.code}</span>)}
+          </div>
+          <div className="fits-edit-grid">
+            <input value={props.fitName} onChange={e => props.onName(e.target.value)} readOnly={!props.editable} />
+            <input value={props.notes} onChange={e => props.onNotes(e.target.value)} placeholder="Notes" readOnly={!props.editable} />
+            {props.editable ? <ShipPicker onSelect={props.onShip} /> : <input value="Public copy" readOnly />}
+          </div>
+        </div>
+        <div className="fits-actions">
+          <div className="fits-action-row">
+            {props.editable && <button onClick={props.onSave} disabled={props.busy}>{props.saved ? 'Save' : 'Save fit'}</button>}
+            {props.canPublish && <button onClick={props.onPublish} disabled={props.busy}>Publish</button>}
+            {props.canCopyPrivate && <button onClick={props.onCopyPrivate} disabled={props.busy}>Copy private</button>}
+            <button onClick={props.onCopy}>Copy EFT</button>
+            {props.saved && props.editable && <button className="danger" onClick={props.onDelete}>Delete</button>}
+          </div>
+          {props.status && <small className="fits-status">{props.status}</small>}
+          {props.quoteError && <small className="fits-status err">{props.quoteError}</small>}
+          {props.sendStatus.kind === 'sent' && <small className="fits-status ok">Fitting #{props.sendStatus.fittingId ?? 'created'} - {props.sendStatus.excludedCount} excluded</small>}
+          {props.sendStatus.kind === 'error' && <small className="fits-status err">{props.sendStatus.message}{props.sendStatus.reauthHint ? ` - ${props.sendStatus.reauthHint}` : ''}</small>}
         </div>
       </div>
-      <div className="fits-actions">
-        <strong>{props.quote ? `${formatIsk(props.quote.totals.grand)} ISK` : props.quoteLoading ? 'Pricing...' : '-'}</strong>
-        <div className="fits-action-row">
-          {props.editable && <button onClick={props.onSave} disabled={props.busy}>{props.saved ? 'Save' : 'Save fit'}</button>}
-          {props.canPublish && <button onClick={props.onPublish} disabled={props.busy}>Publish</button>}
-          {props.canCopyPrivate && <button onClick={props.onCopyPrivate} disabled={props.busy}>Copy private</button>}
-          <button onClick={props.onCopy}>Copy EFT</button>
+      <div className="fits-ship-controls">
+        <div className="fits-cost-row">
+          <strong className="fits-fit-cost">{fitCost}</strong>
           <button onClick={props.onRefresh} disabled={props.quoteLoading}>Refresh Price</button>
-          {props.saved && props.editable && <button className="danger" onClick={props.onDelete}>Delete</button>}
         </div>
         <div className="fits-send-row">
           <select value={props.pilotId ?? ''} onChange={e => props.onPilot(Number(e.target.value) || null)}>
@@ -507,13 +569,9 @@ function FitHeader(props: {
             {props.chars.map(c => <option key={c.characterId} value={c.characterId}>{c.name}{c.needsReauth ? ' (needs re-auth)' : ''}</option>)}
           </select>
           <button onClick={props.onSend} disabled={props.pilotId == null || props.sendStatus.kind === 'sending'}>
-            {props.sendStatus.kind === 'sending' ? 'Sending...' : 'Send'}
+            {props.sendStatus.kind === 'sending' ? 'Sending...' : 'Send Fit'}
           </button>
         </div>
-        {props.status && <small className="fits-status">{props.status}</small>}
-        {props.quoteError && <small className="fits-status err">{props.quoteError}</small>}
-        {props.sendStatus.kind === 'sent' && <small className="fits-status ok">Fitting #{props.sendStatus.fittingId ?? 'created'} - {props.sendStatus.excludedCount} excluded</small>}
-        {props.sendStatus.kind === 'error' && <small className="fits-status err">{props.sendStatus.message}{props.sendStatus.reauthHint ? ` - ${props.sendStatus.reauthHint}` : ''}</small>}
       </div>
     </div>
   );
@@ -550,10 +608,16 @@ function SlotSection({ role, fit, tooltip }: { role: FitSectionRole; fit: FitDra
   return (
     <section className="fits-section">
       <h3>{section.label}<span>{section.items.length}/{section.slotCount}</span></h3>
-      <div className="fits-slot-grid">
+      <div className="fits-slot-list">
         {Array.from({ length: cells }, (_, i) => {
           const item = section.items[i];
-          return item ? <ItemCell key={item.id} item={item} over={i >= section.slotCount} tooltip={tooltip} /> : <div key={i} className="fits-slot empty" />;
+          return item ? <SlotItemRow key={item.id} item={item} over={i >= section.slotCount} tooltip={tooltip} /> : (
+            <div key={i} className="fits-item-row fits-slot-empty">
+              <div className="fits-item-icon" />
+              <span>Empty slot</span>
+              <small />
+            </div>
+          );
         })}
       </div>
     </section>
@@ -573,11 +637,11 @@ function ExtraSection({ role, fit, tooltip }: { role: FitSectionRole; fit: FitDr
   );
 }
 
-function ItemCell({ item, over, tooltip }: { item: AssignedFitItem; over?: boolean; tooltip: FitTooltipHandlers }) {
+function SlotItemRow({ item, over, tooltip }: { item: AssignedFitItem; over?: boolean; tooltip: FitTooltipHandlers }) {
   const label = item.resolvedName ?? item.inputName;
   return (
     <div
-      className={`fits-slot fits-tooltip${over || item.warning ? ' warn' : ''}`}
+      className={`fits-item-row fits-tooltip${over || item.warning ? ' warn' : ''}`}
       data-tooltip={item.resolvedName ?? item.inputName}
       aria-label={label}
       tabIndex={0}
@@ -587,8 +651,9 @@ function ItemCell({ item, over, tooltip }: { item: AssignedFitItem; over?: boole
       onFocus={e => tooltip.show(label, e.currentTarget)}
       onBlur={tooltip.hide}
     >
-      {item.typeId ? <img src={iconUrl(item.typeId)} alt="" /> : <span>?</span>}
-      {item.quantity > 1 && <b>{item.quantity.toLocaleString()}</b>}
+      <div className="fits-item-icon">{item.typeId ? <img src={iconUrl(item.typeId)} alt="" /> : '?'}</div>
+      <span>{label}</span>
+      <small>{item.quantity > 1 ? item.quantity.toLocaleString() : over ? 'over' : ''}</small>
     </div>
   );
 }
@@ -637,6 +702,23 @@ function PricePanel({ quote, loading, error }: { quote: FitQuote | null; loading
           <div className="fits-price-meta">{quote.systemName} - {quote.counts.ok} priced - {quote.counts.noOrders} no sellers</div>
         </>
       )}
+    </aside>
+  );
+}
+
+function FitDoctrinesPanel({ doctrines, loading, onOpen }: { doctrines: DoctrineSummary[]; loading: boolean; onOpen: (doctrine: DoctrineSummary) => void }) {
+  return (
+    <aside className="fits-doctrines">
+      <h3>Doctrines<span>{doctrines.length}</span></h3>
+      {loading && <div className="fits-empty">Loading doctrines...</div>}
+      {!loading && doctrines.length === 0 && <div className="fits-empty">Not in any doctrines.</div>}
+      {!loading && doctrines.map(doctrine => (
+        <button key={doctrine.id} className="fit-doctrine-link" onClick={() => onOpen(doctrine)}>
+          <strong>{doctrine.name}</strong>
+          <span>{doctrine.description || doctrine.shipNames.join(', ') || 'No description'}</span>
+          <small>{doctrine.fitCount} fits - {doctrine.visibility === 'public' ? 'Public' : 'Private'}</small>
+        </button>
+      ))}
     </aside>
   );
 }

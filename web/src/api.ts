@@ -1080,9 +1080,10 @@ export async function fetchFits(visibility: LibraryVisibility = 'private'): Prom
   return res.json();
 }
 
-export async function fetchDoctrines(q = '', visibility: LibraryVisibility = 'private'): Promise<DoctrineSummary[]> {
+export async function fetchDoctrines(q = '', visibility: LibraryVisibility = 'private', fitId?: number): Promise<DoctrineSummary[]> {
   const qs = new URLSearchParams({ visibility });
   if (q.trim()) qs.set('q', q.trim());
+  if (fitId != null) qs.set('fitId', String(fitId));
   const res = await fetch(`/api/doctrines?${qs}`);
   if (!res.ok) return [];
   return res.json();

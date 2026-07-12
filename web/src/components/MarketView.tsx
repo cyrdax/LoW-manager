@@ -45,24 +45,21 @@ function pctChange(from: number, to: number): number {
 type MarketTab = 'plex' | 'shopping';
 
 export function MarketView({ chars }: Props) {
-  const [tab, setTab] = useState<MarketTab>(
-    () => (localStorage.getItem('efd.market.tab') as MarketTab) || 'plex',
-  );
-  useEffect(() => { localStorage.setItem('efd.market.tab', tab); }, [tab]);
+  const [tab, setTab] = useState<MarketTab>('shopping');
 
   return (
     <main className="rows-wrap market-view">
       <div className="mk-tabs">
         <button
-          className={`mk-tab${tab === 'plex' ? ' active' : ''}`}
-          onClick={() => setTab('plex')}
-        >PLEX</button>
-        <button
           className={`mk-tab${tab === 'shopping' ? ' active' : ''}`}
           onClick={() => setTab('shopping')}
         >Shopping List</button>
+        <button
+          className={`mk-tab${tab === 'plex' ? ' active' : ''}`}
+          onClick={() => setTab('plex')}
+        >PLEX</button>
       </div>
-      {tab === 'plex' ? <PlexView /> : <ShoppingListView chars={chars} />}
+      {tab === 'shopping' ? <ShoppingListView chars={chars} /> : <PlexView />}
     </main>
   );
 }

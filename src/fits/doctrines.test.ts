@@ -83,6 +83,34 @@ test('doctrine search matches name description member ship and member fit name',
   assert.deepEqual(doctrines.list('carrier support').map(row => row.id), [triage.id]);
 });
 
+test('doctrine store filters by exact member fit id', () => {
+  const { fits, doctrines } = stores();
+  const dread = fits.create({ rawEft: naglfar, fitName: 'Dread DPS' });
+  const carrier = fits.create({ rawEft: archon, fitName: 'Carrier Support' });
+  const armor = doctrines.create({ name: 'Armor Dread Bomb' });
+  const triage = doctrines.create({ name: 'Slowcat Support' });
+  doctrines.addFit(armor.id, dread.id);
+  doctrines.addFit(triage.id, carrier.id);
+
+  assert.deepEqual(doctrines.list({ fitId: dread.id }).map(row => row.id), [armor.id]);
+  assert.deepEqual(doctrines.list({ fitId: carrier.id }).map(row => row.id), [triage.id]);
+  assert.deepEqual(doctrines.list({ fitId: 999_999 }).map(row => row.id), []);
+});
+
+test('doctrine store combines fit id with visibility and owner filters', () => {
+  const { fits, doctrines } = stores();
+  const privateFit = fits.create({ rawEft: naglfar, fitName: 'Private Dread', ownerUserId: 'user-a', visibility: 'private' });
+  const publicFit = fits.create({ rawEft: archon, fitName: 'Public Carrier', ownerUserId: 'user-a', visibility: 'public' });
+  const privateDoctrine = doctrines.create({ name: 'Private Comp', ownerUserId: 'user-a', visibility: 'private' });
+  const publicDoctrine = doctrines.create({ name: 'Public Comp', ownerUserId: 'user-a', visibility: 'public' });
+  doctrines.addFit(privateDoctrine.id, privateFit.id);
+  doctrines.addFit(publicDoctrine.id, publicFit.id);
+
+  assert.deepEqual(doctrines.list({ fitId: privateFit.id, visibility: 'private', ownerUserId: 'user-a' }).map(row => row.id), [privateDoctrine.id]);
+  assert.deepEqual(doctrines.list({ fitId: privateFit.id, visibility: 'public' }).map(row => row.id), []);
+  assert.deepEqual(doctrines.list({ fitId: publicFit.id, visibility: 'public' }).map(row => row.id), [publicDoctrine.id]);
+});
+
 test('removeFit leaves doctrine intact when member is absent', () => {
   const { fits, doctrines } = stores();
   const fit = fits.create({ rawEft: naglfar });

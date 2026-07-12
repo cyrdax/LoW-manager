@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addDoctrineFit,
   copyDoctrineToPrivate,
@@ -21,6 +21,8 @@ interface Props {
   currentUser: CurrentUser;
   visibility: LibraryVisibility;
   setVisibility: (visibility: LibraryVisibility) => void;
+  onOpenFit: (fit: SavedFitSummary) => void;
+  openDoctrineTarget: { id: number; visibility: LibraryVisibility } | null;
 }
 
 function iconUrl(typeId: number): string {
@@ -31,11 +33,13 @@ function warningCount(fit: SavedFitSummary): number {
   return fit.warningCounts.unmatched + fit.warningCounts.overSlot + fit.warningCounts.unassignable;
 }
 
-export function DoctrinesView({ currentUser, visibility, setVisibility }: Props) {
+export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFit, openDoctrineTarget }: Props) {
   const [query, setQuery] = useState('');
   const [doctrines, setDoctrines] = useState<DoctrineSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<DoctrineDetail | null>(null);
+  const [draftMode, setDraftMode] = useState(false);
+  const draftModeRef = useRef(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<string | null>(null);
@@ -46,10 +50,19 @@ export function DoctrinesView({ currentUser, visibility, setVisibility }: Props)
   async function reloadList(q = query, scope = visibility) {
     const rows = await fetchDoctrines(q, scope);
     setDoctrines(rows);
-    setSelectedId(current => (current != null && rows.some(row => row.id === current)) ? current : rows[0]?.id ?? null);
+    setSelectedId(current => {
+      if (draftModeRef.current) return current;
+      return (current != null && rows.some(row => row.id === current)) ? current : rows[0]?.id ?? null;
+    });
+  }
+
+  function leaveDraftMode() {
+    draftModeRef.current = false;
+    setDraftMode(false);
   }
 
   useEffect(() => {
+    leaveDraftMode();
     setDetail(null);
     setSelectedId(null);
     reloadList(query, visibility);
@@ -75,6 +88,14 @@ export function DoctrinesView({ currentUser, visibility, setVisibility }: Props)
   }, [selectedId]);
 
   useEffect(() => {
+    if (!openDoctrineTarget) return;
+    leaveDraftMode();
+    setQuery('');
+    setDetail(null);
+    setSelectedId(openDoctrineTarget.id);
+  }, [openDoctrineTarget]);
+
+  useEffect(() => {
     setName(detail?.name ?? '');
     setDescription(detail?.description ?? '');
     setStatus(null);
@@ -82,27 +103,31 @@ export function DoctrinesView({ currentUser, visibility, setVisibility }: Props)
 
   const availableFits = useMemo(() => {
     const q = fitQuery.trim().toLowerCase();
-    const used = new Set(detail?.fits.map(fit => fit.id) ?? []);
+    const used = new Set(!draftMode ? detail?.fits.map(fit => fit.id) ?? [] : []);
     return savedFits
       .filter(fit => !used.has(fit.id))
       .filter(fit => !q || `${fit.shipName} ${fit.fitName}`.toLowerCase().includes(q))
       .slice(0, 12);
-  }, [savedFits, fitQuery, detail?.fits]);
+  }, [savedFits, fitQuery, detail?.fits, draftMode]);
 
-  const canEditDoctrine = !detail || currentUser.role === 'admin' || detail.ownerUserId === currentUser.id;
+  const canEditDoctrine = draftMode || !detail || currentUser.role === 'admin' || detail.ownerUserId === currentUser.id;
   const canPublishDoctrine = !!detail && canEditDoctrine && detail.visibility === 'private';
   const canCopyDoctrine = !!detail && detail.visibility === 'public';
+  const showEditor = draftMode || !!detail;
+  const editorVisibility = draftMode ? visibility : detail?.visibility ?? visibility;
+  const editorFits = draftMode ? [] : detail?.fits ?? [];
+  const editorFitCount = draftMode ? 0 : detail?.fitCount ?? 0;
 
-  async function createNewDoctrine() {
-    setBusy(true);
+  function createNewDoctrine() {
+    draftModeRef.current = true;
+    setDraftMode(true);
+    setSelectedId(null);
+    setDetail(null);
+    setName('');
+    setDescription('');
+    setFitQuery('');
     setStatus(null);
-    const res = await createDoctrine({ name: 'New Doctrine', description: '', visibility });
-    setBusy(false);
-    if ('error' in res) { setStatus(res.error); return; }
-    setSelectedId(res.id);
-    setDetail(res);
     setQuery('');
-    await reloadList('');
   }
 
   async function publishCurrentDoctrine() {
@@ -134,17 +159,32 @@ export function DoctrinesView({ currentUser, visibility, setVisibility }: Props)
   }
 
   async function saveDoctrine() {
-    if (!detail) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) { setStatus('Doctrine name is required.'); return; }
     setBusy(true);
-    const res = await updateDoctrine(detail.id, { name, description });
+    setStatus(null);
+    const res = draftMode
+      ? await createDoctrine({ name: trimmedName, description, visibility })
+      : detail
+        ? await updateDoctrine(detail.id, { name: trimmedName, description })
+        : { error: 'No doctrine selected.' };
     setBusy(false);
     if ('error' in res) { setStatus(res.error); return; }
+    leaveDraftMode();
     setDetail(res);
+    setSelectedId(res.id);
     setStatus('Saved.');
-    await reloadList();
+    await reloadList('', res.visibility);
   }
 
   async function removeDoctrine() {
+    if (draftMode) {
+      leaveDraftMode();
+      setName('');
+      setDescription('');
+      setStatus(null);
+      return;
+    }
     if (!detail) return;
     if (!confirm('Delete this doctrine? Saved fits will not be deleted.')) return;
     const res = await deleteDoctrine(detail.id);
@@ -172,7 +212,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility }: Props)
   }
 
   return (
-    <main className="rows-wrap fits-view">
+    <div className="fits-view">
       <aside className="fits-library doctrine-library">
         <div className="fits-lib-head">
           <strong>Doctrines</strong>
@@ -181,7 +221,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility }: Props)
         <input className="fits-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search doctrines" />
         <div className="fits-list">
           {doctrines.map(row => (
-            <button key={row.id} className={`fits-row${selectedId === row.id ? ' active' : ''}`} onClick={() => setSelectedId(row.id)}>
+            <button key={row.id} className={`fits-row${selectedId === row.id && !draftMode ? ' active' : ''}`} onClick={() => { leaveDraftMode(); setSelectedId(row.id); }}>
               <span className="fits-row-ship">{row.name}</span>
               <span className="fits-row-name">{row.description || row.shipNames.join(', ') || 'No description'}</span>
               <span className="fits-row-meta">{row.fitCount} fits - {row.visibility === 'public' ? 'Public' : 'Private'}</span>
@@ -192,27 +232,34 @@ export function DoctrinesView({ currentUser, visibility, setVisibility }: Props)
       </aside>
 
       <section className="fits-detail doctrine-detail">
-        {!detail && <div className="fits-empty large">Create a doctrine from saved fits.</div>}
-        {detail && (
+        {!showEditor && <div className="fits-empty large">Create a doctrine from saved fits.</div>}
+        {showEditor && (
           <>
             <div className="doctrine-head">
               <div className="doctrine-fields">
                 <div className="fits-title-line">
-                  <span className={`fits-state ${detail.visibility}`}>{detail.visibility === 'public' ? 'Public' : 'Private'}</span>
+                  {draftMode && <span className="fits-state draft">Draft</span>}
+                  <span className={`fits-state ${editorVisibility}`}>{editorVisibility === 'public' ? 'Public' : 'Private'}</span>
                 </div>
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="Doctrine name" readOnly={!canEditDoctrine} />
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="New doctrine" readOnly={!canEditDoctrine} />
                 <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Description of how this doctrine works" readOnly={!canEditDoctrine} />
               </div>
               <div className="fits-actions">
                 {canEditDoctrine && <button onClick={saveDoctrine} disabled={busy}>Save</button>}
                 {canPublishDoctrine && <button onClick={publishCurrentDoctrine} disabled={busy}>Publish</button>}
                 {canCopyDoctrine && <button onClick={copyCurrentDoctrineToPrivate} disabled={busy}>Copy private</button>}
-                {canEditDoctrine && <button className="danger" onClick={removeDoctrine}>Delete</button>}
+                {canEditDoctrine && <button className="danger" onClick={removeDoctrine}>{draftMode ? 'Discard' : 'Delete'}</button>}
                 {status && <small className={['Saved.', 'Published.', 'Copied to private library.'].includes(status) ? 'fits-status ok' : 'fits-status err'}>{status}</small>}
               </div>
             </div>
 
-            {canEditDoctrine && (
+            {draftMode && (
+              <section className="doctrine-add">
+                <h3>Add fit</h3>
+                <div className="fits-empty">Save the doctrine before adding fits.</div>
+              </section>
+            )}
+            {!draftMode && canEditDoctrine && (
               <section className="doctrine-add">
                 <h3>Add fit</h3>
                 <input value={fitQuery} onChange={e => setFitQuery(e.target.value)} placeholder="Search saved fits by ship or fit name" />
@@ -231,25 +278,27 @@ export function DoctrinesView({ currentUser, visibility, setVisibility }: Props)
             )}
 
             <section className="doctrine-members">
-              <h3>Fits <span>{detail.fitCount}</span></h3>
+              <h3>Fits <span>{editorFitCount}</span></h3>
               <div className="doctrine-member-grid">
-                {detail.fits.map(fit => (
+                {editorFits.map(fit => (
                   <div className="doctrine-member" key={fit.id}>
-                    <img src={iconUrl(fit.shipTypeId)} alt="" />
-                    <div>
-                      <strong>{fit.shipName}</strong>
-                      <span>{fit.fitName}</span>
-                      {warningCount(fit) > 0 && <small>{warningCount(fit)} warnings</small>}
-                    </div>
+                    <button className="doctrine-member-open" onClick={() => onOpenFit(fit)}>
+                      <img src={iconUrl(fit.shipTypeId)} alt="" />
+                      <span>
+                        <strong>{fit.shipName}</strong>
+                        <small>{fit.fitName}</small>
+                        {warningCount(fit) > 0 && <small>{warningCount(fit)} warnings</small>}
+                      </span>
+                    </button>
                     {canEditDoctrine && <button onClick={() => removeFit(fit.id)}>Remove</button>}
                   </div>
                 ))}
-                {detail.fits.length === 0 && <div className="fits-empty">No fits in this doctrine yet.</div>}
+                {editorFits.length === 0 && <div className="fits-empty">No fits in this doctrine yet.</div>}
               </div>
             </section>
           </>
         )}
       </section>
-    </main>
+    </div>
   );
 }

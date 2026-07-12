@@ -118,6 +118,33 @@ test('doctrine routes scope private libraries and copy public doctrines privatel
   assert.equal(body.fits[0].ownerUserId, 'user-b');
 });
 
+test('doctrine routes filter visible doctrines by exact member fit id', async () => {
+  const { fits, store } = appWithStores();
+  const userAPrivateFit = fits.create({ rawEft: naglfar, fitName: 'Private A', ownerUserId: 'user-a', visibility: 'private' });
+  const userAPublicFit = fits.create({ rawEft: naglfar, fitName: 'Public A', ownerUserId: 'user-a', visibility: 'public' });
+  const userBPrivateFit = fits.create({ rawEft: naglfar, fitName: 'Private B', ownerUserId: 'user-b', visibility: 'private' });
+  const privateA = store.create({ name: 'Private A Doctrine', ownerUserId: 'user-a', visibility: 'private' });
+  const publicA = store.create({ name: 'Public A Doctrine', ownerUserId: 'user-a', visibility: 'public' });
+  const privateB = store.create({ name: 'Private B Doctrine', ownerUserId: 'user-b', visibility: 'private' });
+  store.addFit(privateA.id, userAPrivateFit.id);
+  store.addFit(publicA.id, userAPublicFit.id);
+  store.addFit(privateB.id, userBPrivateFit.id);
+
+  const appA = Fastify();
+  registerDoctrineRoutes(appA, { store, fitStore: fits, currentUser: async () => userA });
+  const privateList = await appA.inject({ method: 'GET', url: `/api/doctrines?visibility=private&fitId=${userAPrivateFit.id}` });
+  assert.deepEqual(JSON.parse(privateList.body).map((doctrine: { id: number }) => doctrine.id), [privateA.id]);
+
+  const hiddenPrivate = await appA.inject({ method: 'GET', url: `/api/doctrines?visibility=private&fitId=${userBPrivateFit.id}` });
+  assert.deepEqual(JSON.parse(hiddenPrivate.body), []);
+
+  const publicList = await appA.inject({ method: 'GET', url: `/api/doctrines?visibility=public&fitId=${userAPublicFit.id}` });
+  assert.deepEqual(JSON.parse(publicList.body).map((doctrine: { id: number }) => doctrine.id), [publicA.id]);
+
+  const invalidFitId = await appA.inject({ method: 'GET', url: '/api/doctrines?fitId=nope' });
+  assert.equal(invalidFitId.statusCode, 400);
+});
+
 test('doctrine routes publish only owner doctrines with public member fits', async () => {
   const { fits, store } = appWithStores();
   const privateFit = fits.create({ rawEft: naglfar, fitName: 'Private Fit', ownerUserId: 'user-a', visibility: 'private' });

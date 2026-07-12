@@ -148,39 +148,35 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView, curre
         </label>
       )}
 
-      <div className="view-nav view-nav-8">
+      <div className="view-nav view-nav-7">
         <button
           className={`nav-btn${view === 'pilots' ? ' active' : ''}`}
           onClick={() => setView('pilots')}
         >Pilots</button>
         <button
-          className={`nav-btn${view === 'planets' ? ' active' : ''}`}
-          onClick={() => setView('planets')}
-        >Planets</button>
-        <button
-          className={`nav-btn${view === 'skills' ? ' active' : ''}`}
-          onClick={() => setView('skills')}
-        >Skills</button>
-        <button
           className={`nav-btn${view === 'fleet' ? ' active' : ''}`}
           onClick={() => setView('fleet')}
         >Fleet</button>
+        <button
+          className={`nav-btn${view === 'fits' ? ' active' : ''}`}
+          onClick={() => setView('fits')}
+        >Fits</button>
         <button
           className={`nav-btn${view === 'market' ? ' active' : ''}`}
           onClick={() => setView('market')}
         >Market</button>
         <button
+          className={`nav-btn${view === 'contracts' ? ' active' : ''}`}
+          onClick={() => setView('contracts')}
+        >Contract</button>
+        <button
           className={`nav-btn${view === 'industry' ? ' active' : ''}`}
           onClick={() => setView('industry')}
         >Industry</button>
         <button
-          className={`nav-btn${view === 'contracts' ? ' active' : ''}`}
-          onClick={() => setView('contracts')}
-        >Contracts</button>
-        <button
-          className={`nav-btn${view === 'fits' ? ' active' : ''}`}
-          onClick={() => setView('fits')}
-        >Fits</button>
+          className={`nav-btn${view === 'planets' ? ' active' : ''}`}
+          onClick={() => setView('planets')}
+        >Planets</button>
       </div>
 
       <button className="primary" onClick={openAuth}>Add character</button>

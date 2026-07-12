@@ -10,6 +10,9 @@ test('server wires Postgres stores into runtime pilot and skill-plan paths', () 
   assert.match(server, /createPostgresDoctrineStore/);
   assert.match(server, /createPostgresFitStore/);
   assert.match(server, /createPostgresSavedSkillPlanStore/);
+  assert.match(server, /serverListenOptionsFromEnv/);
+  assert.match(server, /cookieSecretFromEnv/);
+  assert.match(server, /secureCookiesFromEnv/);
   assert.match(server, /setPilotAccessCharacterStore\(characterStore\)/);
   assert.match(server, /setAccessTokenCharacterStore\(characterStore\)/);
   assert.match(server, /registerSsoRoutes\(app, \{ characters: characterStore \}\)/);
@@ -18,6 +21,7 @@ test('server wires Postgres stores into runtime pilot and skill-plan paths', () 
   assert.match(server, /registerSkillsRoutes\(app, \{ savedPlans: savedSkillPlans \}\)/);
   assert.match(server, /registerFitRoutes\(app, \{ store: fitStore \}\)/);
   assert.match(server, /registerDoctrineRoutes\(app, \{ store: doctrineStore, fitStore \}\)/);
+  assert.match(server, /app\.get\('\/api\/health'/);
   assert.match(server, /startPolling\(\{ characters: characterStore \}\)/);
 });
 

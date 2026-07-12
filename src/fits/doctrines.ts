@@ -62,6 +62,7 @@ export interface DoctrineListFilters {
   q?: string;
   visibility?: LibraryVisibility;
   ownerUserId?: string;
+  fitId?: number;
 }
 
 interface DoctrineRow {
@@ -171,6 +172,7 @@ export function createDoctrineStore(database: SqliteDatabase, options: { now?: (
       return rows
         .map(row => readDetail(database, fitStore, row.id))
         .filter((detail): detail is DoctrineDetail => detail != null)
+        .filter(detail => filters.fitId == null || detail.fits.some(fit => fit.id === filters.fitId))
         .filter(detail => !q || matchesDoctrine(detail, q))
         .map(detailToSummary);
     },
@@ -349,6 +351,7 @@ export function createPostgresDoctrineStore(
       const details = await Promise.all(rows.rows.map(row => readPostgresDetail(source, fitStore, Number(row.id))));
       return details
         .filter((detail): detail is DoctrineDetail => detail != null)
+        .filter(detail => filters.fitId == null || detail.fits.some(fit => fit.id === filters.fitId))
         .filter(detail => !q || matchesDoctrine(detail, q))
         .map(detailToSummary);
     },

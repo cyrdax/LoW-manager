@@ -1990,6 +1990,11 @@ body {
 }
 
 /* Fits */
+.fits-page {
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
 .fits-topbar {
   display: flex;
   align-items: center;
@@ -2007,10 +2012,13 @@ body {
   gap: 12px;
   padding: 12px;
   overflow: hidden;
+  min-height: 0;
+  flex: 1;
 }
 .fits-library,
 .fits-detail,
 .fits-price,
+.fits-doctrines,
 .fits-section {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -2136,12 +2144,27 @@ body {
   place-items: center;
 }
 .fits-fit-head {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) minmax(280px, 360px);
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  align-items: start;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
+}
+.fits-head-main {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(220px, 320px);
+  align-items: start;
+  gap: 12px;
+}
+.fits-ship-summary {
+  min-width: 0;
+}
+.fits-ship-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 340px;
+  min-width: 0;
 }
 .fits-ship-icon {
   width: 72px;
@@ -2150,6 +2173,28 @@ body {
   border: 1px solid var(--border);
   background: #101318;
   object-fit: cover;
+}
+.fits-cost-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.fits-fit-cost {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--green);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fits-cost-row button,
+.fits-send-row button {
+  padding: 6px 8px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 .fits-title-block {
   display: flex;
@@ -2212,15 +2257,11 @@ body {
   gap: 7px;
   align-items: stretch;
 }
-.fits-actions > strong {
-  font-size: 18px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
 .fits-action-row { justify-content: flex-end; flex-wrap: wrap; }
 .fits-send-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 72px;
+  grid-template-columns: minmax(240px, 1fr) 92px;
+  gap: 8px;
 }
 .fits-status {
   color: var(--dim);
@@ -2245,7 +2286,8 @@ body {
   overflow: visible;
 }
 .fits-section h3,
-.fits-price h3 {
+.fits-price h3,
+.fits-doctrines h3 {
   margin: 0;
   padding: 9px 10px;
   border-bottom: 1px solid var(--border);
@@ -2259,46 +2301,24 @@ body {
   color: var(--dim);
   font-weight: 500;
 }
-.fits-slot-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, 44px);
-  gap: 6px;
-  padding: 10px;
+.fits-slot-list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 4px;
 }
-.fits-slot {
-  width: 44px;
-  height: 44px;
-  position: relative;
-  display: grid;
-  place-items: center;
+.fits-slot-empty {
+  color: var(--dim);
+  outline: 1px dashed #323845;
+}
+.fits-slot-empty .fits-item-icon {
   background: #0f1218;
-  border: 1px solid #323845;
-  border-radius: 4px;
-  overflow: visible;
-}
-.fits-slot.empty {
   border-style: dashed;
-  background: #11141a;
 }
-.fits-slot.warn { border-color: var(--amber); }
-.fits-slot img,
 .fits-item-icon img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-.fits-slot img {
-  border-radius: 3px;
-}
-.fits-slot b {
-  position: absolute;
-  right: 2px;
-  bottom: 1px;
-  padding: 0 3px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.72);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
 }
 .fits-extra-list {
   display: flex;
@@ -2356,10 +2376,42 @@ body {
   place-items: center;
   color: var(--dim);
 }
-.fits-price {
+.fits-side-panels {
   position: sticky;
   top: 0;
+  display: grid;
+  gap: 12px;
+}
+.fits-price,
+.fits-doctrines {
   overflow: hidden;
+}
+.fit-doctrine-link {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #20252d;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 9px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+.fit-doctrine-link:hover {
+  background: #151a22;
+}
+.fit-doctrine-link strong,
+.fit-doctrine-link span,
+.fit-doctrine-link small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fit-doctrine-link span,
+.fit-doctrine-link small {
+  color: var(--dim);
 }
 .fits-price-line {
   display: flex;
@@ -2532,7 +2584,7 @@ body {
 .doctrine-fit-results button,
 .doctrine-member {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   padding: 7px;
@@ -2542,12 +2594,24 @@ body {
   color: var(--text);
   text-align: left;
 }
+.doctrine-member-open {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
 .doctrine-fit-results button,
 .doctrine-member button {
   font: inherit;
   cursor: pointer;
 }
-.doctrine-member button {
+.doctrine-member > button:not(.doctrine-member-open) {
   background: transparent;
   color: var(--red);
   border: 1px solid #4a2a32;
@@ -2556,6 +2620,7 @@ body {
 }
 .doctrine-fit-results button:hover,
 .doctrine-member button:hover { background: #2a2f39; }
+.doctrine-member-open:hover { color: var(--accent); }
 .doctrine-fit-results img,
 .doctrine-member img {
   width: 38px;
@@ -2563,13 +2628,13 @@ body {
   border-radius: 4px;
 }
 .doctrine-fit-results span,
-.doctrine-member div {
+.doctrine-member-open span {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 .doctrine-fit-results small,
-.doctrine-member span,
+.doctrine-member-open small,
 .doctrine-member small {
   color: var(--dim);
   overflow: hidden;
@@ -2585,13 +2650,12 @@ body {
 
 @media (max-width: 1240px) {
   .fits-view { grid-template-columns: 260px minmax(0, 1fr); }
-  .fits-fit-head { grid-template-columns: 60px minmax(0, 1fr); }
+  .fits-head-main { grid-template-columns: 60px minmax(0, 1fr); }
   .fits-ship-icon { width: 60px; height: 60px; }
   .fits-actions { grid-column: 1 / -1; }
-  .fits-actions > strong,
   .fits-status { text-align: left; }
   .fits-body { grid-template-columns: 1fr; }
-  .fits-price { position: static; }
+  .fits-side-panels { position: static; }
 }
 
 @media (max-width: 820px) {
@@ -2608,7 +2672,9 @@ body {
     overflow-y: auto;
   }
   .fits-library { max-height: 280px; }
+  .fits-head-main,
   .fits-slots,
   .fits-edit-grid,
   .doctrine-head { grid-template-columns: 1fr; }
+  .fits-ship-controls { width: min(340px, 100%); }
 }

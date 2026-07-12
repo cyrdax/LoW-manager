@@ -43,3 +43,14 @@ test('frontend exposes auth api helpers and gates the dashboard behind login', (
 
   assert.match(server, /\/auth\/password\/reset/);
 });
+
+test('sidebar main navigation follows the requested workflow order', () => {
+  const controlPanel = readFileSync(resolve('web/src/components/ControlPanel.tsx'), 'utf8');
+  const navStart = controlPanel.indexOf('<div className="view-nav');
+  const navEnd = controlPanel.indexOf('</div>', navStart);
+  const navBlock = controlPanel.slice(navStart, navEnd);
+  const labels = Array.from(navBlock.matchAll(/>\s*([A-Za-z]+)\s*<\/button>/g), match => match[1]);
+
+  assert.deepEqual(labels, ['Pilots', 'Fleet', 'Fits', 'Market', 'Contract', 'Industry', 'Planets']);
+  assert.match(navBlock, /view-nav-7/);
+});
