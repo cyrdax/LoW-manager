@@ -50,6 +50,37 @@ test('POST /api/fits/preview returns a draft with unmatched warnings', async () 
   assert.equal(body.warnings.some(w => w.code === 'unmatched-item'), true);
 });
 
+test('raw EFT routes reject oversized imports before parsing', async () => {
+  const oversized = `[Naglfar, Oversized]\n${'Hail XL\n'.repeat(9000)}`;
+  let previewBuilds = 0;
+  const store = testStore();
+  const saved = store.create({ rawEft: naglfar, ownerUserId: userA.id });
+  const app = Fastify();
+  registerFitRoutes(app, {
+    store,
+    currentUser: async () => userA,
+    ownsCharacter: () => true,
+    buildDraft: raw => {
+      previewBuilds++;
+      throw new Error(`should not parse ${raw.length}`);
+    },
+  });
+
+  for (const request of [
+    { method: 'POST' as const, url: '/api/fits/preview', payload: { rawEft: oversized } },
+    { method: 'POST' as const, url: '/api/fits/quote-draft', payload: { rawEft: oversized, hub: 'jita' } },
+    { method: 'POST' as const, url: '/api/fits/send-draft', payload: { rawEft: oversized, characterId: 123 } },
+    { method: 'POST' as const, url: '/api/fits', payload: { rawEft: oversized } },
+    { method: 'PUT' as const, url: `/api/fits/${saved.id}`, payload: { rawEft: oversized } },
+  ]) {
+    const res = await app.inject(request);
+    assert.equal(res.statusCode, 400);
+    assert.match(JSON.parse(res.body).error, /too large/i);
+  }
+
+  assert.equal(previewBuilds, 0);
+});
+
 test('saved fit CRUD routes create list get update and delete', async () => {
   const app = Fastify();
   registerFitRoutes(app, { store: testStore(), currentUser: async () => userA });

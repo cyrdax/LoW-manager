@@ -14,6 +14,11 @@ import type { FitDraft } from '../fits/types.ts';
 import { searchFitShips } from '../fits/metadata.ts';
 import { HUBS, type HubKey } from '../market/pricing.ts';
 
+const MAX_RAW_EFT_CHARS = 64 * 1024;
+const MAX_RAW_EFT_LINES = 500;
+const RAW_EFT_TOO_LARGE =
+  `Fit import is too large. Paste one EFT fit under 64 KB and ${MAX_RAW_EFT_LINES} lines.`;
+
 export interface FitRouteDeps {
   store?: FitStore | AsyncFitStore;
   buildDraft?: typeof buildFitDraft;
@@ -40,9 +45,11 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
 
   app.post('/api/fits/preview', async (req, reply) => {
     const body = req.body as { rawEft?: string; shipTypeId?: number } | undefined;
-    if (!body?.rawEft) return reply.code(400).send({ error: 'rawEft is required' });
+    const rawEft = body?.rawEft;
+    const rawError = validateRawEft(rawEft);
+    if (rawError) return reply.code(400).send({ error: rawError });
     try {
-      return draftBuilder(body.rawEft, cleanPositiveNumber(body.shipTypeId));
+      return draftBuilder(rawEft!, cleanPositiveNumber(body?.shipTypeId));
     } catch (err) {
       return reply.code(400).send({ error: errorMessage(err, 'failed to preview fit') });
     }
@@ -52,9 +59,11 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
     const body = req.body as { rawEft?: string; shipTypeId?: number; hub?: string } | undefined;
     const hub = parseHub(body?.hub);
     if (!hub) return reply.code(400).send({ error: 'hub must be "jita" or "amarr"' });
-    if (!body?.rawEft) return reply.code(400).send({ error: 'rawEft is required' });
+    const rawEft = body?.rawEft;
+    const rawError = validateRawEft(rawEft);
+    if (rawError) return reply.code(400).send({ error: rawError });
     try {
-      return quote(draftBuilder(body.rawEft, cleanPositiveNumber(body.shipTypeId)), hub);
+      return quote(draftBuilder(rawEft!, cleanPositiveNumber(body?.shipTypeId)), hub);
     } catch (err) {
       return reply.code(400).send({ error: errorMessage(err, 'failed to quote draft') });
     }
@@ -71,13 +80,15 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
       notes?: string;
       characterId?: number;
     } | undefined;
-    if (!body?.rawEft) return reply.code(400).send({ error: 'rawEft is required' });
-    const characterId = cleanPositiveNumber(body.characterId);
+    const rawEft = body?.rawEft;
+    const rawError = validateRawEft(rawEft);
+    if (rawError) return reply.code(400).send({ error: rawError });
+    const characterId = cleanPositiveNumber(body?.characterId);
     if (!characterId) return reply.code(400).send({ error: 'characterId is required' });
     if (!(await requireOwnedCharacter(user.id, characterId, reply, owns))) return reply;
     try {
-      const draft = draftBuilder(body.rawEft, cleanPositiveNumber(body.shipTypeId));
-      return sendFit(reply, applyDraftOverrides(draft, body), characterId, createFitting);
+      const draft = draftBuilder(rawEft!, cleanPositiveNumber(body?.shipTypeId));
+      return sendFit(reply, applyDraftOverrides(draft, { fitName: body?.fitName, notes: body?.notes }), characterId, createFitting);
     } catch (err) {
       return reply.code(400).send({ error: errorMessage(err, 'failed to send draft') });
     }
@@ -96,15 +107,17 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
     const body = req.body as { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string; visibility?: string } | undefined;
-    if (!body?.rawEft) return reply.code(400).send({ error: 'rawEft is required' });
+    const rawEft = body?.rawEft;
+    const rawError = validateRawEft(rawEft);
+    if (rawError) return reply.code(400).send({ error: rawError });
     try {
       return await store.create({
-        rawEft: body.rawEft,
-        shipTypeId: cleanPositiveNumber(body.shipTypeId),
-        fitName: body.fitName,
-        notes: body.notes,
+        rawEft: rawEft!,
+        shipTypeId: cleanPositiveNumber(body?.shipTypeId),
+        fitName: body?.fitName,
+        notes: body?.notes,
         ownerUserId: user.id,
-        visibility: parseVisibility(body.visibility),
+        visibility: parseVisibility(body?.visibility),
       });
     } catch (err) {
       return reply.code(400).send({ error: errorMessage(err, 'failed to save fit') });
@@ -164,6 +177,8 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
     if (!canEditFit(existing, user)) return reply.code(403).send({ error: 'not allowed' });
     try {
       const body = req.body as { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string } | undefined;
+      const rawError = body?.rawEft == null ? null : validateRawEft(body.rawEft);
+      if (rawError) return reply.code(400).send({ error: rawError });
       const fit = await store.update(id, {
         rawEft: body?.rawEft,
         shipTypeId: cleanPositiveNumber(body?.shipTypeId),
@@ -260,6 +275,17 @@ function parseHub(raw: string | undefined): HubKey | null {
 
 function parseVisibility(raw: string | undefined): LibraryVisibility {
   return raw === 'public' ? 'public' : 'private';
+}
+
+function validateRawEft(rawEft: unknown): string | null {
+  if (typeof rawEft !== 'string' || rawEft.length === 0) return 'rawEft is required';
+  if (rawEft.length > MAX_RAW_EFT_CHARS) return RAW_EFT_TOO_LARGE;
+
+  let lines = 1;
+  for (let i = 0; i < rawEft.length; i++) {
+    if (rawEft.charCodeAt(i) === 10 && ++lines > MAX_RAW_EFT_LINES) return RAW_EFT_TOO_LARGE;
+  }
+  return null;
 }
 
 function missingFitStore(): never {
