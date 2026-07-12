@@ -137,6 +137,7 @@ function SavedFitsView({
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState(SAMPLE);
   const [importError, setImportError] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
   const [unmatchedOpen, setUnmatchedOpen] = useState(false);
   const [fitName, setFitName] = useState('');
   const [notes, setNotes] = useState('');
@@ -247,13 +248,21 @@ function SavedFitsView({
   }, [fits, search]);
 
   const importFit = async () => {
+    if (importBusy) return;
     setImportError(null);
-    const res = await previewFit(importText);
-    if ('error' in res) { setImportError(res.error); return; }
-    setDraft(res);
-    setSelectedId(null);
-    setImportOpen(false);
-    if (res.warnings.some(w => w.code === 'unmatched-item')) setUnmatchedOpen(true);
+    setImportBusy(true);
+    try {
+      const res = await previewFit(importText);
+      if ('error' in res) { setImportError(res.error); return; }
+      setDraft(res);
+      setSelectedId(null);
+      setImportOpen(false);
+      if (res.warnings.some(w => w.code === 'unmatched-item')) setUnmatchedOpen(true);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to preview fit.');
+    } finally {
+      setImportBusy(false);
+    }
   };
 
   async function refreshQuote(fit: FitDraft | SavedFitDetail = active!) {
@@ -473,8 +482,10 @@ function SavedFitsView({
           />
           {importError && <div className="fits-alert err">{importError}</div>}
           <div className="fits-modal-actions">
-            <button onClick={() => setImportOpen(false)}>Cancel</button>
-            <button className="primary" onClick={importFit}>Preview</button>
+            <button type="button" onClick={() => setImportOpen(false)} disabled={importBusy}>Cancel</button>
+            <button type="button" className="primary" onClick={importFit} disabled={importBusy}>
+              {importBusy ? 'Previewing...' : 'Preview'}
+            </button>
           </div>
         </Modal>
       )}
