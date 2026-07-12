@@ -20,3 +20,10 @@ test('railway config deploys the app with migrations and healthchecks', () => {
   assert.equal(config.deploy?.healthcheckPath, '/api/health');
   assert.equal(config.deploy?.healthcheckTimeout, 300);
 });
+
+test('nixpacks config includes unzip for SDE parsing during build and runtime', () => {
+  const config = readFileSync(resolve('nixpacks.toml'), 'utf8');
+
+  assert.match(config, /\[phases\.setup\]/);
+  assert.match(config, /nixPkgs\s*=\s*\[[^\]]*"unzip"/s);
+});
