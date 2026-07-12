@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import { registerAppAuthRoutes, type AuthMailer } from './app-auth-routes.ts';
@@ -158,6 +158,67 @@ test('password reset request does not reveal whether an email exists', async () 
   await app.close();
 });
 
+test('default auth mailer sends verification emails through Resend when configured', async (t) => {
+  const deps = testDeps();
+  const sent = stubResendFetch(t);
+  withEmailEnv(t, {
+    EMAIL_MODE: 'resend',
+    RESEND_API_KEY: 'test-resend-key',
+    EMAIL_FROM: 'LoW Manager <noreply@outfit420-2.com>',
+  });
+  const app = await appWithDefaultMailer(deps);
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/auth/signup',
+    payload: { email: 'pilot@example.com', password: 'correct horse battery staple' },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].url, 'https://api.resend.com/emails');
+  assert.equal(sent[0].authorization, 'Bearer test-resend-key');
+  assert.deepEqual(sent[0].body.to, ['pilot@example.com']);
+  assert.equal(sent[0].body.from, 'LoW Manager <noreply@outfit420-2.com>');
+  assert.equal(sent[0].body.subject, 'Verify your LoW Manager email');
+  assert.match(sent[0].body.html, /http:\/\/test\.local\/auth\/email\/verify\?token=verify-token-1/);
+  assert.match(sent[0].body.text, /http:\/\/test\.local\/auth\/email\/verify\?token=verify-token-1/);
+
+  await app.close();
+});
+
+test('default auth mailer sends password reset emails through Resend when configured', async (t) => {
+  const deps = testDeps();
+  const sent = stubResendFetch(t);
+  withEmailEnv(t, {
+    EMAIL_MODE: 'resend',
+    RESEND_API_KEY: 'test-resend-key',
+    EMAIL_FROM: 'LoW Manager <noreply@outfit420-2.com>',
+  });
+  const app = await appWithDefaultMailer(deps);
+
+  await app.inject({
+    method: 'POST',
+    url: '/api/auth/signup',
+    payload: { email: 'pilot@example.com', password: 'old-password' },
+  });
+  await app.inject('/auth/email/verify?token=verify-token-1');
+  const request = await app.inject({
+    method: 'POST',
+    url: '/api/auth/password/reset/request',
+    payload: { email: 'pilot@example.com' },
+  });
+
+  assert.equal(request.statusCode, 200);
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].body.subject, 'Reset your LoW Manager password');
+  assert.deepEqual(sent[1].body.to, ['pilot@example.com']);
+  assert.match(sent[1].body.html, /http:\/\/test\.local\/auth\/password\/reset\?token=reset-token-2/);
+  assert.match(sent[1].body.text, /http:\/\/test\.local\/auth\/password\/reset\?token=reset-token-2/);
+
+  await app.close();
+});
+
 test('google auth start redirects to Google with an oauth state token', async () => {
   const deps = testDeps();
   deps.google = testGoogleConfig();
@@ -244,6 +305,20 @@ async function appWithAuth(deps: ReturnType<typeof testDeps>) {
   return app;
 }
 
+async function appWithDefaultMailer(deps: ReturnType<typeof testDeps>) {
+  const app = Fastify();
+  await app.register(cookie, { secret: 'test-secret' });
+  registerAppAuthRoutes(app, {
+    users: deps.users,
+    sessions: deps.sessions,
+    appTokens: deps.tokens,
+    appBaseUrl: 'http://test.local',
+    hashPassword: async password => `hashed:${password}`,
+    verifyPassword: async (password, hash) => hash === `hashed:${password}`,
+  });
+  return app;
+}
+
 function testDeps() {
   const users = new FakeUserStore();
   const sessions = new FakeSessionStore(users);
@@ -258,6 +333,46 @@ function restoreEnv(key: string, value: string | undefined): void {
   } else {
     process.env[key] = value;
   }
+}
+
+function withEmailEnv(t: TestContext, values: Record<string, string>) {
+  const previous = {
+    EMAIL_MODE: process.env.EMAIL_MODE,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    NODE_ENV: process.env.NODE_ENV,
+  };
+  t.after(() => {
+    restoreEnv('EMAIL_MODE', previous.EMAIL_MODE);
+    restoreEnv('RESEND_API_KEY', previous.RESEND_API_KEY);
+    restoreEnv('EMAIL_FROM', previous.EMAIL_FROM);
+    restoreEnv('NODE_ENV', previous.NODE_ENV);
+  });
+  for (const [key, value] of Object.entries(values)) process.env[key] = value;
+}
+
+function stubResendFetch(t: TestContext) {
+  const previous = globalThis.fetch;
+  const sent: Array<{
+    url: string;
+    authorization: string | null;
+    body: { from: string; to: string[]; subject: string; html: string; text: string };
+  }> = [];
+  t.after(() => {
+    globalThis.fetch = previous;
+  });
+  globalThis.fetch = (async (url, init) => {
+    sent.push({
+      url: String(url),
+      authorization: new Headers(init?.headers).get('authorization'),
+      body: JSON.parse(String(init?.body ?? '{}')),
+    });
+    return new Response(JSON.stringify({ id: `email-${sent.length}` }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+  return sent;
 }
 
 function testGoogleConfig() {

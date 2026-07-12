@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
-import type { FastifyBaseLogger, FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { z } from 'zod';
 import { createAppTokenStore, type AppTokenStore } from './app-token-store.ts';
 import { readSessionToken, SESSION_COOKIE } from './current-user.ts';
+import { createAuthMailerFromEnv } from './mailer.ts';
 import { hashPassword as hashPasswordDefault, verifyPassword as verifyPasswordDefault } from './password.ts';
 import { createSessionStore, type SessionStore } from './session-store.ts';
 import { createUserStore, type AppUser, type UserStore } from './user-store.ts';
@@ -70,7 +71,7 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
   const users = deps.users ?? createUserStore();
   const sessions = deps.sessions ?? createSessionStore();
   const appTokens = deps.appTokens ?? createAppTokenStore();
-  const mailer = deps.mailer ?? createDevAuthMailer(app.log);
+  const mailer = deps.mailer ?? createAuthMailerFromEnv(app.log);
   const hashPassword = deps.hashPassword ?? hashPasswordDefault;
   const verifyPassword = deps.verifyPassword ?? verifyPasswordDefault;
   const cookieName = deps.sessionCookieName ?? SESSION_COOKIE;
@@ -315,17 +316,6 @@ async function verifyGoogleIdToken(idToken: string, clientId: string): Promise<G
     sub: payload.sub,
     email: payload.email,
     emailVerified: payload.email_verified === true || payload.email_verified === 'true',
-  };
-}
-
-export function createDevAuthMailer(logger?: Pick<FastifyBaseLogger, 'info'>): AuthMailer {
-  return {
-    async sendEmailVerification(input) {
-      logger?.info(`[auth] verification for ${input.to}: ${input.verificationUrl}`);
-    },
-    async sendPasswordReset(input) {
-      logger?.info(`[auth] password reset for ${input.to}: ${input.resetUrl}`);
-    },
   };
 }
 
