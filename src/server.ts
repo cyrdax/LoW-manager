@@ -27,7 +27,12 @@ import { startPolling } from './polling/scheduler.ts';
 import { bootstrapSystemsCache } from './esi/universe.ts';
 import { startContractIndexer } from './contracts/indexer.ts';
 import { createPostgresSavedSkillPlanStore } from './skills/saved-plans-store.ts';
-import { cookieSecretFromEnv, secureCookiesFromEnv, serverListenOptionsFromEnv } from './server-config.ts';
+import {
+  cookieSecretFromEnv,
+  isSensitiveFallbackPath,
+  secureCookiesFromEnv,
+  serverListenOptionsFromEnv,
+} from './server-config.ts';
 
 const app = Fastify({ logger: true });
 const characterStore = createPostgresCharacterStore();
@@ -63,7 +68,11 @@ try {
   await app.register(fastifyStatic, { root: distDir, prefix: '/' });
   app.setNotFoundHandler((req, reply) => {
     const isPasswordResetPage = req.url.startsWith('/auth/password/reset');
-    if (req.url.startsWith('/api') || (req.url.startsWith('/auth') && !isPasswordResetPage)) {
+    if (
+      req.url.startsWith('/api')
+      || (req.url.startsWith('/auth') && !isPasswordResetPage)
+      || isSensitiveFallbackPath(req.url)
+    ) {
       return reply.code(404).send({ error: 'Not found' });
     }
     return reply.sendFile('index.html');

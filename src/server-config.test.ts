@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 import {
   cookieSecretFromEnv,
+  isSensitiveFallbackPath,
   secureCookiesFromEnv,
   serverListenOptionsFromEnv,
 } from './server-config.ts';
@@ -46,4 +47,14 @@ test('package start runs the server entrypoint that production build verifies', 
   };
 
   assert.equal(pkg.scripts?.start, 'node --import tsx src/server.ts');
+});
+
+test('static fallback blocks dotfiles and common scanner paths', () => {
+  assert.equal(isSensitiveFallbackPath('/.env'), true);
+  assert.equal(isSensitiveFallbackPath('/.git/config'), true);
+  assert.equal(isSensitiveFallbackPath('/config/.env.production'), true);
+  assert.equal(isSensitiveFallbackPath('/wp-admin/setup-config.php'), true);
+  assert.equal(isSensitiveFallbackPath('/api/auth/me'), false);
+  assert.equal(isSensitiveFallbackPath('/auth/password/reset?token=abc'), false);
+  assert.equal(isSensitiveFallbackPath('/fits'), false);
 });

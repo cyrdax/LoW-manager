@@ -35,6 +35,26 @@ export function cookieSecretFromEnv(env: NodeJS.ProcessEnv = process.env): strin
   return secret;
 }
 
+export function isSensitiveFallbackPath(url: string): boolean {
+  let pathname = url;
+  try {
+    pathname = new URL(url, 'http://local.invalid').pathname;
+  } catch {
+    pathname = url.split('?')[0] ?? url;
+  }
+
+  const normalized = pathname.replace(/\/+/g, '/').toLowerCase();
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.some(segment => segment.startsWith('.'))) return true;
+
+  return normalized === '/wp-admin'
+    || normalized.startsWith('/wp-admin/')
+    || normalized === '/wp-login.php'
+    || normalized === '/phpinfo.php'
+    || normalized === '/config.php'
+    || normalized.endsWith('/config.php');
+}
+
 function serverPortFromEnv(env: NodeJS.ProcessEnv): number {
   const raw = env.PORT ?? String(DEFAULT_PORT);
   const port = Number(raw);

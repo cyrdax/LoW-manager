@@ -14,7 +14,7 @@ test('railway config deploys the app with migrations and healthchecks', () => {
     };
   };
 
-  assert.equal(config.build?.buildCommand, 'npm run build');
+  assert.equal(config.build?.buildCommand, 'npm run build:mastery && npm run build');
   assert.equal(config.deploy?.preDeployCommand, 'npm run db:migrate');
   assert.equal(config.deploy?.startCommand, 'npm start');
   assert.equal(config.deploy?.healthcheckPath, '/api/health');
