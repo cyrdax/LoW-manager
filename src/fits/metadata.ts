@@ -130,7 +130,7 @@ function getCache(): MetadataCache {
 
 function supplementItemsFromFuzzwork(itemsByName: Map<string, FitItem>): void {
   const groups = new Map<number, { categoryId: number; groupName: string }>();
-  for (const row of readCsv('invGroups.csv')) {
+  for (const row of readCsvRows('invGroups.csv')) {
     if (row[0] === 'groupID') continue;
     const groupId = Number(row[0]);
     const categoryId = Number(row[1]);
@@ -139,14 +139,14 @@ function supplementItemsFromFuzzwork(itemsByName: Map<string, FitItem>): void {
   }
 
   const categories = new Map<number, string>();
-  for (const row of readCsv('invCategories.csv')) {
+  for (const row of readCsvRows('invCategories.csv')) {
     if (row[0] === 'categoryID') continue;
     const categoryId = Number(row[0]);
     if (!Number.isFinite(categoryId)) continue;
     categories.set(categoryId, row[1] ?? '');
   }
 
-  for (const row of readCsv('invTypes.csv')) {
+  for (const row of readCsvRows('invTypes.csv')) {
     if (row[0] === 'typeID') continue;
     if (row[10] !== '1') continue;
     const typeId = Number(row[0]);
@@ -173,7 +173,7 @@ function loadLayouts(): Map<number, Partial<Record<SlotKey, number>>> {
   const attrToKey = new Map<number, SlotKey>(
     Object.entries(SLOT_ATTRS).map(([key, attr]) => [attr, key as SlotKey]),
   );
-  for (const row of readCsv('dgmTypeAttributes.csv')) {
+  for (const row of readCsvRows('dgmTypeAttributes.csv')) {
     if (row[0] === 'typeID') continue;
     const typeId = Number(row[0]);
     const attrId = Number(row[1]);
@@ -188,14 +188,13 @@ function loadLayouts(): Map<number, Partial<Record<SlotKey, number>>> {
   return out;
 }
 
-function readCsv(name: string): string[][] {
+function readCsvRows(name: string): Iterable<string[]> {
   const path = resolve(process.cwd(), '.cache', 'fuzzwork', name);
   if (!existsSync(path)) throw new Error(`Fuzzwork cache missing at ${path}`);
-  return parseCsv(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''));
+  return parseCsvRows(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''));
 }
 
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
+export function* parseCsvRows(text: string): Iterable<string[]> {
   let row: string[] = [];
   let field = '';
   let inQuotes = false;
@@ -223,7 +222,7 @@ function parseCsv(text: string): string[][] {
       field = '';
     } else if (ch === '\n') {
       row.push(field);
-      rows.push(row);
+      yield row;
       row = [];
       field = '';
     } else if (ch !== '\r') {
@@ -233,9 +232,8 @@ function parseCsv(text: string): string[][] {
 
   if (field.length > 0 || row.length > 0) {
     row.push(field);
-    rows.push(row);
+    yield row;
   }
-  return rows;
 }
 
 function normalizeName(name: string): string {

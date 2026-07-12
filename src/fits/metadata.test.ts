@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
-import { getShipLayout, resolveItemByName, resolveShipByName, searchFitShips } from './metadata.ts';
+import { getShipLayout, parseCsvRows, resolveItemByName, resolveShipByName, searchFitShips } from './metadata.ts';
 
 describe('fit metadata', () => {
   it('resolves provided example ships and items', () => {
@@ -24,5 +26,17 @@ describe('fit metadata', () => {
     });
     assert.equal(getShipLayout(35832).serviceSlots, 3);
     assert.equal(getShipLayout(29984).subsystemSlots, 5);
+  });
+
+  it('streams csv rows without materializing the whole file', () => {
+    assert.deepEqual([...parseCsvRows('id,name\n1,"Alpha, Beta"\n2,"Quoted ""Name"""\n')], [
+      ['id', 'name'],
+      ['1', 'Alpha, Beta'],
+      ['2', 'Quoted "Name"'],
+    ]);
+
+    const source = readFileSync(resolve('src/fits/metadata.ts'), 'utf8');
+    assert.match(source, /function readCsvRows\(name: string\): Iterable<string\[\]>/);
+    assert.doesNotMatch(source, /function readCsv\(name: string\): string\[\]\[\]/);
   });
 });
