@@ -7,6 +7,7 @@ import { registerFitRoutes } from './fits.ts';
 import type { FitDraft } from '../fits/types.ts';
 import type { FitQuote } from '../fits/pricing.ts';
 import type { EsiFittingCreatePayload } from '../fits/esi.ts';
+import { PYFA_IMAGE_IMPORT_NOT_CONFIGURED, type PyfaScreenshotExtractor } from '../fits/pyfa-image-import.ts';
 
 const naglfar = `[Naglfar, Route Test]
 Republic Fleet Gyrostabilizer
@@ -79,6 +80,107 @@ test('raw EFT routes reject oversized imports before parsing', async () => {
   }
 
   assert.equal(previewBuilds, 0);
+});
+
+test('pyfa image import route requires an authenticated app user', async () => {
+  const app = Fastify();
+  registerFitRoutes(app, {
+    store: testStore(),
+    currentUser: async () => null,
+    pyfaScreenshotExtractor: {
+      extract: async () => {
+        throw new Error('should not extract without auth');
+      },
+    },
+  });
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/fits/import-pyfa-image',
+    payload: { imageBase64: 'AAAA', mimeType: 'image/png' },
+  });
+
+  assert.equal(res.statusCode, 401);
+});
+
+test('pyfa image import route validates image input before extraction', async () => {
+  const app = Fastify();
+  let calls = 0;
+  registerFitRoutes(app, {
+    store: testStore(),
+    currentUser: async () => userA,
+    pyfaScreenshotExtractor: {
+      extract: async () => {
+        calls++;
+        throw new Error('should not extract invalid images');
+      },
+    },
+  });
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/fits/import-pyfa-image',
+    payload: { imageBase64: 'AAAA', mimeType: 'image/gif' },
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.match(JSON.parse(res.body).error, /unsupported image type/i);
+  assert.equal(calls, 0);
+});
+
+test('pyfa image import route returns generated EFT text and warnings', async () => {
+  const app = Fastify();
+  const extractor: PyfaScreenshotExtractor = {
+    extract: async input => {
+      assert.equal(input.userId, 'user-a');
+      assert.equal(input.mimeType, 'image/png');
+      return {
+        shipName: 'Paladin',
+        fitName: 'Fabricator',
+        warnings: ['Visible additions may be incomplete.'],
+        sections: [{ role: 'high', items: [{ name: 'Mega Pulse Laser II', loadedCharge: 'Conflagration L' }] }],
+      };
+    },
+  };
+  registerFitRoutes(app, { store: testStore(), currentUser: async () => userA, pyfaScreenshotExtractor: extractor });
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/fits/import-pyfa-image',
+    payload: { imageBase64: 'AAAA', mimeType: 'image/png' },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(JSON.parse(res.body), {
+    rawEft: [
+      '[Paladin, Fabricator]',
+      '',
+      'Mega Pulse Laser II, Conflagration L',
+    ].join('\n'),
+    warnings: ['Visible additions may be incomplete.'],
+  });
+});
+
+test('pyfa image import route reports provider configuration errors clearly', async () => {
+  const app = Fastify();
+  registerFitRoutes(app, {
+    store: testStore(),
+    currentUser: async () => userA,
+    pyfaScreenshotExtractor: {
+      extract: async () => {
+        throw new Error(PYFA_IMAGE_IMPORT_NOT_CONFIGURED);
+      },
+    },
+  });
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/fits/import-pyfa-image',
+    payload: { imageBase64: 'AAAA', mimeType: 'image/png' },
+  });
+
+  assert.equal(res.statusCode, 503);
+  assert.equal(JSON.parse(res.body).error, PYFA_IMAGE_IMPORT_NOT_CONFIGURED);
 });
 
 test('saved fit CRUD routes create list get update and delete', async () => {

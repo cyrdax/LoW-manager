@@ -9,6 +9,13 @@ import {
 import { buildFitDraft } from '../fits/assignment.ts';
 import { buildEsiFittingPayload, createCharacterFitting, type EsiFittingCreatePayload } from '../fits/esi.ts';
 import { quoteFit, type FitQuote } from '../fits/pricing.ts';
+import {
+  createDefaultPyfaScreenshotExtractor,
+  PYFA_IMAGE_IMPORT_NOT_CONFIGURED,
+  renderPyfaExtractionToEft,
+  validatePyfaImageInput,
+  type PyfaScreenshotExtractor,
+} from '../fits/pyfa-image-import.ts';
 import { type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
 import type { FitDraft } from '../fits/types.ts';
 import { searchFitShips } from '../fits/metadata.ts';
@@ -27,6 +34,7 @@ export interface FitRouteDeps {
   searchShips?: typeof searchFitShips;
   currentUser?: CurrentUserResolver;
   ownsCharacter?: OwnsCharacter;
+  pyfaScreenshotExtractor?: PyfaScreenshotExtractor;
 }
 
 export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {}) {
@@ -37,10 +45,25 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   const shipSearch = deps.searchShips ?? searchFitShips;
   const currentUser = routeCurrentUser(deps);
   const owns = deps.ownsCharacter;
+  const pyfaScreenshotExtractor = deps.pyfaScreenshotExtractor ?? createDefaultPyfaScreenshotExtractor();
 
   app.get('/api/fits/ships', async (req) => {
     const q = String((req.query as { q?: string }).q ?? '');
     return shipSearch(q, 20).map(ship => ({ id: ship.typeId, name: ship.name, groupName: ship.groupName }));
+  });
+
+  app.post('/api/fits/import-pyfa-image', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
+    try {
+      const input = validatePyfaImageInput(req.body);
+      const extraction = await pyfaScreenshotExtractor.extract({ ...input, userId: user.id });
+      return renderPyfaExtractionToEft(extraction);
+    } catch (err) {
+      const message = errorMessage(err, 'Failed to import pyfa screenshot.');
+      return reply.code(pyfaImportErrorStatus(message)).send({ error: message });
+    }
   });
 
   app.post('/api/fits/preview', async (req, reply) => {
@@ -312,4 +335,10 @@ function cleanPositiveNumber(value: unknown): number | undefined {
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
+}
+
+function pyfaImportErrorStatus(message: string): number {
+  if (message === PYFA_IMAGE_IMPORT_NOT_CONFIGURED) return 503;
+  if (message.startsWith('pyfa_image_import_provider_')) return 502;
+  return 400;
 }
