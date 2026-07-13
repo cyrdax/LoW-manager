@@ -2047,7 +2047,6 @@ body {
 .fits-search,
 .fits-edit-grid input,
 .fits-send-row select,
-.fits-ship-picker input,
 .fits-import-text {
   width: 100%;
   background: var(--bg);
@@ -2060,7 +2059,6 @@ body {
 .fits-search:focus,
 .fits-edit-grid input:focus,
 .fits-send-row select:focus,
-.fits-ship-picker input:focus,
 .fits-import-text:focus {
   outline: 1px solid var(--accent);
   border-color: var(--accent);
@@ -2074,8 +2072,7 @@ body {
 .fits-hubs button,
 .fits-actions button,
 .fits-modal-actions button,
-.fits-modal-head button,
-.fits-ship-menu button {
+.fits-modal-head button {
   background: transparent;
   color: var(--text);
   border: 1px solid var(--border);
@@ -2096,8 +2093,7 @@ body {
   font-weight: 700;
 }
 .fits-actions button:hover,
-.fits-modal-actions button:hover,
-.fits-ship-menu button:hover { background: #2a2f39; }
+.fits-modal-actions button:hover { background: #2a2f39; }
 .fits-actions button:disabled { color: var(--dim); cursor: not-allowed; }
 .fits-actions button.danger { color: var(--red); border-color: #4a2a32; }
 .fits-list {
@@ -2223,34 +2219,9 @@ body {
 .fits-warn-badge { color: var(--amber); border-color: #5a4622; }
 .fits-edit-grid {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) minmax(150px, 220px);
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr);
   gap: 8px;
 }
-.fits-ship-picker {
-  position: relative;
-  min-width: 0;
-}
-.fits-ship-menu {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  max-height: 260px;
-  overflow-y: auto;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-}
-.fits-ship-menu button {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  text-align: left;
-  border: 0;
-  border-radius: 0;
-}
-.fits-ship-menu small { color: var(--dim); white-space: nowrap; }
 .fits-actions {
   display: flex;
   flex-direction: column;

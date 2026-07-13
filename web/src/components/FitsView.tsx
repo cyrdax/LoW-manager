@@ -10,7 +10,6 @@ import {
   quoteDraftFit,
   quoteSavedFit,
   saveFit,
-  searchFitShips,
   sendDraftFit,
   sendSavedFit,
   updateFit,
@@ -22,7 +21,6 @@ import {
   type FitHub,
   type FitQuote,
   type FitSectionRole,
-  type FitShipHit,
   type LibraryVisibility,
   type SavedFitDetail,
   type SavedFitSummary,
@@ -354,28 +352,6 @@ function SavedFitsView({
     else setSendStatus({ kind: 'sent', fittingId: res.fittingId, excludedCount: res.excludedCount });
   };
 
-  const applyShipOverride = async (ship: FitShipHit) => {
-    if (!active) return;
-    setBusy(true);
-    if (draft) {
-      const res = await previewFit(active.rawEft, ship.id);
-      setBusy(false);
-      if ('error' in res) { setStatus(res.error); return; }
-      setDraft({ ...res, fitName: fitName || res.fitName });
-      return;
-    }
-    if (activeSavedId != null) {
-      const res = await updateFit(activeSavedId, { shipTypeId: ship.id });
-      setBusy(false);
-      if ('error' in res) { setStatus(res.error); return; }
-      setDetail(res);
-      await reloadList(res.visibility);
-      return;
-    }
-    setBusy(false);
-    setStatus('No fit selected.');
-  };
-
   return (
     <div className="fits-view">
       <aside className="fits-library">
@@ -455,7 +431,6 @@ function SavedFitsView({
               onCopy={copyEft}
               onSend={sendToPilot}
               onRefresh={() => refreshQuote(active)}
-              onShip={applyShipOverride}
             />
 
             <div className="fits-body">
@@ -532,7 +507,6 @@ function FitHeader(props: {
   onCopy: () => void;
   onSend: () => void;
   onRefresh: () => void;
-  onShip: (ship: FitShipHit) => void;
 }) {
   const { fit } = props;
   const fitCost = props.quote ? `${formatIsk(props.quote.totals.grand)} ISK` : props.quoteLoading ? 'Pricing...' : '-';
@@ -552,7 +526,6 @@ function FitHeader(props: {
           <div className="fits-edit-grid">
             <input value={props.fitName} onChange={e => props.onName(e.target.value)} readOnly={!props.editable} />
             <input value={props.notes} onChange={e => props.onNotes(e.target.value)} placeholder="Notes" readOnly={!props.editable} />
-            {props.editable ? <ShipPicker onSelect={props.onShip} /> : <input value="Public copy" readOnly />}
           </div>
         </div>
         <div className="fits-actions">
@@ -584,30 +557,6 @@ function FitHeader(props: {
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function ShipPicker({ onSelect }: { onSelect: (ship: FitShipHit) => void }) {
-  const [q, setQ] = useState('');
-  const [hits, setHits] = useState<FitShipHit[]>([]);
-  useEffect(() => {
-    const ac = new AbortController();
-    searchFitShips(q, ac.signal).then(setHits).catch(() => setHits([]));
-    return () => ac.abort();
-  }, [q]);
-  return (
-    <div className="fits-ship-picker">
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Override hull" />
-      {hits.length > 0 && (
-        <div className="fits-ship-menu">
-          {hits.map(hit => (
-            <button key={hit.id} onClick={() => { onSelect(hit); setQ(''); setHits([]); }}>
-              <span>{hit.name}</span><small>{hit.groupName}</small>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

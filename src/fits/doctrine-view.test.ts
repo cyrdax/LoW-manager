@@ -171,3 +171,15 @@ test('fit header keeps cost and send controls on their own lower row without shr
   assert.match(styles, /@media \(max-width: 820px\) \{[\s\S]*?\.fits-head-main,/);
   assert.match(styles, /@media \(max-width: 820px\) \{[\s\S]*?\.fits-ship-controls \{ width: min\(340px, 100%\); \}/);
 });
+
+test('fit header does not expose a manual hull override text field', () => {
+  const fitsView = readFileSync(resolve('web/src/components/FitsView.tsx'), 'utf8');
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
+
+  assert.doesNotMatch(fitsView, /ShipPicker/);
+  assert.doesNotMatch(fitsView, /Override hull/);
+  assert.doesNotMatch(fitsView, /onShip/);
+  assert.doesNotMatch(fitsView, /applyShipOverride/);
+  assert.doesNotMatch(styles, /\.fits-ship-picker/);
+  assert.doesNotMatch(styles, /\.fits-ship-menu/);
+});
