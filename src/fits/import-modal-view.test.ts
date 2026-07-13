@@ -13,7 +13,7 @@ test('fit import preview remains clickable and gives feedback while previewing',
   assert.match(fitsView, /setImportBusy\(false\)/);
   assert.match(fitsView, /catch \(err\)/);
   assert.match(fitsView, /setImportError\(err instanceof Error \? err\.message : 'Failed to preview fit\.'\)/);
-  assert.match(fitsView, /<button type="button" onClick=\{\(\) => setImportOpen\(false\)\} disabled=\{importBusy\}>Cancel<\/button>/);
+  assert.match(fitsView, /<button type="button" onClick=\{\(\) => setImportOpen\(false\)\} disabled=\{importBusy \|\| pyfaBusy\}>Cancel<\/button>/);
   assert.match(fitsView, /<button type="button" className="primary" onClick=\{importFit\} disabled=\{importBusy\}>/);
   assert.match(fitsView, /importBusy \? 'Previewing\.\.\.' : 'Preview'/);
 
@@ -21,4 +21,20 @@ test('fit import preview remains clickable and gives feedback while previewing',
   assert.match(styles, /\.fits-import-text \{[\s\S]*?flex: 1 1 auto;/);
   assert.match(styles, /\.fits-import-text \{[\s\S]*?min-height: 220px;/);
   assert.match(styles, /\.fits-modal-actions \{[\s\S]*?flex: 0 0 auto;/);
+});
+
+test('fit import modal supports pyfa screenshot extraction into existing preview flow', () => {
+  const fitsView = readFileSync(resolve('web/src/components/FitsView.tsx'), 'utf8');
+  const api = readFileSync(resolve('web/src/api.ts'), 'utf8');
+
+  assert.match(api, /export interface PyfaImageImportRequest/);
+  assert.match(api, /export async function importPyfaImage/);
+  assert.match(fitsView, /importPyfaImage/);
+  assert.match(fitsView, /const \[importMode, setImportMode\] = useState<'eft' \| 'pyfa-image'>\('eft'\)/);
+  assert.match(fitsView, />Paste EFT</);
+  assert.match(fitsView, />pyfa Screenshot</);
+  assert.match(fitsView, /setImportText\(res\.rawEft\)/);
+  assert.match(fitsView, /setImportMode\('eft'\)/);
+  assert.match(fitsView, /pyfaWarnings\.map/);
+  assert.match(fitsView, /previewFit\(importText\)/);
 });

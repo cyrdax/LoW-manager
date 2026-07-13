@@ -2447,6 +2447,83 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
 }
+.fits-import-tabs {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  background: #11141a;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.fits-import-tabs button {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dim);
+  padding: 7px 9px;
+  font: inherit;
+  cursor: pointer;
+}
+.fits-import-tabs button.active {
+  background: var(--accent);
+  color: #0b0e13;
+  font-weight: 700;
+}
+.fits-import-drop {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  align-content: center;
+  padding: 24px;
+  border: 1px dashed #3b4452;
+  border-radius: 6px;
+  background: #11141a;
+  text-align: center;
+}
+.fits-import-drop.dragging {
+  border-color: var(--accent);
+  background: #141c27;
+}
+.fits-import-drop span,
+.fits-import-warnings {
+  color: var(--dim);
+}
+.fits-import-file {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #1f2430;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+}
+.fits-import-file input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.fits-import-note {
+  color: var(--green);
+  font-weight: 700;
+}
+.fits-import-warnings {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid #5a4622;
+  border-radius: 5px;
+  background: #1d1a12;
+}
 .fits-modal-actions {
   flex: 0 0 auto;
   justify-content: flex-end;

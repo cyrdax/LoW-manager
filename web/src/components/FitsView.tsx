@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent } from 'react';
 import {
   copyFitToPrivate,
   deleteFit,
   fetchFit,
   fetchDoctrines,
   fetchFits,
+  importPyfaImage,
   previewFit,
   publishFit,
   quoteDraftFit,
@@ -22,6 +23,7 @@ import {
   type FitQuote,
   type FitSectionRole,
   type LibraryVisibility,
+  type PyfaImageImportRequest,
   type SavedFitDetail,
   type SavedFitSummary,
 } from '../api.ts';
@@ -136,6 +138,12 @@ function SavedFitsView({
   const [importText, setImportText] = useState(SAMPLE);
   const [importError, setImportError] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
+  const [importMode, setImportMode] = useState<'eft' | 'pyfa-image'>('eft');
+  const [pyfaImage, setPyfaImage] = useState<File | null>(null);
+  const [pyfaBusy, setPyfaBusy] = useState(false);
+  const [pyfaWarnings, setPyfaWarnings] = useState<string[]>([]);
+  const [pyfaNotice, setPyfaNotice] = useState<string | null>(null);
+  const [pyfaDragging, setPyfaDragging] = useState(false);
   const [unmatchedOpen, setUnmatchedOpen] = useState(false);
   const [fitName, setFitName] = useState('');
   const [notes, setNotes] = useState('');
@@ -244,6 +252,48 @@ function SavedFitsView({
     if (!q) return fits;
     return fits.filter(fit => `${fit.shipName} ${fit.fitName}`.toLowerCase().includes(q));
   }, [fits, search]);
+
+  const selectPyfaImage = (file: File | null) => {
+    setPyfaImage(file);
+    setPyfaWarnings([]);
+    setPyfaNotice(null);
+    setImportError(null);
+  };
+
+  const handlePyfaFileInput = (event: ChangeEvent<HTMLInputElement>) => {
+    selectPyfaImage(event.target.files?.[0] ?? null);
+  };
+
+  const handlePyfaDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setPyfaDragging(false);
+    selectPyfaImage(event.dataTransfer.files?.[0] ?? null);
+  };
+
+  const extractPyfaImage = async () => {
+    if (pyfaBusy || !pyfaImage) return;
+    if (!isPyfaImageMimeType(pyfaImage.type)) {
+      setImportError('Unsupported image type. Use PNG, JPEG, or WebP.');
+      return;
+    }
+
+    setImportError(null);
+    setPyfaWarnings([]);
+    setPyfaBusy(true);
+    try {
+      const imageBase64 = await readFileBase64(pyfaImage);
+      const res = await importPyfaImage({ imageBase64, mimeType: pyfaImage.type });
+      if ('error' in res) { setImportError(res.error); return; }
+      setImportText(res.rawEft);
+      setPyfaWarnings(res.warnings);
+      setPyfaNotice('Generated from screenshot. Review before preview.');
+      setImportMode('eft');
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to extract pyfa screenshot.');
+    } finally {
+      setPyfaBusy(false);
+    }
+  };
 
   const importFit = async () => {
     if (importBusy) return;
@@ -448,19 +498,57 @@ function SavedFitsView({
       </section>
 
       {importOpen && (
-        <Modal title="Import EFT" onClose={() => setImportOpen(false)}>
-          <textarea
-            className="fits-import-text"
-            value={importText}
-            onChange={e => setImportText(e.target.value)}
-            spellCheck={false}
-          />
+        <Modal title="Import Fit" onClose={() => setImportOpen(false)}>
+          <div className="fits-import-tabs">
+            <button type="button" className={importMode === 'eft' ? 'active' : ''} onClick={() => setImportMode('eft')} disabled={importBusy || pyfaBusy}>Paste EFT</button>
+            <button type="button" className={importMode === 'pyfa-image' ? 'active' : ''} onClick={() => setImportMode('pyfa-image')} disabled={importBusy || pyfaBusy}>pyfa Screenshot</button>
+          </div>
+
+          {importMode === 'eft' && (
+            <>
+              {pyfaNotice && <div className="fits-import-note">{pyfaNotice}</div>}
+              {pyfaWarnings.length > 0 && (
+                <div className="fits-import-warnings">
+                  {pyfaWarnings.map(warning => <div key={warning}>{warning}</div>)}
+                </div>
+              )}
+              <textarea
+                className="fits-import-text"
+                value={importText}
+                onChange={e => { setImportText(e.target.value); setPyfaNotice(null); }}
+                spellCheck={false}
+              />
+            </>
+          )}
+
+          {importMode === 'pyfa-image' && (
+            <div
+              className={`fits-import-drop${pyfaDragging ? ' dragging' : ''}`}
+              onDragOver={event => { event.preventDefault(); setPyfaDragging(true); }}
+              onDragLeave={() => setPyfaDragging(false)}
+              onDrop={handlePyfaDrop}
+            >
+              <strong>{pyfaImage ? pyfaImage.name : 'Drop a pyfa screenshot'}</strong>
+              <span>PNG, JPEG, or WebP. Only visible rows are extracted.</span>
+              <label className="fits-import-file">
+                Choose image
+                <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handlePyfaFileInput} />
+              </label>
+            </div>
+          )}
+
           {importError && <div className="fits-alert err">{importError}</div>}
           <div className="fits-modal-actions">
-            <button type="button" onClick={() => setImportOpen(false)} disabled={importBusy}>Cancel</button>
-            <button type="button" className="primary" onClick={importFit} disabled={importBusy}>
-              {importBusy ? 'Previewing...' : 'Preview'}
-            </button>
+            <button type="button" onClick={() => setImportOpen(false)} disabled={importBusy || pyfaBusy}>Cancel</button>
+            {importMode === 'pyfa-image' ? (
+              <button type="button" className="primary" onClick={extractPyfaImage} disabled={pyfaBusy || !pyfaImage}>
+                {pyfaBusy ? 'Extracting...' : 'Extract'}
+              </button>
+            ) : (
+              <button type="button" className="primary" onClick={importFit} disabled={importBusy}>
+                {importBusy ? 'Previewing...' : 'Preview'}
+              </button>
+            )}
           </div>
         </Modal>
       )}
@@ -685,6 +773,23 @@ function FitDoctrinesPanel({ doctrines, loading, onOpen }: { doctrines: Doctrine
 
 function PriceLine({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
   return <div className={`fits-price-line${strong ? ' strong' : ''}`}><span>{label}</span><b>{formatIsk(value)} ISK</b></div>;
+}
+
+function isPyfaImageMimeType(value: string): value is PyfaImageImportRequest['mimeType'] {
+  return value === 'image/png' || value === 'image/jpeg' || value === 'image/webp';
+}
+
+function readFileBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read image file.'));
+    reader.onload = () => {
+      const value = String(reader.result ?? '');
+      const commaIndex = value.indexOf(',');
+      resolve(commaIndex >= 0 ? value.slice(commaIndex + 1) : value);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {

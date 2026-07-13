@@ -1065,6 +1065,16 @@ export interface FitQuote {
 
 export interface FitShipHit { id: number; name: string; groupName: string }
 
+export interface PyfaImageImportRequest {
+  imageBase64: string;
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+}
+
+export interface PyfaImageImportResult {
+  rawEft: string;
+  warnings: string[];
+}
+
 async function jsonOrError<T>(res: Response): Promise<T | { error: string; reauthHint?: string | null }> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -1145,6 +1155,14 @@ export async function previewFit(rawEft: string, shipTypeId?: number): Promise<F
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rawEft, shipTypeId }),
+  }));
+}
+
+export async function importPyfaImage(input: PyfaImageImportRequest): Promise<PyfaImageImportResult | { error: string }> {
+  return jsonOrError(await fetch('/api/fits/import-pyfa-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   }));
 }
 
