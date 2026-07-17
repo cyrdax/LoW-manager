@@ -76,19 +76,24 @@ export function createSqliteAssetSnapshotStore(database: SqliteDatabase): AssetS
     },
 
     recordPilotStatus(userId, characterId, characterName, status, error, now) {
-      const snapshot = emptySnapshot(characterId, characterName, status, error);
+      const previous = database.prepare(`
+        SELECT snapshot_json FROM asset_snapshots WHERE user_id = ? AND character_id = ?
+      `).get(userId, characterId) as { snapshot_json: string } | undefined;
+      const snapshot = previous
+        ? withPilotStatus(JSON.parse(previous.snapshot_json) as AssetSnapshot, characterName, status, error)
+        : emptySnapshot(characterId, characterName, status, error);
       database.prepare(`
         INSERT INTO asset_snapshots (
           user_id, character_id, character_name, status, error, last_refreshed_at, snapshot_json, updated_at
-        ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, character_id) DO UPDATE SET
           character_name = excluded.character_name,
           status = excluded.status,
           error = excluded.error,
-          last_refreshed_at = NULL,
+          last_refreshed_at = excluded.last_refreshed_at,
           snapshot_json = excluded.snapshot_json,
           updated_at = excluded.updated_at
-      `).run(userId, characterId, characterName, status, error, JSON.stringify(snapshot), now);
+      `).run(userId, characterId, characterName, status, error, snapshot.pilot.lastRefreshedAt, JSON.stringify(snapshot), now);
     },
 
     deleteForUser(userId) {
@@ -136,19 +141,25 @@ export function createPostgresAssetSnapshotStore(client: QueryClient = getPostgr
     },
 
     async recordPilotStatus(userId, characterId, characterName, status, error, now) {
-      const snapshot = emptySnapshot(characterId, characterName, status, error);
+      const existing = await client.query<{ snapshot_json: AssetSnapshot | string }>(`
+        SELECT snapshot_json FROM asset_snapshots WHERE user_id = $1 AND character_id = $2
+      `, [userId, characterId]);
+      const previous = existing.rows[0]?.snapshot_json;
+      const snapshot = previous
+        ? withPilotStatus(typeof previous === 'string' ? JSON.parse(previous) as AssetSnapshot : previous, characterName, status, error)
+        : emptySnapshot(characterId, characterName, status, error);
       await client.query(`
         INSERT INTO asset_snapshots (
           user_id, character_id, character_name, status, error, last_refreshed_at, snapshot_json, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, NULL, $6::jsonb, to_timestamp($7 / 1000.0))
+        ) VALUES ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0), $7::jsonb, to_timestamp($8 / 1000.0))
         ON CONFLICT(user_id, character_id) DO UPDATE SET
           character_name = excluded.character_name,
           status = excluded.status,
           error = excluded.error,
-          last_refreshed_at = NULL,
+          last_refreshed_at = excluded.last_refreshed_at,
           snapshot_json = excluded.snapshot_json,
           updated_at = excluded.updated_at
-      `, [userId, characterId, characterName, status, error, JSON.stringify(snapshot), now]);
+      `, [userId, characterId, characterName, status, error, snapshot.pilot.lastRefreshedAt, JSON.stringify(snapshot), now]);
     },
 
     async deleteForUser(userId) {
@@ -179,6 +190,18 @@ function emptySnapshot(
     },
     locations: [],
     categories: [],
+  };
+}
+
+function withPilotStatus(
+  snapshot: AssetSnapshot,
+  characterName: string,
+  status: AssetPilotStatus,
+  error: string | null,
+): AssetSnapshot {
+  return {
+    ...snapshot,
+    pilot: { ...snapshot.pilot, characterName, status, error },
   };
 }
 

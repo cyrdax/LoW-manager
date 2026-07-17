@@ -107,6 +107,127 @@ test('refreshPilotAssets records needs re-auth without calling ESI', async () =>
   assert.equal(result.pilot.status, 'Needs re-auth');
 });
 
+test('refreshPilotAssets rejects a character owned by another user before calling ESI or writing a snapshot', async () => {
+  const snapshots = store();
+  let called = false;
+  const result = await refreshPilotAssets({
+    userId: 'user-a',
+    character: { ...character, user_id: 'user-b' },
+    store: snapshots,
+    fetchAssets: async () => {
+      called = true;
+      return [];
+    },
+  });
+
+  assert.equal(called, false);
+  assert.equal(result.pilot.status, 'Error');
+  assert.equal(result.pilot.error, 'Character does not belong to this user.');
+  assert.deepEqual(await snapshots.listSnapshots('user-a'), []);
+});
+
+test('refreshPilotAssets leaves blueprint copies unpriced and excludes them from market quotes', async () => {
+  const snapshots = store();
+  let quotedTypeIds: Array<number | null> = [];
+  const result = await refreshPilotAssets({
+    userId: 'user-a',
+    character,
+    store: snapshots,
+    fetchAssets: async () => [
+      { item_id: 1, type_id: 100, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: true, is_blueprint_copy: true },
+      { item_id: 2, type_id: 101, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: true },
+    ],
+    resolveItem: typeId => ({ typeId, name: `Blueprint ${typeId}`, groupId: 2, groupName: 'Blueprint', categoryId: 9, categoryName: 'Blueprint' }),
+    resolveLocation: async () => ({ locationId: 60003760, name: 'Jita', type: 'station', status: 'resolved' }),
+    quoteItems: async (_hub, items) => {
+      quotedTypeIds = items.map(item => item.typeId);
+      return {
+        hub: 'jita', systemName: 'Jita', regionName: 'The Forge', fetchedAt: 1, totalCost: 50,
+        counts: { ok: 1, partial: 0, noOrders: 0, unknown: 0 },
+        items: items.map(item => ({
+          inputName: item.inputName, resolvedName: item.resolvedName, typeId: item.typeId,
+          requestedQty: item.requestedQty, filledQty: item.requestedQty, totalCost: 50,
+          avgPrice: 50, shortfall: 0, status: 'ok' as const, bucket: item.bucket,
+        })),
+      };
+    },
+  });
+
+  const copy = result.locations[0].assets.find(asset => asset.itemId === 1)!;
+  assert.deepEqual(quotedTypeIds, [101]);
+  assert.equal(copy.pricingStatus, 'unpriced');
+  assert.equal(copy.unitValue, null);
+  assert.equal(copy.stackValue, 0);
+  assert.equal(result.pilot.unpricedStacks, 1);
+});
+
+test('refreshPilotAssets preserves a cached snapshot when asset scope is lost', async () => {
+  const snapshots = store();
+  const previous = await refreshPilotAssets({
+    userId: 'user-a', character, store: snapshots, now: () => 100,
+    fetchAssets: async () => [{ item_id: 1, type_id: 34, quantity: 10, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: false }],
+    resolveItem: typeId => ({ typeId, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material' }),
+    resolveLocation: async () => ({ locationId: 60003760, name: 'Jita', type: 'station', status: 'resolved' }),
+    quoteItems: async (_hub, items) => ({
+      hub: 'jita', systemName: 'Jita', regionName: 'The Forge', fetchedAt: 1, totalCost: 50,
+      counts: { ok: 1, partial: 0, noOrders: 0, unknown: 0 },
+      items: items.map(item => ({ inputName: item.inputName, resolvedName: item.resolvedName, typeId: item.typeId, requestedQty: item.requestedQty, filledQty: item.requestedQty, totalCost: 50, avgPrice: 5, shortfall: 0, status: 'ok' as const, bucket: item.bucket })),
+    }),
+  });
+  const result = await refreshPilotAssets({
+    userId: 'user-a', character: { ...character, scopes: '' }, store: snapshots, now: () => 200,
+  });
+
+  assert.equal(result.pilot.status, 'Missing asset scope');
+  assert.equal(result.pilot.lastRefreshedAt, previous.pilot.lastRefreshedAt);
+  assert.equal(result.locations.length, 1);
+  assert.equal((await snapshots.listSnapshots('user-a'))[0].locations.length, 1);
+});
+
+test('refreshPilotAssets preserves a cached snapshot when refresh fails', async () => {
+  const snapshots = store();
+  await refreshPilotAssets({
+    userId: 'user-a', character, store: snapshots, now: () => 100,
+    fetchAssets: async () => [{ item_id: 1, type_id: 34, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: false }],
+    resolveItem: typeId => ({ typeId, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material' }),
+    resolveLocation: async () => ({ locationId: 60003760, name: 'Jita', type: 'station', status: 'resolved' }),
+    quoteItems: async () => ({ hub: 'jita', systemName: 'Jita', regionName: 'The Forge', fetchedAt: 1, totalCost: 0, counts: { ok: 0, partial: 0, noOrders: 1, unknown: 0 }, items: [] }),
+  });
+  const result = await refreshPilotAssets({
+    userId: 'user-a', character, store: snapshots, now: () => 200,
+    fetchAssets: async () => { throw new Error('ESI unavailable'); },
+  });
+
+  assert.equal(result.pilot.status, 'Error');
+  assert.equal(result.pilot.error, 'ESI unavailable');
+  assert.equal(result.pilot.lastRefreshedAt, 100);
+  assert.equal(result.locations.length, 1);
+});
+
+test('refreshPilotAssets falls back for a failed root location and never resolves item container ids', async () => {
+  const snapshots = store();
+  const resolvedLocationIds: number[] = [];
+  const result = await refreshPilotAssets({
+    userId: 'user-a', character, store: snapshots,
+    fetchAssets: async () => [
+      { item_id: 1, type_id: 34, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: false },
+      { item_id: 2, type_id: 34, quantity: 1, location_id: 30000142, location_type: 'solar_system', location_flag: 'Hangar', is_singleton: false },
+      { item_id: 3, type_id: 34, quantity: 1, location_id: 1, location_type: 'item', location_flag: 'Cargo', is_singleton: false },
+    ],
+    resolveItem: typeId => ({ typeId, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material' }),
+    resolveLocation: async locationId => {
+      resolvedLocationIds.push(locationId);
+      if (locationId === 60003760) throw new Error('station unavailable');
+      return { locationId, name: 'Jita', type: 'solar_system', status: 'resolved' };
+    },
+    quoteItems: async () => ({ hub: 'jita', systemName: 'Jita', regionName: 'The Forge', fetchedAt: 1, totalCost: 0, counts: { ok: 0, partial: 0, noOrders: 1, unknown: 0 }, items: [] }),
+  });
+
+  assert.deepEqual(resolvedLocationIds.sort((a, b) => a - b), [30000142, 60003760]);
+  assert.equal(result.locations.find(location => location.locationId === 60003760)?.name, 'Unknown location 60003760');
+  assert.equal(result.locations.find(location => location.locationId === 60003760)?.status, 'unresolved');
+});
+
 test('refreshAllAssets limits concurrency and returns per-pilot results', async () => {
   const snapshots = store();
   let active = 0;
@@ -138,6 +259,22 @@ test('refreshAllAssets limits concurrency and returns per-pilot results', async 
 
   assert.equal(results.length, 3);
   assert.equal(maxActive, 2);
+});
+
+test('refreshAllAssets rejects foreign characters before delegating refresh', async () => {
+  const snapshots = store();
+  let delegated = false;
+  const [result] = await refreshAllAssets({
+    userId: 'user-a', characters: [{ ...character, user_id: 'user-b' }], store: snapshots,
+    refreshOne: async () => {
+      delegated = true;
+      throw new Error('should not run');
+    },
+  });
+
+  assert.equal(delegated, false);
+  assert.equal(result.pilot.status, 'Error');
+  assert.deepEqual(await snapshots.listSnapshots('user-a'), []);
 });
 
 test('summarizeAssets builds dashboard totals across snapshots', () => {

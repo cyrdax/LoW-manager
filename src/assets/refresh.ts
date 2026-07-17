@@ -39,6 +39,11 @@ export interface AssetDashboardResponse extends AssetValueSummary {
 
 export async function refreshPilotAssets(input: RefreshPilotAssetsInput): Promise<AssetSnapshot> {
   const { character } = input;
+
+  if (!character.user_id || character.user_id !== input.userId) {
+    return rejectedSnapshot(character, 'Character does not belong to this user.');
+  }
+
   const now = input.now ?? Date.now;
 
   if (character.needs_reauth === 1) {
@@ -85,7 +90,10 @@ export async function refreshAllAssets(input: RefreshAllAssetsInput): Promise<As
       const index = cursor++;
       if (index >= input.characters.length) return;
       const { characters, concurrency: _concurrency, refreshOne: _refreshOne, ...shared } = input;
-      results[index] = await refreshOne({ ...shared, character: characters[index] });
+      const character = characters[index];
+      results[index] = !character.user_id || character.user_id !== input.userId
+        ? rejectedSnapshot(character, 'Character does not belong to this user.')
+        : await refreshOne({ ...shared, character });
     }
   }
 
@@ -143,10 +151,24 @@ async function recordStatus(
   now: number,
 ): Promise<AssetSnapshot> {
   await input.store.recordPilotStatus(input.userId, input.character.character_id, input.character.character_name, status, error, now);
-  return buildAssetTree({
+  return (await input.store.listSnapshots(input.userId, now))
+    .find(snapshot => snapshot.pilot.characterId === input.character.character_id)
+    ?? buildAssetTree({
     characterId: input.character.character_id,
     characterName: input.character.character_name,
     status,
+    error,
+    lastRefreshedAt: null,
+    locations: [],
+    assets: [],
+  });
+}
+
+function rejectedSnapshot(character: CharacterRow, error: string): AssetSnapshot {
+  return buildAssetTree({
+    characterId: character.character_id,
+    characterName: character.character_name,
+    status: 'Error',
     error,
     lastRefreshedAt: null,
     locations: [],
@@ -169,6 +191,7 @@ function normalizeAsset(asset: EsiCharacterAsset, item: AssetItemMetadata): Omit
     categoryName: item.categoryName,
     quantity: asset.quantity,
     singleton: asset.is_singleton,
+    blueprintCopy: asset.is_blueprint_copy === true,
     locationId: asset.location_id,
     locationFlag: asset.location_flag,
     locationType: asset.location_type,
@@ -181,10 +204,12 @@ async function priceAssets(
 ) {
   const byType = new Map<number, { asset: Omit<RawAssetInput, 'unitValue' | 'pricingStatus'>; quantity: number }>();
   for (const asset of assets) {
+    if (asset.blueprintCopy) continue;
     const current = byType.get(asset.typeId) ?? { asset, quantity: 0 };
     current.quantity += asset.quantity;
     byType.set(asset.typeId, current);
   }
+  if (byType.size === 0) return new Map();
   const quote = await quoteItems('jita', [...byType.values()].map(({ asset, quantity }) => ({
     inputName: asset.name,
     resolvedName: asset.name,
@@ -209,7 +234,13 @@ async function resolveRootLocations(
   for (const asset of assets) {
     if (asset.location_type !== 'item') roots.set(asset.location_id, asset.location_type);
   }
-  return Promise.all([...roots].map(([locationId, locationType]) => resolveLocation(locationId, locationType, characterId)));
+  return Promise.all([...roots].map(async ([locationId, locationType]) => {
+    try {
+      return await resolveLocation(locationId, locationType, characterId);
+    } catch {
+      return { locationId, name: `Unknown location ${locationId}`, type: 'unknown', status: 'unresolved' as const };
+    }
+  }));
 }
 
 function emptySummary(): AssetValueSummary {

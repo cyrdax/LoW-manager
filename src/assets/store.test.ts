@@ -98,7 +98,7 @@ test('asset snapshot store marks stale snapshots older than 24 hours', async () 
   assert.equal(stale.pilot.status, 'Stale');
 });
 
-test('asset snapshot store records status without asset data', async () => {
+test('asset snapshot store preserves cached asset data when recording status', async () => {
   const db = memoryDb();
   addCharacter(db, 'user-a', 123);
   const store = createSqliteAssetSnapshotStore(db);
@@ -109,12 +109,12 @@ test('asset snapshot store records status without asset data', async () => {
 
   assert.equal(snapshots[0].pilot.status, 'Missing asset scope');
   assert.equal(snapshots[0].pilot.error, 'Re-auth required');
-  assert.equal(snapshots[0].locations.length, 0);
+  assert.equal(snapshots[0].locations.length, 1);
   const row = db.prepare('SELECT last_refreshed_at FROM asset_snapshots WHERE user_id = ? AND character_id = ?')
     .get('user-a', 123) as { last_refreshed_at: number | null };
   assert.equal(
     row.last_refreshed_at,
-    null,
+    1_700_000_000_000,
   );
 });
 
@@ -163,7 +163,7 @@ test('Postgres asset snapshot store parses JSONB objects and strings', async () 
   assert.equal(textRows[0].pilot.characterId, 456);
 });
 
-test('Postgres status upserts clear the previous refresh timestamp', async () => {
+test('Postgres status upserts retain the snapshot refresh timestamp', async () => {
   const queries: string[] = [];
   const client = {
     async query(text: string) {
@@ -175,5 +175,5 @@ test('Postgres status upserts clear the previous refresh timestamp', async () =>
 
   await store.recordPilotStatus('user-a', 123, 'Asset Pilot', 'Missing asset scope', null, 1_700_000_000_000);
 
-  assert.match(queries[0], /ON CONFLICT[\s\S]*last_refreshed_at = NULL/);
+  assert.match(queries[1], /ON CONFLICT[\s\S]*last_refreshed_at = excluded\.last_refreshed_at/);
 });

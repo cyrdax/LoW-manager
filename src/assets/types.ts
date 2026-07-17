@@ -107,6 +107,7 @@ export interface RawAssetInput {
   categoryName: string;
   quantity: number;
   singleton: boolean;
+  blueprintCopy?: boolean;
   locationId: number;
   locationFlag: string;
   locationType: string;
