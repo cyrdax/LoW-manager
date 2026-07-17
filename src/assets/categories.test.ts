@@ -86,3 +86,20 @@ test('categorizeAssetItem classifies published armor and shield module groups', 
     assert.equal(item && categorizeAssetItem(item).primary, expected);
   }
 });
+
+test('categorizeAssetItem classifies the remaining published armor and shield groups', () => {
+  const cases = [
+    [41476, 'Small Ancillary Remote Armor Repairer', 'armor-modules'],
+    [49770, 'Heavy Mutadaptive Remote Armor Repairer I', 'armor-modules'],
+    [41515, 'Capital Flex Armor Hardener I', 'armor-modules'],
+    [405, "'Micro' Remote Shield Booster", 'shield-modules'],
+    [41480, 'Small Ancillary Remote Shield Booster', 'shield-modules'],
+    [41516, 'Capital Flex Shield Hardener I', 'shield-modules'],
+  ] as const;
+
+  for (const [typeId, name, expected] of cases) {
+    const item = resolveItemByTypeId(typeId);
+    assert.equal(item?.name, name);
+    assert.equal(item && categorizeAssetItem(item).primary, expected);
+  }
+});

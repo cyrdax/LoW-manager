@@ -18,6 +18,23 @@ Self-review notes:
 Any concerns:
 - The full test suite retains its existing eight database-dependent skips because no database test URLs were available.
 
+## Fifth Fix Report (2026-07-17)
+
+Fixed the remaining armor and shield category review finding:
+- Added armor module group IDs `1698`, `1699`, and `2018` to `ARMOR_MODULE_GROUP_IDS`.
+- Added shield module group IDs `41`, `1697`, and `1700` to `SHIELD_MODULE_GROUP_IDS`.
+- Added metadata-backed regressions for Small Ancillary Remote Armor Repairer, Heavy Mutadaptive Remote Armor Repairer I, Capital Flex Armor Hardener I, Micro Remote Shield Booster, Small Ancillary Remote Shield Booster, and Capital Flex Shield Hardener I.
+- Preserved Sensor Booster II as generic `modules`.
+
+Commands run and exact results:
+- `node --import tsx --test src/assets/categories.test.ts src/assets/tree.test.ts src/fits/metadata.test.ts`: 17 passed, 0 failed.
+- `npm test`: 203 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` were not configured.
+- `npm run typecheck`: passed, exit code 0.
+- `git diff --check`: passed, exit code 0.
+
+Any concerns:
+- The full test suite retains its existing eight database-dependent skips because no database test URLs were available.
+
 ## Fix Report (2026-07-17)
 
 Fixed reviewer findings in the Task 1 asset domain helpers:
