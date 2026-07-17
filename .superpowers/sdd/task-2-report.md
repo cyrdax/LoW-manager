@@ -104,3 +104,11 @@ DONE
 ### Concerns
 
 - Live Postgres integration coverage remains unavailable without `DATABASE_URL` and `TEST_DATABASE_URL`.
+
+Review fix: updated live Postgres migration expectations for 0002_asset_snapshots.
+Commands run:
+- node --import tsx --test src/assets/store.test.ts src/characters/store.test.ts src/db/migrations.test.ts src/db/postgres.integration.test.ts: 16 passed, 1 skipped (DATABASE_URL and TEST_DATABASE_URL are required).
+- npm run typecheck: passed.
+- git diff --check: passed.
+- npm test: 213 passed, 8 skipped.
+Concerns: live Postgres integration remains skipped locally without database env vars.
