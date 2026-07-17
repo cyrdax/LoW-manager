@@ -20,7 +20,11 @@ export interface AssetSnapshotStore {
 }
 
 export function migrateAssetSnapshotsDb(database: SqliteDatabase): void {
+  database.pragma('foreign_keys = ON');
   database.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_characters_user_character
+      ON characters(user_id, character_id);
+
     CREATE TABLE IF NOT EXISTS asset_snapshots (
       user_id TEXT NOT NULL,
       character_id INTEGER NOT NULL,
@@ -30,7 +34,9 @@ export function migrateAssetSnapshotsDb(database: SqliteDatabase): void {
       last_refreshed_at INTEGER,
       snapshot_json TEXT NOT NULL,
       updated_at INTEGER NOT NULL,
-      PRIMARY KEY (user_id, character_id)
+      PRIMARY KEY (user_id, character_id),
+      FOREIGN KEY (user_id, character_id)
+        REFERENCES characters(user_id, character_id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_asset_snapshots_user ON asset_snapshots(user_id);
   `);
@@ -79,6 +85,7 @@ export function createSqliteAssetSnapshotStore(database: SqliteDatabase): AssetS
           character_name = excluded.character_name,
           status = excluded.status,
           error = excluded.error,
+          last_refreshed_at = NULL,
           snapshot_json = excluded.snapshot_json,
           updated_at = excluded.updated_at
       `).run(userId, characterId, characterName, status, error, JSON.stringify(snapshot), now);
@@ -138,6 +145,7 @@ export function createPostgresAssetSnapshotStore(client: QueryClient = getPostgr
           character_name = excluded.character_name,
           status = excluded.status,
           error = excluded.error,
+          last_refreshed_at = NULL,
           snapshot_json = excluded.snapshot_json,
           updated_at = excluded.updated_at
       `, [userId, characterId, characterName, status, error, JSON.stringify(snapshot), now]);

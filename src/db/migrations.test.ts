@@ -87,11 +87,12 @@ test('library tables use numeric ids expected by route params', () => {
 });
 
 test('asset snapshots are scoped to users and characters', () => {
-  const sql = readFileSync(resolve('src/db/migrations/0001_multi_tenant_foundation.sql'), 'utf8');
+  const sql = readFileSync(resolve('src/db/migrations/0002_asset_snapshots.sql'), 'utf8');
   const block = tableBlock(sql, 'asset_snapshots');
 
   assert.match(block, /user_id\s+uuid NOT NULL REFERENCES app_users\(id\) ON DELETE CASCADE/);
-  assert.match(block, /character_id\s+bigint NOT NULL REFERENCES characters\(character_id\) ON DELETE CASCADE/);
+  assert.match(sql, /ADD CONSTRAINT characters_user_id_character_id_key UNIQUE \(user_id, character_id\)/);
+  assert.match(block, /FOREIGN KEY \(user_id, character_id\)\s+REFERENCES characters\(user_id, character_id\) ON DELETE CASCADE/);
   assert.match(block, /snapshot_json\s+jsonb NOT NULL/);
   assert.match(block, /PRIMARY KEY \(user_id, character_id\)/);
 });
