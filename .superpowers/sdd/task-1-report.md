@@ -36,3 +36,15 @@ Commands run and results:
 - `node --import tsx --test src/assets/categories.test.ts src/assets/tree.test.ts`: 8 passed, 0 failed after the fix.
 - `npm run typecheck`: passed, exit code 0.
 - `git diff --check`: passed, exit code 0.
+
+## Second Fix Report (2026-07-17)
+
+Fixed the follow-up review findings:
+- Replaced the fabricated mining-frigate regression metadata with actual Venture (`typeId` 32880, Frigate group 25) and Prospect (`typeId` 33697, Expedition Frigate group 1283) metadata. Venture is now recognized by its mining hull type ID; Prospect is recognized by its expedition-frigate group ID and name.
+- When a parent edge is rejected because it would form a cycle, the node now clears `parentItemId` before becoming a location root. Added a two-node cycle regression test covering the detached root and accepted child link.
+
+Commands run and results:
+- `node --import tsx --test src/assets/categories.test.ts src/assets/tree.test.ts`: 7 passed and 2 failed before the fix, reproducing the real Venture classification and stale rejected-parent bugs; 9 passed, 0 failed after the fix.
+- `npm test`: 199 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` were not configured.
+- `npm run typecheck`: passed, exit code 0.
+- `git diff --check`: passed, exit code 0.

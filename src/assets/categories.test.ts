@@ -19,11 +19,23 @@ test('ship subcategories roll up to ships without changing primary category', ()
   assert.deepEqual(category.rollups, ['ships']);
 });
 
-test('categorizeAssetItem uses mining ship groups before frigate groups', () => {
-  const miningFrigate = { groupId: 1001, groupName: 'Mining Frigate', categoryId: 6, categoryName: 'Ship' };
-
-  assert.equal(categorizeAssetItem({ typeId: 32880, name: 'Venture', ...miningFrigate }).primary, 'mining-ships');
-  assert.equal(categorizeAssetItem({ typeId: 43661, name: 'Prospect', ...miningFrigate }).primary, 'mining-ships');
+test('categorizeAssetItem recognizes mining hulls with real Venture and Prospect metadata', () => {
+  assert.equal(categorizeAssetItem({
+    typeId: 32880,
+    name: 'Venture',
+    groupId: 25,
+    groupName: 'Frigate',
+    categoryId: 6,
+    categoryName: 'Ship',
+  }).primary, 'mining-ships');
+  assert.equal(categorizeAssetItem({
+    typeId: 33697,
+    name: 'Prospect',
+    groupId: 1283,
+    groupName: 'Expedition Frigate',
+    categoryId: 6,
+    categoryName: 'Ship',
+  }).primary, 'mining-ships');
 });
 
 test('categorizeAssetItem does not treat sensor boosters as shield modules', () => {

@@ -24,8 +24,9 @@ export const ASSET_CATEGORY_LABELS: Record<AssetCategoryKey, string> = {
 };
 
 const CAPITAL_GROUPS = new Set(['carrier', 'dreadnought', 'force auxiliary', 'supercarrier', 'titan', 'capital industrial ship']);
-const MINING_SHIP_GROUP_IDS = new Set([463, 543, 941, 1001]);
-const MINING_SHIP_GROUPS = new Set(['mining frigate', 'mining barge', 'exhumer', 'industrial command ship']);
+const MINING_SHIP_TYPE_IDS = new Set([32880]);
+const MINING_SHIP_GROUP_IDS = new Set([463, 543, 941, 1283]);
+const MINING_SHIP_GROUPS = new Set(['mining barge', 'exhumer', 'industrial command ship', 'expedition frigate']);
 const ARMOR_MODULE_GROUPS = new Set(['armor coating', 'armor hardener', 'armor repair unit', 'armor reinforcer', 'energized armor layer', 'reactive armor hardener']);
 const SHIELD_MODULE_GROUPS = new Set(['shield booster', 'shield extender', 'shield hardener', 'shield recharger', 'shield flux coil', 'shield power relay']);
 const SCANNING_MODULE_GROUPS = new Set(['rig scanning', 'scan probe launcher', 'core probe launcher', 'expanded probe launcher', 'data analyzer', 'relic analyzer']);
@@ -52,7 +53,7 @@ export function categorizeAssetItem(meta: AssetItemMetadata): AssetCategoryInfo 
 
 function primaryCategory(meta: AssetItemMetadata, category: string, group: string): AssetCategoryKey {
   if (category === 'ship') {
-    if (MINING_SHIP_GROUP_IDS.has(meta.groupId) || MINING_SHIP_GROUPS.has(group)) return 'mining-ships';
+    if (MINING_SHIP_TYPE_IDS.has(meta.typeId) || MINING_SHIP_GROUP_IDS.has(meta.groupId) || MINING_SHIP_GROUPS.has(group)) return 'mining-ships';
     if (group.includes('frigate')) return 'frigates';
     if (group.includes('cruiser')) return 'cruisers';
     if (group.includes('battlecruiser')) return 'cruisers';

@@ -131,3 +131,26 @@ test('aggregateAssetSnapshot returns the asset snapshot aggregate', () => {
 
   assert.deepEqual(aggregateAssetSnapshot(input), buildAssetTree(input));
 });
+
+test('buildAssetTree clears a rejected two-node cyclic parent relationship', () => {
+  const assets: RawAssetInput[] = [
+    { itemId: 1, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 2, locationFlag: 'Cargo', locationType: 'item', unitValue: 100, pricingStatus: 'priced' },
+    { itemId: 2, typeId: 34, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material', quantity: 10, singleton: false, locationId: 1, locationFlag: 'Cargo', locationType: 'item', unitValue: 2, pricingStatus: 'priced' },
+  ];
+
+  const tree = buildAssetTree({
+    characterId: 123,
+    characterName: 'Asset Pilot',
+    lastRefreshedAt: null,
+    status: 'Ready',
+    error: null,
+    locations,
+    assets,
+  });
+
+  const root = tree.locations[0].assets[0];
+  assert.equal(root.itemId, 1);
+  assert.equal(root.parentItemId, null);
+  assert.equal(root.children[0].itemId, 2);
+  assert.equal(root.children[0].parentItemId, 1);
+});

@@ -59,6 +59,7 @@ export function aggregateAssetSnapshot(input: AssetSnapshotInput): AssetSnapshot
         parent.children.push(node);
         continue;
       }
+      node.parentItemId = null;
     }
     const roots = rootsByLocation.get(node.locationId) ?? [];
     roots.push(node);
