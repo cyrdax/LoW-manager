@@ -164,10 +164,10 @@ test('Postgres asset snapshot store parses JSONB objects and strings', async () 
 });
 
 test('Postgres status upserts retain the snapshot refresh timestamp', async () => {
-  const queries: string[] = [];
+  const queries: Array<{ text: string; values: unknown[] | undefined }> = [];
   const client = {
-    async query(text: string) {
-      queries.push(text);
+    async query(text: string, values?: unknown[]) {
+      queries.push({ text, values });
       return { rows: [] };
     },
   };
@@ -175,5 +175,8 @@ test('Postgres status upserts retain the snapshot refresh timestamp', async () =
 
   await store.recordPilotStatus('user-a', 123, 'Asset Pilot', 'Missing asset scope', null, 1_700_000_000_000);
 
-  assert.match(queries[1], /ON CONFLICT[\s\S]*last_refreshed_at = excluded\.last_refreshed_at/);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].text, /ON CONFLICT[\s\S]*last_refreshed_at = asset_snapshots\.last_refreshed_at/);
+  assert.match(queries[0].text, /jsonb_set\(asset_snapshots\.snapshot_json/);
+  assert.deepEqual(queries[0].values?.slice(0, 5), ['user-a', 123, 'Asset Pilot', 'Missing asset scope', null]);
 });

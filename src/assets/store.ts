@@ -141,25 +141,25 @@ export function createPostgresAssetSnapshotStore(client: QueryClient = getPostgr
     },
 
     async recordPilotStatus(userId, characterId, characterName, status, error, now) {
-      const existing = await client.query<{ snapshot_json: AssetSnapshot | string }>(`
-        SELECT snapshot_json FROM asset_snapshots WHERE user_id = $1 AND character_id = $2
-      `, [userId, characterId]);
-      const previous = existing.rows[0]?.snapshot_json;
-      const snapshot = previous
-        ? withPilotStatus(typeof previous === 'string' ? JSON.parse(previous) as AssetSnapshot : previous, characterName, status, error)
-        : emptySnapshot(characterId, characterName, status, error);
+      const snapshot = emptySnapshot(characterId, characterName, status, error);
       await client.query(`
         INSERT INTO asset_snapshots (
           user_id, character_id, character_name, status, error, last_refreshed_at, snapshot_json, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0), $7::jsonb, to_timestamp($8 / 1000.0))
+        ) VALUES ($1, $2, $3, $4, $5, NULL, $6::jsonb, to_timestamp($7 / 1000.0))
         ON CONFLICT(user_id, character_id) DO UPDATE SET
           character_name = excluded.character_name,
           status = excluded.status,
           error = excluded.error,
-          last_refreshed_at = excluded.last_refreshed_at,
-          snapshot_json = excluded.snapshot_json,
+          last_refreshed_at = asset_snapshots.last_refreshed_at,
+          snapshot_json = jsonb_set(
+            jsonb_set(
+              jsonb_set(asset_snapshots.snapshot_json, '{pilot,characterName}', to_jsonb(excluded.character_name), true),
+              '{pilot,status}', to_jsonb(excluded.status), true
+            ),
+            '{pilot,error}', CASE WHEN excluded.error IS NULL THEN 'null'::jsonb ELSE to_jsonb(excluded.error) END, true
+          ),
           updated_at = excluded.updated_at
-      `, [userId, characterId, characterName, status, error, snapshot.pilot.lastRefreshedAt, JSON.stringify(snapshot), now]);
+      `, [userId, characterId, characterName, status, error, JSON.stringify(snapshot), now]);
     },
 
     async deleteForUser(userId) {

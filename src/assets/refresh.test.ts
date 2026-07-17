@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { migrateCharactersDb } from '../characters/store.ts';
+import type { CharacterRow } from '../types.ts';
 import { refreshAllAssets, refreshPilotAssets, summarizeAssets } from './refresh.ts';
 import { createSqliteAssetSnapshotStore, migrateAssetSnapshotsDb } from './store.ts';
 
@@ -30,11 +31,20 @@ const character = {
   is_boss: 0 as const,
 };
 
+function ownedCharacters(...characters: CharacterRow[]) {
+  return {
+    getOwned: async (userId: string, characterId: number) => (
+      characters.find(character => character.user_id === userId && character.character_id === characterId)
+    ),
+  };
+}
+
 test('refreshPilotAssets stores a priced nested snapshot for one pilot', async () => {
   const snapshots = store();
   const result = await refreshPilotAssets({
     userId: 'user-a',
     character,
+    characterStore: ownedCharacters(character),
     store: snapshots,
     now: () => 1_700_000_000_000,
     fetchAssets: async () => [
@@ -78,6 +88,7 @@ test('refreshPilotAssets records missing asset scope without calling ESI', async
   const result = await refreshPilotAssets({
     userId: 'user-a',
     character: { ...character, scopes: 'esi-location.read_location.v1' },
+    characterStore: ownedCharacters({ ...character, scopes: 'esi-location.read_location.v1' }),
     store: snapshots,
     now: () => 1_700_000_000_000,
     fetchAssets: async () => {
@@ -96,6 +107,7 @@ test('refreshPilotAssets records needs re-auth without calling ESI', async () =>
   const result = await refreshPilotAssets({
     userId: 'user-a',
     character: { ...character, needs_reauth: 1 },
+    characterStore: ownedCharacters({ ...character, needs_reauth: 1 }),
     store: snapshots,
     fetchAssets: async () => {
       called = true;
@@ -107,12 +119,13 @@ test('refreshPilotAssets records needs re-auth without calling ESI', async () =>
   assert.equal(result.pilot.status, 'Needs re-auth');
 });
 
-test('refreshPilotAssets rejects a character owned by another user before calling ESI or writing a snapshot', async () => {
+test('refreshPilotAssets rejects a forged character row before calling ESI or writing a snapshot', async () => {
   const snapshots = store();
   let called = false;
   const result = await refreshPilotAssets({
     userId: 'user-a',
-    character: { ...character, user_id: 'user-b' },
+    character: { ...character, character_id: 999, character_name: 'Forged Pilot' },
+    characterStore: ownedCharacters(character),
     store: snapshots,
     fetchAssets: async () => {
       called = true;
@@ -132,6 +145,7 @@ test('refreshPilotAssets keeps blueprint copies unpriced when originals share th
   const result = await refreshPilotAssets({
     userId: 'user-a',
     character,
+    characterStore: ownedCharacters(character),
     store: snapshots,
     fetchAssets: async () => [
       { item_id: 1, type_id: 100, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: true, is_blueprint_copy: true },
@@ -170,7 +184,7 @@ test('refreshPilotAssets keeps blueprint copies unpriced when originals share th
 test('refreshPilotAssets preserves a cached snapshot when asset scope is lost', async () => {
   const snapshots = store();
   const previous = await refreshPilotAssets({
-    userId: 'user-a', character, store: snapshots, now: () => 100,
+    userId: 'user-a', character, characterStore: ownedCharacters(character), store: snapshots, now: () => 100,
     fetchAssets: async () => [{ item_id: 1, type_id: 34, quantity: 10, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: false }],
     resolveItem: typeId => ({ typeId, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material' }),
     resolveLocation: async () => ({ locationId: 60003760, name: 'Jita', type: 'station', status: 'resolved' }),
@@ -181,26 +195,35 @@ test('refreshPilotAssets preserves a cached snapshot when asset scope is lost', 
     }),
   });
   const result = await refreshPilotAssets({
-    userId: 'user-a', character: { ...character, scopes: '' }, store: snapshots, now: () => 200,
+    userId: 'user-a', character: { ...character, scopes: '' }, characterStore: ownedCharacters({ ...character, scopes: '' }), store: snapshots, now: () => 200,
   });
 
   assert.equal(result.pilot.status, 'Missing asset scope');
   assert.equal(result.pilot.lastRefreshedAt, previous.pilot.lastRefreshedAt);
   assert.equal(result.locations.length, 1);
   assert.equal((await snapshots.listSnapshots('user-a'))[0].locations.length, 1);
+
+  const reauth = await refreshPilotAssets({
+    userId: 'user-a', character: { ...character, needs_reauth: 1 },
+    characterStore: ownedCharacters({ ...character, needs_reauth: 1 }), store: snapshots, now: () => 300,
+  });
+
+  assert.equal(reauth.pilot.status, 'Needs re-auth');
+  assert.equal(reauth.pilot.lastRefreshedAt, previous.pilot.lastRefreshedAt);
+  assert.equal(reauth.locations.length, 1);
 });
 
 test('refreshPilotAssets preserves a cached snapshot when refresh fails', async () => {
   const snapshots = store();
   await refreshPilotAssets({
-    userId: 'user-a', character, store: snapshots, now: () => 100,
+    userId: 'user-a', character, characterStore: ownedCharacters(character), store: snapshots, now: () => 100,
     fetchAssets: async () => [{ item_id: 1, type_id: 34, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: false }],
     resolveItem: typeId => ({ typeId, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material' }),
     resolveLocation: async () => ({ locationId: 60003760, name: 'Jita', type: 'station', status: 'resolved' }),
     quoteItems: async () => ({ hub: 'jita', systemName: 'Jita', regionName: 'The Forge', fetchedAt: 1, totalCost: 0, counts: { ok: 0, partial: 0, noOrders: 1, unknown: 0 }, items: [] }),
   });
   const result = await refreshPilotAssets({
-    userId: 'user-a', character, store: snapshots, now: () => 200,
+    userId: 'user-a', character, characterStore: ownedCharacters(character), store: snapshots, now: () => 200,
     fetchAssets: async () => { throw new Error('ESI unavailable'); },
   });
 
@@ -214,7 +237,7 @@ test('refreshPilotAssets falls back for a failed root location and never resolve
   const snapshots = store();
   const resolvedLocationIds: number[] = [];
   const result = await refreshPilotAssets({
-    userId: 'user-a', character, store: snapshots,
+    userId: 'user-a', character, characterStore: ownedCharacters(character), store: snapshots,
     fetchAssets: async () => [
       { item_id: 1, type_id: 34, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: false },
       { item_id: 2, type_id: 34, quantity: 1, location_id: 30000142, location_type: 'solar_system', location_flag: 'Hangar', is_singleton: false },
@@ -243,6 +266,7 @@ test('refreshAllAssets limits concurrency and returns per-pilot results', async 
   const results = await refreshAllAssets({
     userId: 'user-a',
     characters,
+    characterStore: ownedCharacters(...characters),
     store: snapshots,
     concurrency: 2,
     now: () => 1_700_000_000_000,
@@ -267,11 +291,11 @@ test('refreshAllAssets limits concurrency and returns per-pilot results', async 
   assert.equal(maxActive, 2);
 });
 
-test('refreshAllAssets rejects foreign characters before delegating refresh', async () => {
+test('refreshAllAssets validates ownership before delegating to a custom refresher', async () => {
   const snapshots = store();
   let delegated = false;
   const [result] = await refreshAllAssets({
-    userId: 'user-a', characters: [{ ...character, user_id: 'user-b' }], store: snapshots,
+    userId: 'user-a', characters: [character], characterStore: ownedCharacters(), store: snapshots,
     refreshOne: async () => {
       delegated = true;
       throw new Error('should not run');
@@ -281,6 +305,34 @@ test('refreshAllAssets rejects foreign characters before delegating refresh', as
   assert.equal(delegated, false);
   assert.equal(result.pilot.status, 'Error');
   assert.deepEqual(await snapshots.listSnapshots('user-a'), []);
+});
+
+test('refreshAllAssets falls back to default concurrency for non-finite values', async () => {
+  const snapshots = store();
+  const characters = [1, 2, 3].map(id => ({ ...character, character_id: id }));
+  let active = 0;
+  let maxActive = 0;
+
+  await refreshAllAssets({
+    userId: 'user-a', characters, characterStore: ownedCharacters(...characters), store: snapshots,
+    concurrency: Number.NaN,
+    refreshOne: async input => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      active--;
+      return {
+        pilot: {
+          characterId: input.character.character_id, characterName: input.character.character_name,
+          status: 'Ready', error: null, lastRefreshedAt: null, locationCount: 0,
+          itemCount: 0, stackCount: 0, pricedValue: 0, totalValue: 0, unpricedStacks: 0,
+        },
+        locations: [], categories: [],
+      };
+    },
+  });
+
+  assert.equal(maxActive, 3);
 });
 
 test('summarizeAssets builds dashboard totals across snapshots', () => {

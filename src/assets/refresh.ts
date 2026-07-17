@@ -1,4 +1,5 @@
 import type { CharacterRow } from '../types.ts';
+import type { AsyncCharacterStore } from '../characters/store.ts';
 import { getCharacterAssets, type EsiCharacterAsset } from '../esi/assets.ts';
 import { resolveStation, resolveStructure, resolveSystem } from '../esi/universe.ts';
 import { resolveItemByTypeId } from '../fits/metadata.ts';
@@ -17,6 +18,7 @@ import type {
 export interface RefreshPilotAssetsInput {
   userId: string;
   character: CharacterRow;
+  characterStore: Pick<AsyncCharacterStore, 'getOwned'>;
   store: AssetSnapshotStore;
   now?: () => number;
   fetchAssets?: (characterId: number) => Promise<EsiCharacterAsset[]>;
@@ -38,19 +40,18 @@ export interface AssetDashboardResponse extends AssetValueSummary {
 }
 
 export async function refreshPilotAssets(input: RefreshPilotAssetsInput): Promise<AssetSnapshot> {
-  const { character } = input;
-
-  if (!character.user_id || character.user_id !== input.userId) {
-    return rejectedSnapshot(character, 'Character does not belong to this user.');
+  const character = await input.characterStore.getOwned(input.userId, input.character.character_id);
+  if (!character) {
+    return rejectedSnapshot(input.character, 'Character does not belong to this user.');
   }
 
   const now = input.now ?? Date.now;
 
   if (character.needs_reauth === 1) {
-    return recordStatus(input, 'Needs re-auth', 'Pilot needs re-authentication.', now());
+    return recordStatus({ ...input, character }, 'Needs re-auth', 'Pilot needs re-authentication.', now());
   }
   if (!character.scopes.split(/\s+/).includes('esi-assets.read_assets.v1')) {
-    return recordStatus(input, 'Missing asset scope', 'Pilot is missing esi-assets.read_assets.v1. Click Add character to re-auth.', now());
+    return recordStatus({ ...input, character }, 'Missing asset scope', 'Pilot is missing esi-assets.read_assets.v1. Click Add character to re-auth.', now());
   }
 
   try {
@@ -77,14 +78,16 @@ export async function refreshPilotAssets(input: RefreshPilotAssetsInput): Promis
     return snapshot;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return recordStatus(input, 'Error', message, now());
+    return recordStatus({ ...input, character }, 'Error', message, now());
   }
 }
 
 export async function refreshAllAssets(input: RefreshAllAssetsInput): Promise<AssetSnapshot[]> {
   const refreshOne = input.refreshOne ?? refreshPilotAssets;
   const results = new Array<AssetSnapshot>(input.characters.length);
-  const concurrency = Math.max(1, Math.floor(input.concurrency ?? 3));
+  const concurrency = Number.isFinite(input.concurrency) && input.concurrency! > 0
+    ? Math.max(1, Math.floor(input.concurrency!))
+    : 3;
   let cursor = 0;
 
   async function worker() {
@@ -92,10 +95,11 @@ export async function refreshAllAssets(input: RefreshAllAssetsInput): Promise<As
       const index = cursor++;
       if (index >= input.characters.length) return;
       const { characters, concurrency: _concurrency, refreshOne: _refreshOne, ...shared } = input;
-      const character = characters[index];
-      results[index] = !character.user_id || character.user_id !== input.userId
-        ? rejectedSnapshot(character, 'Character does not belong to this user.')
-        : await refreshOne({ ...shared, character });
+      const requestedCharacter = characters[index];
+      const character = await input.characterStore.getOwned(input.userId, requestedCharacter.character_id);
+      results[index] = character
+        ? await refreshOne({ ...shared, character })
+        : rejectedSnapshot(requestedCharacter, 'Character does not belong to this user.');
     }
   }
 
