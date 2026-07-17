@@ -120,6 +120,20 @@ CREATE TABLE IF NOT EXISTS character_status_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_character_status_snapshots_user ON character_status_snapshots(user_id, updated_at);
 
+CREATE TABLE IF NOT EXISTS asset_snapshots (
+  user_id            uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  character_id       bigint NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
+  character_name     text NOT NULL,
+  status             text NOT NULL,
+  error              text,
+  last_refreshed_at  timestamptz,
+  snapshot_json      jsonb NOT NULL,
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, character_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asset_snapshots_user ON asset_snapshots(user_id);
+
 CREATE TABLE IF NOT EXISTS universe_names (
   category text NOT NULL,
   id bigint NOT NULL,

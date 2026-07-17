@@ -86,6 +86,16 @@ test('library tables use numeric ids expected by route params', () => {
   assert.match(tableBlock(sql, 'doctrine_fits'), /fit_id bigint NOT NULL REFERENCES saved_fits\(id\)/);
 });
 
+test('asset snapshots are scoped to users and characters', () => {
+  const sql = readFileSync(resolve('src/db/migrations/0001_multi_tenant_foundation.sql'), 'utf8');
+  const block = tableBlock(sql, 'asset_snapshots');
+
+  assert.match(block, /user_id\s+uuid NOT NULL REFERENCES app_users\(id\) ON DELETE CASCADE/);
+  assert.match(block, /character_id\s+bigint NOT NULL REFERENCES characters\(character_id\) ON DELETE CASCADE/);
+  assert.match(block, /snapshot_json\s+jsonb NOT NULL/);
+  assert.match(block, /PRIMARY KEY \(user_id, character_id\)/);
+});
+
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
