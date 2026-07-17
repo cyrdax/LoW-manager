@@ -65,3 +65,18 @@ Commands run and results:
 - `npm test`: 201 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` were not configured.
 - `npm run typecheck`: passed, exit code 0.
 - `git diff --check`: passed, exit code 0.
+
+## Fourth Fix Report (2026-07-17)
+
+Fixed the armor and shield category coverage review finding:
+- Expanded stable armor group-ID mappings for Energized Armor Membranes, Remote Armor Repairers, Rig Armor, Armor Resistance Shift Hardeners, and Ancillary Armor Repairers.
+- Expanded stable shield group-ID mappings for Shield Resistance Amplifiers, Rig Shield, and Ancillary Shield Boosters.
+- Added metadata-backed regressions for Multispectrum Energized Membrane II, Reactive Armor Hardener, Medium Ancillary Armor Repairer, Large Remote Armor Repairer II, Medium Trimark Armor Pump II, EM Shield Amplifier II, Medium Ancillary Shield Booster, and Medium Core Defense Field Extender II.
+- Existing Sensor Booster II coverage remains `modules`; mining, capital, scanning, and other metadata regressions remain in the focused suite.
+
+Commands run and results:
+- `node --import tsx --test src/assets/categories.test.ts`: 5 passed and 1 failed before the fix, reproducing the missing armor category mapping; 6 passed, 0 failed after the fix.
+- `node --import tsx --test src/assets/categories.test.ts src/assets/tree.test.ts src/fits/metadata.test.ts`: 16 passed, 0 failed.
+- `npm test`: 202 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` were not configured.
+- `npm run typecheck`: passed, exit code 0.
+- `git diff --check`: passed, exit code 0.

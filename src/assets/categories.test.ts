@@ -67,3 +67,22 @@ test('categorizeAssetItem classifies real bundled metadata by stable groups', ()
     assert.equal(item && categorizeAssetItem(item).primary, expected);
   }
 });
+
+test('categorizeAssetItem classifies published armor and shield module groups', () => {
+  const cases = [
+    [11269, 'Multispectrum Energized Membrane II', 'armor-modules'],
+    [4403, 'Reactive Armor Hardener', 'armor-modules'],
+    [33101, 'Medium Ancillary Armor Repairer', 'armor-modules'],
+    [26914, 'Large Remote Armor Repairer II', 'armor-modules'],
+    [31059, 'Medium Trimark Armor Pump II', 'armor-modules'],
+    [2553, 'EM Shield Amplifier II', 'shield-modules'],
+    [32772, 'Medium Ancillary Shield Booster', 'shield-modules'],
+    [31796, 'Medium Core Defense Field Extender II', 'shield-modules'],
+  ] as const;
+
+  for (const [typeId, name, expected] of cases) {
+    const item = resolveItemByTypeId(typeId);
+    assert.equal(item?.name, name);
+    assert.equal(item && categorizeAssetItem(item).primary, expected);
+  }
+});
