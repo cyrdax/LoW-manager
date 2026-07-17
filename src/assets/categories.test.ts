@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { categorizeAssetItem } from './categories.ts';
+import { resolveItemByTypeId } from '../fits/metadata.ts';
 
 test('categorizeAssetItem maps broad v1 asset dashboard groups', () => {
   assert.equal(categorizeAssetItem({ typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship' }).primary, 'frigates');
@@ -47,4 +48,22 @@ test('categorizeAssetItem does not treat sensor boosters as shield modules', () 
     categoryId: 7,
     categoryName: 'Module',
   }).primary, 'modules');
+});
+
+test('categorizeAssetItem classifies real bundled metadata by stable groups', () => {
+  const cases = [
+    [77281, 'Hubris', 'capitals'],
+    [20353, '1600mm Steel Plates II', 'armor-modules'],
+    [24443, 'Shield Boost Amplifier II', 'shield-modules'],
+    [4405, 'Drone Damage Amplifier II', 'weapon-upgrades'],
+    [1952, 'Sensor Booster II', 'modules'],
+    [25930, 'Large Emission Scope Sharpener I', 'scanning'],
+    [34, 'Tritanium', 'minerals'],
+  ] as const;
+
+  for (const [typeId, name, expected] of cases) {
+    const item = resolveItemByTypeId(typeId);
+    assert.equal(item?.name, name);
+    assert.equal(item && categorizeAssetItem(item).primary, expected);
+  }
 });

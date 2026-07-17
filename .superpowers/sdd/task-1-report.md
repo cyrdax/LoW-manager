@@ -48,3 +48,20 @@ Commands run and results:
 - `npm test`: 199 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` were not configured.
 - `npm run typecheck`: passed, exit code 0.
 - `git diff --check`: passed, exit code 0.
+
+## Third Fix Report (2026-07-17)
+
+Fixed the final Task 1 review findings:
+- Fuzzwork supplementation now constructs and indexes every published item by type ID before conditionally preserving the first item-name match. This resolves duplicate-name IDs such as `42162` (`Catalyst Serpentis SKIN`) without changing name lookup behavior.
+- Replaced the primary capital and module classification rules with stable group-ID mappings. Real bundled metadata now classifies Hubris (Lancer Dreadnought) as `capitals`, 1600mm Steel Plates II as `armor-modules`, Shield Boost Amplifier II as `shield-modules`, and Drone Damage Amplifier II as `weapon-upgrades`.
+- Kept narrow exact group-name fallbacks for compatibility with legacy metadata fixtures, while production Fuzzwork data follows group IDs. Venture/Prospect, Sensor Booster II, scanning rigs, and minerals retain their expected categories.
+
+Tests added:
+- Duplicate Fuzzwork item-name regression for `resolveItemByTypeId(42162)`.
+- Metadata-backed asset-category regressions for the published Hubris, armor plate, shield boost amplifier, drone damage amplifier, scanning rig, mineral, and sensor booster entries.
+
+Commands run and results:
+- `node --import tsx --test src/assets/categories.test.ts src/assets/tree.test.ts src/fits/metadata.test.ts`: 15 passed, 0 failed.
+- `npm test`: 201 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` were not configured.
+- `npm run typecheck`: passed, exit code 0.
+- `git diff --check`: passed, exit code 0.

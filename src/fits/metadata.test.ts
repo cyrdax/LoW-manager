@@ -45,4 +45,10 @@ describe('fit metadata', () => {
     assert.equal(tritanium?.name, 'Tritanium');
     assert.equal(tritanium?.groupName, 'Mineral');
   });
+
+  it('indexes every published Fuzzwork item ID even when names collide', () => {
+    const skin = resolveItemByTypeId(42162);
+    assert.equal(skin?.name, 'Catalyst Serpentis SKIN');
+    assert.equal(skin?.typeId, 42162);
+  });
 });

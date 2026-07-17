@@ -163,7 +163,6 @@ function supplementItemsFromFuzzwork(itemsByName: Map<string, FitItem>, itemsByI
     const name = row[2] ?? '';
     if (!Number.isFinite(typeId) || !Number.isFinite(groupId) || !name) continue;
     const key = normalizeName(name);
-    if (itemsByName.has(key)) continue;
     const group = groups.get(groupId);
     if (!group) continue;
     const item: FitItem = {
@@ -174,8 +173,8 @@ function supplementItemsFromFuzzwork(itemsByName: Map<string, FitItem>, itemsByI
       categoryId: group.categoryId,
       categoryName: categories.get(group.categoryId) ?? '',
     };
-    itemsByName.set(key, item);
     itemsById.set(typeId, item);
+    if (!itemsByName.has(key)) itemsByName.set(key, item);
   }
 }
 

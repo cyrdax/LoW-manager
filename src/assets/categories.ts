@@ -23,10 +23,15 @@ export const ASSET_CATEGORY_LABELS: Record<AssetCategoryKey, string> = {
   other: 'Other',
 };
 
-const CAPITAL_GROUPS = new Set(['carrier', 'dreadnought', 'force auxiliary', 'supercarrier', 'titan', 'capital industrial ship']);
+const CAPITAL_GROUP_IDS = new Set([30, 485, 547, 659, 883, 1538, 4594]);
 const MINING_SHIP_TYPE_IDS = new Set([32880]);
 const MINING_SHIP_GROUP_IDS = new Set([463, 543, 941, 1283]);
 const MINING_SHIP_GROUPS = new Set(['mining barge', 'exhumer', 'industrial command ship', 'expedition frigate']);
+const ARMOR_MODULE_GROUP_IDS = new Set([62, 328, 329]);
+const SHIELD_MODULE_GROUP_IDS = new Set([38, 39, 40, 57, 77, 338, 770]);
+const SCANNING_MODULE_GROUP_IDS = new Set([481, 1233]);
+const CPU_POWERGRID_MODULE_GROUP_IDS = new Set([285, 766, 769]);
+const WEAPON_UPGRADE_MODULE_GROUP_IDS = new Set([59, 205, 211, 302, 367, 645]);
 const ARMOR_MODULE_GROUPS = new Set(['armor coating', 'armor hardener', 'armor repair unit', 'armor reinforcer', 'energized armor layer', 'reactive armor hardener']);
 const SHIELD_MODULE_GROUPS = new Set(['shield booster', 'shield extender', 'shield hardener', 'shield recharger', 'shield flux coil', 'shield power relay']);
 const SCANNING_MODULE_GROUPS = new Set(['rig scanning', 'scan probe launcher', 'core probe launcher', 'expanded probe launcher', 'data analyzer', 'relic analyzer']);
@@ -58,7 +63,7 @@ function primaryCategory(meta: AssetItemMetadata, category: string, group: strin
     if (group.includes('cruiser')) return 'cruisers';
     if (group.includes('battlecruiser')) return 'cruisers';
     if (group.includes('battleship')) return 'battleships';
-    if (CAPITAL_GROUPS.has(group)) return 'capitals';
+    if (CAPITAL_GROUP_IDS.has(meta.groupId)) return 'capitals';
     return 'ships';
   }
   if (category === 'implant') return 'implants';
@@ -69,11 +74,11 @@ function primaryCategory(meta: AssetItemMetadata, category: string, group: strin
   if (group.includes('planetary') || group.includes('commodity')) return 'pi';
   if (category === 'material') return 'materials';
   if (category === 'module') {
-    if (SCANNING_MODULE_GROUPS.has(group)) return 'scanning';
-    if (CPU_POWERGRID_MODULE_GROUPS.has(group)) return 'cpu-powergrid';
-    if (WEAPON_UPGRADE_MODULE_GROUPS.has(group)) return 'weapon-upgrades';
-    if (ARMOR_MODULE_GROUPS.has(group)) return 'armor-modules';
-    if (SHIELD_MODULE_GROUPS.has(group)) return 'shield-modules';
+    if (SCANNING_MODULE_GROUP_IDS.has(meta.groupId) || SCANNING_MODULE_GROUPS.has(group)) return 'scanning';
+    if (CPU_POWERGRID_MODULE_GROUP_IDS.has(meta.groupId) || CPU_POWERGRID_MODULE_GROUPS.has(group)) return 'cpu-powergrid';
+    if (WEAPON_UPGRADE_MODULE_GROUP_IDS.has(meta.groupId) || WEAPON_UPGRADE_MODULE_GROUPS.has(group)) return 'weapon-upgrades';
+    if (ARMOR_MODULE_GROUP_IDS.has(meta.groupId) || ARMOR_MODULE_GROUPS.has(group)) return 'armor-modules';
+    if (SHIELD_MODULE_GROUP_IDS.has(meta.groupId) || SHIELD_MODULE_GROUPS.has(group)) return 'shield-modules';
     return 'modules';
   }
   return 'other';
