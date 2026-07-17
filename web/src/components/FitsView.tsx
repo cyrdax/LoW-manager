@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
 import {
   copyFitToPrivate,
   deleteFit,
@@ -270,6 +270,37 @@ function SavedFitsView({
     selectPyfaImage(event.dataTransfer.files?.[0] ?? null);
   };
 
+  const handlePyfaPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const file = imageFileFromList(event.clipboardData.files);
+    if (!file) {
+      setImportError('Clipboard does not contain an image.');
+      return;
+    }
+    event.preventDefault();
+    selectPyfaImage(file);
+  };
+
+  const pastePyfaImageFromClipboard = async () => {
+    if (!navigator.clipboard?.read) {
+      setImportError('Clipboard image paste is not supported in this browser. Use Ctrl+V or choose an image.');
+      return;
+    }
+    setImportError(null);
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const mimeType = item.types.find(isPyfaImageMimeType);
+        if (!mimeType) continue;
+        const blob = await item.getType(mimeType);
+        selectPyfaImage(new File([blob], `clipboard.${imageExtension(mimeType)}`, { type: mimeType }));
+        return;
+      }
+      setImportError('Clipboard does not contain an image.');
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to read clipboard image.');
+    }
+  };
+
   const extractPyfaImage = async () => {
     if (pyfaBusy || !pyfaImage) return;
     if (!isPyfaImageMimeType(pyfaImage.type)) {
@@ -524,12 +555,15 @@ function SavedFitsView({
           {importMode === 'pyfa-image' && (
             <div
               className={`fits-import-drop${pyfaDragging ? ' dragging' : ''}`}
+              tabIndex={0}
               onDragOver={event => { event.preventDefault(); setPyfaDragging(true); }}
               onDragLeave={() => setPyfaDragging(false)}
               onDrop={handlePyfaDrop}
+              onPaste={handlePyfaPaste}
             >
               <strong>{pyfaImage ? pyfaImage.name : 'Drop a pyfa screenshot'}</strong>
-              <span>PNG, JPEG, or WebP. Only visible rows are extracted.</span>
+              <span>Drop, choose, or press Ctrl+V / Cmd+V. Only visible rows are extracted.</span>
+              <button type="button" className="fits-import-file" onClick={pastePyfaImageFromClipboard} disabled={pyfaBusy}>Paste from Clipboard</button>
               <label className="fits-import-file">
                 Choose image
                 <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handlePyfaFileInput} />
@@ -777,6 +811,16 @@ function PriceLine({ label, value, strong }: { label: string; value: number; str
 
 function isPyfaImageMimeType(value: string): value is PyfaImageImportRequest['mimeType'] {
   return value === 'image/png' || value === 'image/jpeg' || value === 'image/webp';
+}
+
+function imageFileFromList(files: FileList): File | null {
+  return Array.from(files).find(file => isPyfaImageMimeType(file.type)) ?? null;
+}
+
+function imageExtension(mimeType: PyfaImageImportRequest['mimeType']): string {
+  if (mimeType === 'image/jpeg') return 'jpg';
+  if (mimeType === 'image/webp') return 'webp';
+  return 'png';
 }
 
 function readFileBase64(file: File): Promise<string> {

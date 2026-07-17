@@ -38,3 +38,15 @@ test('fit import modal supports pyfa screenshot extraction into existing preview
   assert.match(fitsView, /pyfaWarnings\.map/);
   assert.match(fitsView, /previewFit\(importText\)/);
 });
+
+test('fit import modal accepts pyfa screenshots from paste and clipboard button', () => {
+  const fitsView = readFileSync(resolve('web/src/components/FitsView.tsx'), 'utf8');
+
+  assert.match(fitsView, /handlePyfaPaste/);
+  assert.match(fitsView, /onPaste=\{handlePyfaPaste\}/);
+  assert.match(fitsView, /tabIndex=\{0\}/);
+  assert.match(fitsView, /pastePyfaImageFromClipboard/);
+  assert.match(fitsView, /navigator\.clipboard\.read/);
+  assert.match(fitsView, />Paste from Clipboard</);
+  assert.match(fitsView, /setImportError\('Clipboard does not contain an image\.'\)/);
+});
