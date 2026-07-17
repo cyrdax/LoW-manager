@@ -126,7 +126,7 @@ test('refreshPilotAssets rejects a character owned by another user before callin
   assert.deepEqual(await snapshots.listSnapshots('user-a'), []);
 });
 
-test('refreshPilotAssets leaves blueprint copies unpriced and excludes them from market quotes', async () => {
+test('refreshPilotAssets keeps blueprint copies unpriced when originals share their type ID', async () => {
   const snapshots = store();
   let quotedTypeIds: Array<number | null> = [];
   const result = await refreshPilotAssets({
@@ -135,7 +135,7 @@ test('refreshPilotAssets leaves blueprint copies unpriced and excludes them from
     store: snapshots,
     fetchAssets: async () => [
       { item_id: 1, type_id: 100, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: true, is_blueprint_copy: true },
-      { item_id: 2, type_id: 101, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: true },
+      { item_id: 2, type_id: 100, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: true },
     ],
     resolveItem: typeId => ({ typeId, name: `Blueprint ${typeId}`, groupId: 2, groupName: 'Blueprint', categoryId: 9, categoryName: 'Blueprint' }),
     resolveLocation: async () => ({ locationId: 60003760, name: 'Jita', type: 'station', status: 'resolved' }),
@@ -154,10 +154,16 @@ test('refreshPilotAssets leaves blueprint copies unpriced and excludes them from
   });
 
   const copy = result.locations[0].assets.find(asset => asset.itemId === 1)!;
-  assert.deepEqual(quotedTypeIds, [101]);
+  const original = result.locations[0].assets.find(asset => asset.itemId === 2)!;
+  const storedCopy = (await snapshots.listSnapshots('user-a'))[0].locations[0].assets.find(asset => asset.itemId === 1)!;
+  assert.deepEqual(quotedTypeIds, [100]);
   assert.equal(copy.pricingStatus, 'unpriced');
   assert.equal(copy.unitValue, null);
   assert.equal(copy.stackValue, 0);
+  assert.equal(copy.blueprintCopy, true);
+  assert.equal(storedCopy.blueprintCopy, true);
+  assert.equal(original.pricingStatus, 'priced');
+  assert.equal(original.unitValue, 50);
   assert.equal(result.pilot.unpricedStacks, 1);
 });
 

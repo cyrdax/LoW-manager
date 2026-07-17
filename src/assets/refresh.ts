@@ -68,7 +68,9 @@ export async function refreshPilotAssets(input: RefreshPilotAssetsInput): Promis
       locations,
       assets: normalized.map(asset => ({
         ...asset,
-        ...(unitPrices.get(asset.typeId) ?? { unitValue: null, pricingStatus: 'unpriced' }),
+        ...(asset.blueprintCopy
+          ? { unitValue: null, pricingStatus: 'unpriced' as const }
+          : unitPrices.get(asset.typeId) ?? { unitValue: null, pricingStatus: 'unpriced' as const }),
       })),
     });
     await input.store.replaceSnapshot(input.userId, snapshot);

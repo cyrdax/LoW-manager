@@ -60,6 +60,7 @@ export interface AssetTreeNode extends AssetValueSummary {
   unitValue: number | null;
   stackValue: number;
   pricingStatus: AssetPricingStatus;
+  blueprintCopy: boolean;
   singleton: boolean;
   parentItemId: number | null;
   locationId: number;

@@ -37,6 +37,7 @@ export function aggregateAssetSnapshot(input: AssetSnapshotInput): AssetSnapshot
       unitValue: raw.unitValue,
       stackValue,
       pricingStatus: raw.pricingStatus,
+      blueprintCopy: raw.blueprintCopy === true,
       singleton: raw.singleton,
       parentItemId: raw.locationType === 'item' ? raw.locationId : null,
       locationId: raw.locationId,
