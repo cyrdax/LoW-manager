@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
-import { getShipLayout, parseCsvRows, resolveItemByName, resolveShipByName, searchFitShips } from './metadata.ts';
+import { getShipLayout, parseCsvRows, resolveItemByName, resolveItemByTypeId, resolveShipByName, searchFitShips } from './metadata.ts';
 
 describe('fit metadata', () => {
   it('resolves provided example ships and items', () => {
@@ -38,5 +38,11 @@ describe('fit metadata', () => {
     const source = readFileSync(resolve('src/fits/metadata.ts'), 'utf8');
     assert.match(source, /function readCsvRows\(name: string\): Iterable<string\[\]>/);
     assert.doesNotMatch(source, /function readCsv\(name: string\): string\[\]\[\]/);
+  });
+
+  it('resolves item metadata by type id for asset imports', () => {
+    const tritanium = resolveItemByTypeId(34);
+    assert.equal(tritanium?.name, 'Tritanium');
+    assert.equal(tritanium?.groupName, 'Mineral');
   });
 });

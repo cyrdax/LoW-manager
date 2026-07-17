@@ -18,6 +18,7 @@ interface MetadataCache {
   shipsByName: Map<string, FitShip>;
   shipsById: Map<number, FitShip>;
   itemsByName: Map<string, FitItem>;
+  itemsById: Map<number, FitItem>;
   layoutsById: Map<number, Partial<Record<SlotKey, number>>>;
 }
 
@@ -33,6 +34,10 @@ export function resolveShipByTypeId(typeId: number): FitShip | null {
 
 export function resolveItemByName(name: string): FitItem | null {
   return getCache().itemsByName.get(normalizeName(name)) ?? null;
+}
+
+export function resolveItemByTypeId(typeId: number): FitItem | null {
+  return getCache().itemsById.get(typeId) ?? null;
 }
 
 export function searchFitShips(query: string, limit = 20): FitShipSearchHit[] {
@@ -92,6 +97,7 @@ function getCache(): MetadataCache {
   const shipsByName = new Map<string, FitShip>();
   const shipsById = new Map<number, FitShip>();
   const itemsByName = new Map<string, FitItem>();
+  const itemsById = new Map<number, FitItem>();
 
   for (const [id, ship] of Object.entries(mastery.ships)) {
     const typeId = Number(id);
@@ -107,28 +113,31 @@ function getCache(): MetadataCache {
 
   for (const [id, item] of Object.entries(mastery.items)) {
     const typeId = Number(id);
-    itemsByName.set(normalizeName(item.name), {
+    const fitItem: FitItem = {
       typeId,
       name: item.name,
       groupId: item.groupId,
       groupName: item.groupName,
       categoryId: item.categoryId,
       categoryName: item.categoryName,
-    });
+    };
+    itemsByName.set(normalizeName(fitItem.name), fitItem);
+    itemsById.set(typeId, fitItem);
   }
 
-  supplementItemsFromFuzzwork(itemsByName);
+  supplementItemsFromFuzzwork(itemsByName, itemsById);
 
   cache = {
     shipsByName,
     shipsById,
     itemsByName,
+    itemsById,
     layoutsById: loadLayouts(),
   };
   return cache;
 }
 
-function supplementItemsFromFuzzwork(itemsByName: Map<string, FitItem>): void {
+function supplementItemsFromFuzzwork(itemsByName: Map<string, FitItem>, itemsById: Map<number, FitItem>): void {
   const groups = new Map<number, { categoryId: number; groupName: string }>();
   for (const row of readCsvRows('invGroups.csv')) {
     if (row[0] === 'groupID') continue;
@@ -157,14 +166,16 @@ function supplementItemsFromFuzzwork(itemsByName: Map<string, FitItem>): void {
     if (itemsByName.has(key)) continue;
     const group = groups.get(groupId);
     if (!group) continue;
-    itemsByName.set(key, {
+    const item: FitItem = {
       typeId,
       name,
       groupId,
       groupName: group.groupName,
       categoryId: group.categoryId,
       categoryName: categories.get(group.categoryId) ?? '',
-    });
+    };
+    itemsByName.set(key, item);
+    itemsById.set(typeId, item);
   }
 }
 
