@@ -6,15 +6,20 @@ import type { EncryptedSecret } from '../auth/secret-box.ts';
 
 class FakeClient implements QueryClient {
   rows = new Map<number, PgCharacterRow>();
+  queries: Array<{ text: string; params?: readonly unknown[] }> = [];
   inTransaction = false;
 
   async query<T>(text: string, params?: readonly unknown[]) {
+    this.queries.push({ text, params });
     if (text === 'BEGIN') {
       this.inTransaction = true;
       return { rows: [], rowCount: 0 } as T;
     }
     if (text === 'COMMIT' || text === 'ROLLBACK') {
       this.inTransaction = false;
+      return { rows: [], rowCount: 0 } as T;
+    }
+    if (text.includes('DELETE FROM asset_snapshots')) {
       return { rows: [], rowCount: 0 } as T;
     }
     if (text.includes('INSERT INTO characters')) {
@@ -208,6 +213,33 @@ test('PostgresCharacterStore updates refreshed tokens and marks reauth state', a
   assert.equal(await store.markNeedsReauth(101), true);
   assert.equal((await store.getById(101))?.needs_reauth, 1);
   assert.equal(await store.markNeedsReauth(999), false);
+});
+
+test('PostgresCharacterStore deletes snapshots before changing character ownership', async () => {
+  const client = new FakeClient();
+  const store = createPostgresCharacterStore(client, {
+    now: () => new Date('2026-07-11T12:00:00Z'),
+    secretKey: Buffer.alloc(32, 4),
+  });
+  const authorization = {
+    characterId: 101,
+    characterName: 'Alpha',
+    ownerHash: 'owner-a',
+    scopes: 'scope',
+    refreshToken: 'refresh-a',
+    accessToken: null,
+    accessTokenExpiresAt: null,
+  };
+
+  await store.upsertAuthorized({ ...authorization, userId: 'user-a' });
+  client.queries = [];
+  await store.upsertAuthorized({ ...authorization, userId: 'user-b' });
+
+  const deleteIndex = client.queries.findIndex(query => query.text.includes('DELETE FROM asset_snapshots'));
+  const upsertIndex = client.queries.findIndex(query => query.text.includes('INSERT INTO characters'));
+  assert.ok(deleteIndex >= 0);
+  assert.ok(upsertIndex > deleteIndex);
+  assert.deepEqual(client.queries[deleteIndex].params, [101, 'user-b']);
 });
 
 interface PgCharacterRow {

@@ -74,3 +74,33 @@ DONE
 - `0001` no longer changes after its original migration identity; the asset schema is isolated in the new `0002` migration.
 - The Postgres migration references `app_users`, not `users`, and the local tests migrate and seed characters before asserting ownership behavior.
 - Live Postgres execution remains environment-gated, but SQL shape and behavior-specific Postgres query coverage are local and fast.
+
+## Ownership-Transfer Fix
+
+### Changes
+
+- Made SQLite character authorization delete any existing asset snapshot for a character owned by a different app user before updating `characters.user_id`, within the same transaction. The cleanup is skipped when the optional asset snapshot table has not been migrated.
+- Made Postgres character authorization delete the old owner's asset snapshot before its character upsert, within one transaction.
+- Added a SQLite regression test using the real character and asset stores/migrations to verify reauthorization succeeds after a snapshot exists and leaves no private cached data for either account.
+- Added fake-client Postgres coverage that verifies the snapshot deletion occurs before the character upsert.
+
+### Verification
+
+- `node --import tsx --test src/assets/store.test.ts src/characters/store.test.ts src/db/migrations.test.ts`
+  - Passed: 16 tests, 0 failures.
+- `npm test`
+  - Passed: 213 tests, 0 failures; 8 Postgres integration tests skipped because `DATABASE_URL` and `TEST_DATABASE_URL` are not configured.
+- `npm run typecheck`
+  - Passed.
+- `git diff --check`
+  - Passed with no output.
+
+### Self-Review
+
+- Ownership transfer removes private snapshots instead of cascading them to the new app account; the strict composite ownership foreign keys remain unchanged.
+- Both cleanup and ownership update are transactional, so a failed upsert rolls back the snapshot deletion.
+- SQLite coverage exercises the actual migration and stores; Postgres query-order coverage uses the existing fake client.
+
+### Concerns
+
+- Live Postgres integration coverage remains unavailable without `DATABASE_URL` and `TEST_DATABASE_URL`.

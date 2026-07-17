@@ -107,6 +107,39 @@ export function createSqliteCharacterStore(
 ): CharacterStore {
   const database = inputDatabase ?? missingSqliteDatabase('createSqliteCharacterStore');
   const now = options.now ?? (() => Date.now());
+  const assetSnapshotsTableExists = database.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'asset_snapshots'",
+  );
+  const upsertAuthorized = database.transaction((input: AuthorizedCharacterInput, addedAt: number) => {
+    if (assetSnapshotsTableExists.get()) {
+      database.prepare('DELETE FROM asset_snapshots WHERE character_id = ? AND user_id <> ?')
+        .run(input.characterId, input.userId);
+    }
+    database.prepare(`
+      INSERT INTO characters (character_id, user_id, character_name, owner_hash, scopes,
+        refresh_token, access_token, access_token_expires_at, added_at, needs_reauth, is_boss)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+      ON CONFLICT(character_id) DO UPDATE SET
+        user_id = excluded.user_id,
+        character_name = excluded.character_name,
+        owner_hash = excluded.owner_hash,
+        scopes = excluded.scopes,
+        refresh_token = excluded.refresh_token,
+        access_token = excluded.access_token,
+        access_token_expires_at = excluded.access_token_expires_at,
+        needs_reauth = 0
+    `).run(
+      input.characterId,
+      input.userId,
+      input.characterName,
+      input.ownerHash,
+      input.scopes,
+      input.refreshToken,
+      input.accessToken,
+      input.accessTokenExpiresAt,
+      addedAt,
+    );
+  });
 
   return {
     listAll() {
@@ -145,30 +178,7 @@ export function createSqliteCharacterStore(
 
     upsertAuthorized(input) {
       const addedAt = now();
-      database.prepare(`
-        INSERT INTO characters (character_id, user_id, character_name, owner_hash, scopes,
-          refresh_token, access_token, access_token_expires_at, added_at, needs_reauth, is_boss)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
-        ON CONFLICT(character_id) DO UPDATE SET
-          user_id = excluded.user_id,
-          character_name = excluded.character_name,
-          owner_hash = excluded.owner_hash,
-          scopes = excluded.scopes,
-          refresh_token = excluded.refresh_token,
-          access_token = excluded.access_token,
-          access_token_expires_at = excluded.access_token_expires_at,
-          needs_reauth = 0
-      `).run(
-        input.characterId,
-        input.userId,
-        input.characterName,
-        input.ownerHash,
-        input.scopes,
-        input.refreshToken,
-        input.accessToken,
-        input.accessTokenExpiresAt,
-        addedAt,
-      );
+      upsertAuthorized(input, addedAt);
       return this.getById(input.characterId)!;
     },
 
@@ -305,7 +315,12 @@ export function createPostgresCharacterStore(
 
     async upsertAuthorized(input) {
       const addedAt = now();
-      const rows = await client.query<PostgresCharacterRow>(
+      const rows = await withTransaction(client, async tx => {
+        await tx.query(
+          'DELETE FROM asset_snapshots WHERE character_id = $1 AND user_id <> $2',
+          [input.characterId, input.userId],
+        );
+        return tx.query<PostgresCharacterRow>(
         `
           INSERT INTO characters (
             character_id, user_id, character_name, owner_hash, scopes,
@@ -338,7 +353,8 @@ export function createPostgresCharacterStore(
           input.accessTokenExpiresAt == null ? null : new Date(input.accessTokenExpiresAt),
           addedAt,
         ],
-      );
+        );
+      });
       return mapPostgresCharacter(rows.rows[0]!, key);
     },
 

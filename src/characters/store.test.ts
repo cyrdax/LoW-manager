@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
+import { createSqliteAssetSnapshotStore, migrateAssetSnapshotsDb } from '../assets/store.ts';
 import { createSqliteCharacterStore, migrateCharactersDb } from './store.ts';
 
 function memoryDb() {
@@ -106,4 +107,29 @@ test('CharacterStore updates refreshed tokens and marks reauth state', () => {
   assert.equal(store.markNeedsReauth(101), true);
   assert.equal(store.getById(101)?.needs_reauth, 1);
   assert.equal(store.markNeedsReauth(999), false);
+});
+
+test('CharacterStore deletes private snapshots before transferring character ownership', () => {
+  const db = memoryDb();
+  migrateAssetSnapshotsDb(db);
+  const characters = createSqliteCharacterStore(db, { now: () => 1000 });
+  const assets = createSqliteAssetSnapshotStore(db);
+  const authorization = {
+    characterId: 101,
+    characterName: 'Alpha',
+    ownerHash: 'owner-a',
+    scopes: 'scope',
+    refreshToken: 'refresh-a',
+    accessToken: 'access-a',
+    accessTokenExpiresAt: 9000,
+  };
+
+  characters.upsertAuthorized({ ...authorization, userId: 'user-a' });
+  assets.recordPilotStatus('user-a', 101, 'Alpha', 'Missing asset scope', null, 1000);
+
+  const reassigned = characters.upsertAuthorized({ ...authorization, userId: 'user-b' });
+
+  assert.equal(reassigned.user_id, 'user-b');
+  assert.deepEqual(assets.listSnapshots('user-a'), []);
+  assert.deepEqual(assets.listSnapshots('user-b'), []);
 });
