@@ -23,20 +23,20 @@ export const ASSET_CATEGORY_LABELS: Record<AssetCategoryKey, string> = {
   other: 'Other',
 };
 
-const CAPITAL_GROUPS = ['carrier', 'dreadnought', 'force auxiliary', 'supercarrier', 'titan', 'capital industrial ship'];
-const MINING_GROUPS = ['mining barge', 'exhumer', 'industrial command ship'];
-const ARMOR_TERMS = ['armor', 'energized', 'plating', 'repairer'];
-const SHIELD_TERMS = ['shield', 'booster', 'hardener', 'extender'];
-const SCANNING_TERMS = ['scan', 'scanner', 'probe', 'analyzer', 'hacking', 'archaeology'];
-const CPU_POWERGRID_TERMS = ['cpu', 'powergrid', 'power diagnostic', 'reactor control', 'micro auxiliary power core'];
-const WEAPON_UPGRADE_TERMS = ['gyrostabilizer', 'heat sink', 'magnetic field stabilizer', 'ballistic control', 'tracking enhancer', 'damage amplifier'];
+const CAPITAL_GROUPS = new Set(['carrier', 'dreadnought', 'force auxiliary', 'supercarrier', 'titan', 'capital industrial ship']);
+const MINING_SHIP_GROUP_IDS = new Set([463, 543, 941, 1001]);
+const MINING_SHIP_GROUPS = new Set(['mining frigate', 'mining barge', 'exhumer', 'industrial command ship']);
+const ARMOR_MODULE_GROUPS = new Set(['armor coating', 'armor hardener', 'armor repair unit', 'armor reinforcer', 'energized armor layer', 'reactive armor hardener']);
+const SHIELD_MODULE_GROUPS = new Set(['shield booster', 'shield extender', 'shield hardener', 'shield recharger', 'shield flux coil', 'shield power relay']);
+const SCANNING_MODULE_GROUPS = new Set(['rig scanning', 'scan probe launcher', 'core probe launcher', 'expanded probe launcher', 'data analyzer', 'relic analyzer']);
+const CPU_POWERGRID_MODULE_GROUPS = new Set(['cpu enhancer', 'co-processor', 'power diagnostic system', 'reactor control unit', 'micro auxiliary power core']);
+const WEAPON_UPGRADE_MODULE_GROUPS = new Set(['gyrostabilizer', 'heat sink', 'magnetic field stabilizer', 'ballistic control system', 'tracking enhancer', 'drone damage amplifier']);
 
 export function categorizeAssetItem(meta: AssetItemMetadata): AssetCategoryInfo {
   const category = meta.categoryName.toLowerCase();
   const group = meta.groupName.toLowerCase();
-  const name = meta.name.toLowerCase();
 
-  const primary = primaryCategory(category, group, name);
+  const primary = primaryCategory(meta, category, group);
   const rollups: AssetCategoryKey[] = [];
   if (category === 'ship' && primary !== 'ships') rollups.push('ships');
   if (category === 'module' && primary !== 'modules') rollups.push('modules');
@@ -50,14 +50,14 @@ export function categorizeAssetItem(meta: AssetItemMetadata): AssetCategoryInfo 
   };
 }
 
-function primaryCategory(category: string, group: string, name: string): AssetCategoryKey {
+function primaryCategory(meta: AssetItemMetadata, category: string, group: string): AssetCategoryKey {
   if (category === 'ship') {
+    if (MINING_SHIP_GROUP_IDS.has(meta.groupId) || MINING_SHIP_GROUPS.has(group)) return 'mining-ships';
     if (group.includes('frigate')) return 'frigates';
     if (group.includes('cruiser')) return 'cruisers';
     if (group.includes('battlecruiser')) return 'cruisers';
     if (group.includes('battleship')) return 'battleships';
-    if (CAPITAL_GROUPS.some(term => group.includes(term))) return 'capitals';
-    if (MINING_GROUPS.some(term => group.includes(term))) return 'mining-ships';
+    if (CAPITAL_GROUPS.has(group)) return 'capitals';
     return 'ships';
   }
   if (category === 'implant') return 'implants';
@@ -68,11 +68,11 @@ function primaryCategory(category: string, group: string, name: string): AssetCa
   if (group.includes('planetary') || group.includes('commodity')) return 'pi';
   if (category === 'material') return 'materials';
   if (category === 'module') {
-    if (SCANNING_TERMS.some(term => group.includes(term) || name.includes(term))) return 'scanning';
-    if (CPU_POWERGRID_TERMS.some(term => group.includes(term) || name.includes(term))) return 'cpu-powergrid';
-    if (WEAPON_UPGRADE_TERMS.some(term => group.includes(term) || name.includes(term))) return 'weapon-upgrades';
-    if (ARMOR_TERMS.some(term => group.includes(term) || name.includes(term))) return 'armor-modules';
-    if (SHIELD_TERMS.some(term => group.includes(term) || name.includes(term))) return 'shield-modules';
+    if (SCANNING_MODULE_GROUPS.has(group)) return 'scanning';
+    if (CPU_POWERGRID_MODULE_GROUPS.has(group)) return 'cpu-powergrid';
+    if (WEAPON_UPGRADE_MODULE_GROUPS.has(group)) return 'weapon-upgrades';
+    if (ARMOR_MODULE_GROUPS.has(group)) return 'armor-modules';
+    if (SHIELD_MODULE_GROUPS.has(group)) return 'shield-modules';
     return 'modules';
   }
   return 'other';

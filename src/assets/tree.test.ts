@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildAssetTree } from './tree.ts';
+import { aggregateAssetSnapshot, buildAssetTree } from './tree.ts';
 import type { RawAssetInput, RawAssetLocationInput } from './types.ts';
 
 const locations: RawAssetLocationInput[] = [
@@ -91,4 +91,43 @@ test('buildAssetTree tracks unpriced stacks in aggregates', () => {
   assert.equal(tree.pilot.totalValue, 0);
   assert.equal(tree.pilot.unpricedStacks, 1);
   assert.equal(tree.categories.find(c => c.key === 'other')?.unpricedStacks, 1);
+});
+
+test('buildAssetTree rolls up a parent-first three-level hierarchy', () => {
+  const assets: RawAssetInput[] = [
+    { itemId: 1, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 60003760, locationFlag: 'Hangar', locationType: 'station', unitValue: 100, pricingStatus: 'priced' },
+    { itemId: 2, typeId: 34, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material', quantity: 10, singleton: false, locationId: 1, locationFlag: 'Cargo', locationType: 'item', unitValue: 2, pricingStatus: 'priced' },
+    { itemId: 3, typeId: 35, name: 'Pyerite', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material', quantity: 5, singleton: false, locationId: 2, locationFlag: 'Cargo', locationType: 'item', unitValue: 3, pricingStatus: 'priced' },
+  ];
+
+  const tree = buildAssetTree({
+    characterId: 123,
+    characterName: 'Asset Pilot',
+    lastRefreshedAt: null,
+    status: 'Ready',
+    error: null,
+    locations,
+    assets,
+  });
+
+  const root = tree.locations[0].assets[0];
+  assert.equal(root.stackCount, 3);
+  assert.equal(root.itemCount, 16);
+  assert.equal(root.totalValue, 135);
+  assert.equal(tree.pilot.stackCount, 3);
+  assert.equal(tree.pilot.totalValue, 135);
+});
+
+test('aggregateAssetSnapshot returns the asset snapshot aggregate', () => {
+  const input = {
+    characterId: 123,
+    characterName: 'Asset Pilot',
+    lastRefreshedAt: null,
+    status: 'Ready' as const,
+    error: null,
+    locations,
+    assets: [],
+  };
+
+  assert.deepEqual(aggregateAssetSnapshot(input), buildAssetTree(input));
 });

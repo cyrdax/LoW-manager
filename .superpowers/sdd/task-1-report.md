@@ -1,16 +1,38 @@
-# Task 1 Report: Contract Domain Helpers
+Status: DONE
 
-Implemented the pure contract domain helper layer in `src/contracts/types.ts` and `src/contracts/search.ts`, plus the focused tests in `src/contracts/search.test.ts`.
+Commits created:
+- `8dfbd75 feat: add asset categorization and tree aggregates`
 
-Validation:
-- Focused test run: `npm test -- src/contracts/search.test.ts`
-- Full suite run: `npm test`
+Tests run and exact result:
+- `node --import tsx --test src/assets/categories.test.ts`: failed as expected before implementation because `src/assets/categories.ts` did not exist.
+- `node --import tsx --test src/assets/categories.test.ts src/assets/tree.test.ts src/fits/metadata.test.ts`: 8 passed, 0 failed.
+- `npm run typecheck`: passed, exit code 0.
+- `npm test`: 194 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` were not configured.
+- `git diff --cached --check`: passed.
 
-Result:
-- All tests passed.
+Self-review notes:
+- Added the exact asset domain types, category labels and mappings, nested tree construction, rollup summaries, and metadata lookup by type ID required by the brief.
+- Preserved existing metadata name and ship indexes while populating the new item ID index for both mastery and Fuzzwork items.
+- Confirmed the staged change set was limited to the seven assigned source/test files.
 
-Commit:
-- `7f87b32` - `feat: add contract search helpers`
+Any concerns:
+- The full test suite retains its existing eight database-dependent skips because no database test URLs were available.
 
-Concerns:
-- None.
+## Fix Report (2026-07-17)
+
+Fixed reviewer findings in the Task 1 asset domain helpers:
+- Replaced insertion-order aggregate recalculation with guarded post-order traversal, and detached cyclic parent links before tree construction.
+- Added and exported `aggregateAssetSnapshot(input)` while preserving `buildAssetTree(input)` as a compatibility wrapper.
+- Moved mining and module classification from broad item-name/substrings to explicit mining group IDs and normalized module group names. Venture and Prospect now classify as `mining-ships`; Sensor Booster II remains `modules`.
+
+Tests added:
+- Parent-first, three-level containment regression for item count, stack count, and value rollups.
+- Public `aggregateAssetSnapshot(input)` coverage.
+- Venture, Prospect, and Sensor Booster II category regressions.
+
+Commands run and results:
+- `node --import tsx --test src/assets/categories.test.ts`: 2 passed and 2 failed before the fix, reproducing the mining-frigate and sensor-booster bugs.
+- `node --import tsx --test src/assets/tree.test.ts`: failed before the fix because `aggregateAssetSnapshot` was not exported.
+- `node --import tsx --test src/assets/categories.test.ts src/assets/tree.test.ts`: 8 passed, 0 failed after the fix.
+- `npm run typecheck`: passed, exit code 0.
+- `git diff --check`: passed, exit code 0.

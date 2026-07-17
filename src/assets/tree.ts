@@ -10,7 +10,7 @@ import type {
   RawAssetLocationInput,
 } from './types.ts';
 
-interface BuildInput {
+export interface AssetSnapshotInput {
   characterId: number;
   characterName: string;
   status: AssetSnapshot['pilot']['status'];
@@ -20,7 +20,7 @@ interface BuildInput {
   assets: RawAssetInput[];
 }
 
-export function buildAssetTree(input: BuildInput): AssetSnapshot {
+export function aggregateAssetSnapshot(input: AssetSnapshotInput): AssetSnapshot {
   const byItemId = new Map<number, AssetTreeNode>();
   const rootsByLocation = new Map<number, AssetTreeNode[]>();
 
@@ -55,7 +55,7 @@ export function buildAssetTree(input: BuildInput): AssetSnapshot {
   for (const node of byItemId.values()) {
     if (node.parentItemId != null) {
       const parent = byItemId.get(node.parentItemId);
-      if (parent) {
+      if (parent && !introducesParentCycle(node, parent, byItemId)) {
         parent.children.push(node);
         continue;
       }
@@ -65,7 +65,12 @@ export function buildAssetTree(input: BuildInput): AssetSnapshot {
     rootsByLocation.set(node.locationId, roots);
   }
 
-  for (const node of byItemId.values()) recalculateNode(node);
+  const visited = new Set<number>();
+  const visiting = new Set<number>();
+  for (const roots of rootsByLocation.values()) {
+    for (const root of roots) recalculateNode(root, visited, visiting);
+  }
+  for (const node of byItemId.values()) recalculateNode(node, visited, visiting);
 
   const locationInputs = new Map(input.locations.map(location => [location.locationId, location]));
   for (const locationId of rootsByLocation.keys()) {
@@ -114,7 +119,40 @@ export function buildAssetTree(input: BuildInput): AssetSnapshot {
   };
 }
 
-function recalculateNode(node: AssetTreeNode): AssetValueSummary {
+export function buildAssetTree(input: AssetSnapshotInput): AssetSnapshot {
+  return aggregateAssetSnapshot(input);
+}
+
+function introducesParentCycle(
+  node: AssetTreeNode,
+  parent: AssetTreeNode,
+  byItemId: Map<number, AssetTreeNode>,
+): boolean {
+  const ancestors = new Set<number>();
+  let current: AssetTreeNode | undefined = parent;
+
+  while (current && !ancestors.has(current.itemId)) {
+    if (current.itemId === node.itemId) return true;
+    ancestors.add(current.itemId);
+    current = current.parentItemId == null ? undefined : byItemId.get(current.parentItemId);
+  }
+
+  return false;
+}
+
+function recalculateNode(
+  node: AssetTreeNode,
+  visited: Set<number>,
+  visiting: Set<number>,
+): AssetValueSummary {
+  if (visited.has(node.itemId)) return node;
+  if (visiting.has(node.itemId)) return emptySummary();
+
+  visiting.add(node.itemId);
+  for (const child of node.children) recalculateNode(child, visited, visiting);
+  visiting.delete(node.itemId);
+  visited.add(node.itemId);
+
   const children = summarize(node.children);
   node.itemCount = node.quantity + children.itemCount;
   node.stackCount = 1 + children.stackCount;
@@ -132,7 +170,11 @@ function summarize(rows: AssetValueSummary[]): AssetValueSummary {
     pricedValue: acc.pricedValue + row.pricedValue,
     totalValue: acc.totalValue + row.totalValue,
     unpricedStacks: acc.unpricedStacks + row.unpricedStacks,
-  }), { itemCount: 0, stackCount: 0, pricedValue: 0, totalValue: 0, unpricedStacks: 0 });
+  }), emptySummary());
+}
+
+function emptySummary(): AssetValueSummary {
+  return { itemCount: 0, stackCount: 0, pricedValue: 0, totalValue: 0, unpricedStacks: 0 };
 }
 
 function summarizeCategories(assets: RawAssetInput[]): AssetCategorySummary[] {
