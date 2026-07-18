@@ -204,6 +204,35 @@ DONE
 
 ---
 
+# Task 4 Follow-up Fix Report: Restore Authorization-Recovered Cached Assets
+
+## Status
+
+DONE
+
+## Fixed Review Finding
+
+- Cached `Missing asset scope` and `Needs re-auth` snapshots now recover to `Needs refresh` when they have no refresh timestamp, or `Ready` when a timestamp exists, after the character becomes authorized.
+- Obsolete cached authorization errors are cleared while cached asset data, values, and timestamps remain intact.
+- Added regressions for restored asset scope and cleared reauthentication transitions.
+
+## Verification
+
+- `node --import tsx --test src/routes/assets.test.ts src/server-postgres-runtime-view.test.ts`
+  - Result: 12 passed, 0 failed.
+- `npm test`
+  - Result: 235 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` are not configured for Postgres integration tests.
+- `npm run typecheck`
+  - Result: passed with exit code 0.
+- `git diff --check`
+  - Result: passed with no output.
+
+## Concerns
+
+- The eight skipped full-suite tests require external Postgres environment variables.
+
+---
+
 # Task 4 Follow-up Fix Report: Single-Pilot Refresh User Boundary Assertion
 
 ## Status

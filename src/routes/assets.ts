@@ -87,13 +87,14 @@ function mergeAssetRoster(
   return characters.map(character => {
     const snapshot = snapshotsByCharacterId.get(character.character_id);
     const authorizationStatus = currentAuthorizationStatus(character);
+    const restoredStatus = snapshot && !authorizationStatus ? restoredAuthorizationStatus(snapshot) : undefined;
     return snapshot
       ? {
         ...snapshot,
         pilot: {
           ...snapshot.pilot,
           characterName: character.character_name,
-          ...(authorizationStatus ? { status: authorizationStatus } : {}),
+          ...(authorizationStatus ? { status: authorizationStatus } : restoredStatus ? { status: restoredStatus, error: null } : {}),
         },
       }
       : emptySnapshotFor(character.character_id, character.character_name, placeholderStatus(character));
@@ -106,6 +107,11 @@ function currentAuthorizationStatus(
   if (character.needs_reauth === 1) return 'Needs re-auth';
   if (!character.scopes.split(/\s+/).includes('esi-assets.read_assets.v1')) return 'Missing asset scope';
   return undefined;
+}
+
+function restoredAuthorizationStatus(snapshot: AssetSnapshot): AssetPilotStatus | undefined {
+  if (snapshot.pilot.status !== 'Missing asset scope' && snapshot.pilot.status !== 'Needs re-auth') return undefined;
+  return snapshot.pilot.lastRefreshedAt == null ? 'Needs refresh' : 'Ready';
 }
 
 function placeholderStatus(character: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>[number]): AssetPilotStatus {

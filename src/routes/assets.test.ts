@@ -174,6 +174,78 @@ test('GET /api/assets overlays current authorization status on cached snapshots'
   assert.deepEqual(body.pilots[0].categories, missingScopeSnapshot.categories);
 });
 
+test('GET /api/assets restores cached missing-scope snapshots after asset scope is granted', async () => {
+  const store = testStore();
+  const snapshot = snapshotFor(124, 'Cached Missing Scope');
+  snapshot.pilot.status = 'Missing asset scope';
+  snapshot.pilot.error = 'asset scope missing';
+  snapshot.pilot.lastRefreshedAt = null;
+  snapshot.pilot.totalValue = 456;
+  snapshot.locations = [{
+    locationId: 9002,
+    name: 'Restored location',
+    type: 'station',
+    status: 'resolved',
+    rawLocationId: 9002,
+    assets: [],
+    itemCount: 1,
+    stackCount: 1,
+    pricedValue: 456,
+    totalValue: 456,
+    unpricedStacks: 0,
+  }];
+  store.replaceSnapshot('user-a', snapshot);
+
+  const app = Fastify();
+  registerAssetsRoutes(app, {
+    currentUser: async () => userA,
+    store,
+    characters: {
+      listByUser: async () => [{ ...missingScopePilot, scopes: 'esi-assets.read_assets.v1' }],
+      listUsableByUser: async () => [],
+      getOwned: async () => undefined,
+    },
+  });
+
+  const res = await app.inject({ method: 'GET', url: '/api/assets' });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.pilots[0].pilot.status, 'Needs refresh');
+  assert.equal(body.pilots[0].pilot.error, null);
+  assert.equal(body.pilots[0].pilot.lastRefreshedAt, null);
+  assert.equal(body.pilots[0].pilot.totalValue, 456);
+  assert.deepEqual(body.pilots[0].locations, snapshot.locations);
+});
+
+test('GET /api/assets restores cached reauth snapshots after reauthentication', async () => {
+  const store = testStore();
+  const snapshot = snapshotFor(125, 'Cached Needs Re-auth');
+  snapshot.pilot.status = 'Needs re-auth';
+  snapshot.pilot.error = 'token expired';
+  snapshot.pilot.lastRefreshedAt = 43;
+  snapshot.pilot.totalValue = 789;
+  store.replaceSnapshot('user-a', snapshot);
+
+  const app = Fastify();
+  registerAssetsRoutes(app, {
+    currentUser: async () => userA,
+    store,
+    characters: {
+      listByUser: async () => [{ ...needsReauthPilot, needs_reauth: 0, scopes: 'esi-assets.read_assets.v1' }],
+      listUsableByUser: async () => [],
+      getOwned: async () => undefined,
+    },
+  });
+
+  const res = await app.inject({ method: 'GET', url: '/api/assets' });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.pilots[0].pilot.status, 'Ready');
+  assert.equal(body.pilots[0].pilot.error, null);
+  assert.equal(body.pilots[0].pilot.lastRefreshedAt, 43);
+  assert.equal(body.pilots[0].pilot.totalValue, 789);
+});
+
 test('POST /api/assets/characters/:id/refresh scopes refresh to owned pilot', async () => {
   const app = Fastify();
   let refreshed = 0;
