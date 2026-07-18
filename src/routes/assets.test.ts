@@ -210,7 +210,9 @@ test('POST /api/assets/characters/:id/refresh scopes refresh to owned pilot', as
 test('POST /api/assets/characters/:id/refresh summarizes the complete authorization-aware roster', async () => {
   const store = testStore();
   store.replaceSnapshot('user-a', snapshotFor(124, 'Cached Missing Scope'));
+  store.replaceSnapshot('user-b', snapshotFor(456, 'Other Pilot'));
   const refreshedSnapshot = snapshotFor(123, 'Asset Pilot');
+  const refreshUserIds: string[] = [];
   const app = Fastify();
   const characters = {
     listByUser: async () => [pilot, missingScopePilot, needsReauthPilot],
@@ -223,6 +225,8 @@ test('POST /api/assets/characters/:id/refresh summarizes the complete authorizat
     characters,
     now: () => 1,
     refreshPilot: async input => {
+      refreshUserIds.push(input.userId);
+      assert.equal(input.userId, 'user-a');
       store.replaceSnapshot('user-a', refreshedSnapshot);
       return input.character.character_id === 123 ? refreshedSnapshot : snapshotFor(0, 'Unexpected');
     },
@@ -231,7 +235,9 @@ test('POST /api/assets/characters/:id/refresh summarizes the complete authorizat
   const res = await app.inject({ method: 'POST', url: '/api/assets/characters/123/refresh' });
   assert.equal(res.statusCode, 200);
   const body = JSON.parse(res.body);
+  assert.deepEqual(refreshUserIds, ['user-a']);
   assert.deepEqual(body.snapshot, refreshedSnapshot);
+  assert.equal(body.snapshot.pilot.characterId, 123);
   assert.deepEqual(body.dashboard.pilots.map((summary: { characterId: number; status: string }) => [
     summary.characterId,
     summary.status,
@@ -269,8 +275,10 @@ test('POST /api/assets/characters/:id/refresh rejects non-canonical IDs before o
 test('POST /api/assets/refresh returns a full cached and placeholder roster', async () => {
   const store = testStore();
   store.recordPilotStatus('user-a', 123, 'Asset Pilot', 'Ready', null, 1);
+  store.recordPilotStatus('user-b', 456, 'Other Pilot', 'Ready', null, 1);
   const listUsableByUserCalls: string[] = [];
   const listByUserCalls: string[] = [];
+  const refreshUserIds: string[] = [];
   const app = Fastify();
   const characters = {
     listByUser: async (userId: string) => {
@@ -288,6 +296,8 @@ test('POST /api/assets/refresh returns a full cached and placeholder roster', as
     store,
     characters,
     refreshAll: async input => {
+      refreshUserIds.push(input.userId);
+      assert.equal(input.userId, 'user-a');
       assert.equal(input.characterStore, characters);
       return input.characters.map(character => snapshotFor(character.character_id, character.character_name));
     },
@@ -298,6 +308,7 @@ test('POST /api/assets/refresh returns a full cached and placeholder roster', as
   const body = JSON.parse(res.body);
   assert.deepEqual(listUsableByUserCalls, ['user-a']);
   assert.deepEqual(listByUserCalls, ['user-a']);
+  assert.deepEqual(refreshUserIds, ['user-a']);
   assert.deepEqual(body.pilots.map((snapshot: ReturnType<typeof snapshotFor>) => snapshot.pilot.characterId), [123, 124, 125]);
   assert.deepEqual(body.dashboard.pilots.map((summary: { characterId: number }) => summary.characterId), [123, 124, 125]);
 });

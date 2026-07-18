@@ -138,7 +138,7 @@ DONE
 
 ## Commit
 
-- Pending commit: fix single-pilot refresh roster assembly
+- `fcfc0f0 fix: use complete roster for single asset refresh`
 
 ## Fixed Review Finding
 
@@ -166,3 +166,38 @@ DONE
 ## Concerns
 
 - The eight skipped full-suite tests require external Postgres environment variables and are unrelated to this fix.
+
+---
+
+# Task 4 Follow-up Fix Report: Refresh User Scoping Assertions
+
+## Status
+
+DONE
+
+## Fixed Review Finding
+
+- Both successful refresh-route callbacks now assert `input.userId === 'user-a'`.
+- Both refresh-response fixtures seed a `user-b` snapshot and assert the returned pilot/dashboard rosters contain only the authenticated user's characters.
+- Corrected the prior single-pilot refresh report entry to record its completed commit.
+
+## Verification
+
+- `node --import tsx --test src/routes/assets.test.ts src/server-postgres-runtime-view.test.ts`
+  - Result: 10 passed, 0 failed.
+- `npm test`
+  - Result: 233 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` are not configured for Postgres integration tests.
+- `npm run typecheck`
+  - Result: passed with exit code 0.
+- `git diff --check`
+  - Result: passed with no output.
+
+## Self-Review
+
+- Confirmed edits are limited to `src/routes/assets.test.ts` and this report.
+- Confirmed both refresh callbacks record/assert their user ID, and cross-account snapshots are present in both refresh-response tests.
+- Confirmed no production route or unrelated test code was changed.
+
+## Concerns
+
+- The full suite may skip Postgres integration tests when `DATABASE_URL` and `TEST_DATABASE_URL` are not configured.
