@@ -172,7 +172,7 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView, curre
         <button
           className={`nav-btn${view === 'contracts' ? ' active' : ''}`}
           onClick={() => setView('contracts')}
-        >Contract</button>
+        >Contracts</button>
         <button
           className={`nav-btn${view === 'industry' ? ' active' : ''}`}
           onClick={() => setView('industry')}

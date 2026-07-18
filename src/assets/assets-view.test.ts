@@ -11,6 +11,7 @@ test('assets view is wired into navigation between fits and market', () => {
   assert.match(app, /view === 'assets'/);
   assert.match(panel, /type View = .*'assets'/s);
   assert.match(panel, />Fits<\/button>[\s\S]*view === 'assets'[\s\S]*>Assets<\/button>[\s\S]*>Market<\/button>/);
+  assert.match(panel, />Market<\/button>[\s\S]*>Contracts<\/button>[\s\S]*>Industry<\/button>/);
 });
 
 test('assets api helpers and component expose dashboard refresh search and expandable tree controls', () => {
@@ -28,4 +29,9 @@ test('assets api helpers and component expose dashboard refresh search and expan
   assert.match(view, /expandedPilots/);
   assert.match(view, /expandedLocations/);
   assert.match(view, /expandedAssets/);
+  assert.match(view, /refreshInFlight\.current/);
+  assert.match(view, /refreshDisabled=\{busy != null\}/);
+  assert.match(view, /loadState === 'loading'/);
+  assert.match(view, /loadState === 'error'/);
+  assert.match(view, /assets-tree-content/);
 });

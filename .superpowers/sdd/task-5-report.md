@@ -50,3 +50,42 @@ TDD evidence: the new structure test was added first and failed before implement
 ## Concerns
 
 None. Browser-driven visual testing was not available in this task run; the responsive layout was verified by TypeScript/build validation and CSS review.
+
+---
+
+## Review Fixes (2026-07-17 17:56:42 PDT)
+
+Fixed the Task 5 review findings:
+
+- Serialized all asset refresh actions with a ref-backed in-flight lock. Every per-pilot refresh button is disabled while any refresh is active, and the lock prevents same-render concurrent handler calls.
+- Made the asset hierarchy horizontally scrollable with a 980px inner tree canvas, avoiding clipped columns at constrained content widths.
+- Added explicit initial loading and initial-load error states. Dashboard values read `Loading...` or `Unavailable` until a successful response, and `No assets found.` is only shown after a successful empty response.
+- Renamed the sidebar label to `Contracts` and updated navigation order assertions.
+- Extended the focused structure test to cover the refresh lock, shared disabled state, load states, and scroll container.
+
+### Verification
+
+```sh
+node --import tsx --test src/assets/assets-view.test.ts
+# 2 passed, 0 failed
+
+npm run build
+# tsc and Vite production build passed
+
+npm test
+# 238 passed, 0 failed, 8 skipped (Postgres tests gated on DATABASE_URL and TEST_DATABASE_URL)
+
+npm run typecheck
+# passed
+
+git diff --check
+# passed with no output
+```
+
+### Self-Review
+
+- Confirmed refresh actions are mutually exclusive both in rendered disabled states and inside handlers.
+- Confirmed horizontal scrolling applies to the hierarchy viewport rather than clipping its content.
+- Confirmed loading, initial-load failure, and successfully empty data each have distinct UI states.
+- Confirmed the expected sidebar sequence includes `Contracts` between Market and Industry.
+- Confirmed the focused assets-view test, production build, full test suite, typecheck, and whitespace validation all pass.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchAssets,
   refreshAllAssets,
@@ -16,6 +16,8 @@ export function AssetsView() {
   const [category, setCategory] = useState('all');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const refreshInFlight = useRef(false);
   const [expandedPilots, setExpandedPilots] = useState<Set<number>>(new Set());
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const [expandedAssets, setExpandedAssets] = useState<Set<number>>(new Set());
@@ -25,19 +27,30 @@ export function AssetsView() {
     fetchAssets()
       .then(result => {
         if (cancelled) return;
-        if ('error' in result) setError(result.error);
+        if ('error' in result) {
+          setError(result.error);
+          setLoadState('error');
+        }
         else {
           setDashboard(result.dashboard);
           setPilots(result.pilots);
+          setLoadState('ready');
         }
       })
-      .catch(() => { if (!cancelled) setError('Unable to load assets.'); });
+      .catch(() => {
+        if (!cancelled) {
+          setError('Unable to load assets.');
+          setLoadState('error');
+        }
+      });
     return () => { cancelled = true; };
   }, []);
 
   const filtered = useMemo(() => filterPilots(pilots, query, category), [pilots, query, category]);
 
   const doRefreshAll = async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     setBusy('all');
     setError(null);
     try {
@@ -47,15 +60,19 @@ export function AssetsView() {
         setDashboard(result.dashboard);
         setPilots(result.pilots);
         setExpandedPilots(new Set(result.pilots.map(snapshot => snapshot.pilot.characterId)));
+        setLoadState('ready');
       }
     } catch {
       setError('Unable to refresh assets.');
     } finally {
+      refreshInFlight.current = false;
       setBusy(null);
     }
   };
 
   const doRefreshPilot = async (characterId: number) => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     setBusy(String(characterId));
     setError(null);
     try {
@@ -70,9 +87,11 @@ export function AssetsView() {
         .concat(result.snapshot)
         .sort((a, b) => a.pilot.characterName.localeCompare(b.pilot.characterName)));
       setExpandedPilots(current => new Set(current).add(characterId));
+      setLoadState('ready');
     } catch {
       setError('Unable to refresh pilot assets.');
     } finally {
+      refreshInFlight.current = false;
       setBusy(null);
     }
   };
@@ -80,13 +99,13 @@ export function AssetsView() {
   return (
     <main className="assets-view">
       <section className="assets-dashboard" aria-label="Assets dashboard">
-        <SummaryCard label="Total Estimated Value" value={formatIsk(dashboard?.totalValue ?? 0)} />
-        <SummaryCard label="Priced Value" value={formatIsk(dashboard?.pricedValue ?? 0)} />
-        <SummaryCard label="Unpriced Stacks" value={(dashboard?.unpricedStacks ?? 0).toLocaleString()} />
-        <SummaryCard label="Last Refresh" value={formatTime(dashboard?.lastRefreshedAt ?? null)} />
+        <SummaryCard label="Total Estimated Value" value={dashboard ? formatIsk(dashboard.totalValue) : loadState === 'loading' ? 'Loading...' : 'Unavailable'} />
+        <SummaryCard label="Priced Value" value={dashboard ? formatIsk(dashboard.pricedValue) : loadState === 'loading' ? 'Loading...' : 'Unavailable'} />
+        <SummaryCard label="Unpriced Stacks" value={dashboard ? dashboard.unpricedStacks.toLocaleString() : loadState === 'loading' ? 'Loading...' : 'Unavailable'} />
+        <SummaryCard label="Last Refresh" value={dashboard ? formatTime(dashboard.lastRefreshedAt) : loadState === 'loading' ? 'Loading...' : 'Unavailable'} />
         <button className={`asset-category-card${category === 'all' ? ' active' : ''}`} onClick={() => setCategory('all')}>
           <strong>All assets</strong>
-          <span>{formatIsk(dashboard?.totalValue ?? 0)}</span>
+          <span>{dashboard ? formatIsk(dashboard.totalValue) : loadState === 'loading' ? 'Loading...' : 'Unavailable'}</span>
         </button>
         {(dashboard?.categories ?? []).map(card => (
           <button key={card.key} className={`asset-category-card${category === card.key ? ' active' : ''}`} onClick={() => setCategory(card.key)}>
@@ -105,24 +124,29 @@ export function AssetsView() {
       </section>
 
       <section className="assets-tree" aria-label="Assets tree">
-        <div className="assets-column-headings" aria-hidden="true">
-          <span>Asset</span><span>Category</span><span>Quantity</span><span>Unit value</span><span>Total value</span><span>Price</span>
+        <div className="assets-tree-content">
+          <div className="assets-column-headings" aria-hidden="true">
+            <span>Asset</span><span>Category</span><span>Quantity</span><span>Unit value</span><span>Total value</span><span>Price</span>
+          </div>
+          {loadState === 'loading' && <div className="assets-empty" role="status">Loading assets...</div>}
+          {loadState === 'error' && <div className="assets-empty asset-load-error" role="alert">Unable to load assets. Try refreshing.</div>}
+          {loadState === 'ready' && filtered.map(snapshot => (
+            <PilotRow
+              key={snapshot.pilot.characterId}
+              snapshot={snapshot}
+              busy={busy === String(snapshot.pilot.characterId)}
+              refreshDisabled={busy != null}
+              expandedPilots={expandedPilots}
+              expandedLocations={expandedLocations}
+              expandedAssets={expandedAssets}
+              setExpandedPilots={setExpandedPilots}
+              setExpandedLocations={setExpandedLocations}
+              setExpandedAssets={setExpandedAssets}
+              onRefresh={doRefreshPilot}
+            />
+          ))}
+          {loadState === 'ready' && filtered.length === 0 && <div className="assets-empty">No assets found.</div>}
         </div>
-        {filtered.map(snapshot => (
-          <PilotRow
-            key={snapshot.pilot.characterId}
-            snapshot={snapshot}
-            busy={busy === String(snapshot.pilot.characterId)}
-            expandedPilots={expandedPilots}
-            expandedLocations={expandedLocations}
-            expandedAssets={expandedAssets}
-            setExpandedPilots={setExpandedPilots}
-            setExpandedLocations={setExpandedLocations}
-            setExpandedAssets={setExpandedAssets}
-            onRefresh={doRefreshPilot}
-          />
-        ))}
-        {filtered.length === 0 && <div className="assets-empty">No assets found.</div>}
       </section>
     </main>
   );
@@ -135,6 +159,7 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
 function PilotRow(props: {
   snapshot: AssetSnapshot;
   busy: boolean;
+  refreshDisabled: boolean;
   expandedPilots: Set<number>;
   expandedLocations: Set<string>;
   expandedAssets: Set<number>;
@@ -157,7 +182,7 @@ function PilotRow(props: {
           <span>{snapshot.pilot.locationCount} locations</span>
           <span>{formatTime(snapshot.pilot.lastRefreshedAt)}</span>
         </button>
-        <button className="asset-refresh-small" disabled={props.busy} onClick={() => props.onRefresh(id)}>{props.busy ? 'Refreshing...' : 'Refresh'}</button>
+        <button className="asset-refresh-small" disabled={props.refreshDisabled} onClick={() => props.onRefresh(id)}>{props.busy ? 'Refreshing...' : 'Refresh'}</button>
       </div>
       {snapshot.pilot.error && <div className="asset-row-note">{snapshot.pilot.error}</div>}
       {open && snapshot.locations.map(location => (
