@@ -13,7 +13,7 @@ import {
   type WaypointResult,
 } from '../api.ts';
 
-type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits';
+type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits' | 'assets';
 
 interface Props {
   chars: CharacterStatus[];
@@ -148,7 +148,7 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView, curre
         </label>
       )}
 
-      <div className="view-nav view-nav-7">
+      <div className="view-nav view-nav-8">
         <button
           className={`nav-btn${view === 'pilots' ? ' active' : ''}`}
           onClick={() => setView('pilots')}
@@ -161,6 +161,10 @@ export function ControlPanel({ chars, selection, onRefresh, view, setView, curre
           className={`nav-btn${view === 'fits' ? ' active' : ''}`}
           onClick={() => setView('fits')}
         >Fits</button>
+        <button
+          className={`nav-btn${view === 'assets' ? ' active' : ''}`}
+          onClick={() => setView('assets')}
+        >Assets</button>
         <button
           className={`nav-btn${view === 'market' ? ' active' : ''}`}
           onClick={() => setView('market')}

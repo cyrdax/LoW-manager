@@ -1083,6 +1083,90 @@ async function jsonOrError<T>(res: Response): Promise<T | { error: string; reaut
   return res.json();
 }
 
+// --- Assets ---
+
+export type AssetPilotStatus = 'Ready' | 'Refreshing' | 'Needs refresh' | 'Stale' | 'Missing asset scope' | 'Needs re-auth' | 'Error';
+export type AssetPricingStatus = 'priced' | 'partial' | 'unpriced';
+export type AssetLocationStatus = 'resolved' | 'unresolved';
+
+export interface AssetValueSummary {
+  itemCount: number;
+  stackCount: number;
+  pricedValue: number;
+  totalValue: number;
+  unpricedStacks: number;
+}
+
+export interface AssetCategorySummary extends AssetValueSummary {
+  key: string;
+  label: string;
+}
+
+export interface AssetTreeNode extends AssetValueSummary {
+  itemId: number;
+  typeId: number;
+  name: string;
+  category: string;
+  categoryLabel: string;
+  quantity: number;
+  unitValue: number | null;
+  stackValue: number;
+  pricingStatus: AssetPricingStatus;
+  singleton: boolean;
+  blueprintCopy?: boolean;
+  parentItemId: number | null;
+  locationId: number;
+  locationFlag: string;
+  locationType: string;
+  children: AssetTreeNode[];
+}
+
+export interface AssetLocationNode extends AssetValueSummary {
+  locationId: number;
+  name: string;
+  type: string;
+  status: AssetLocationStatus;
+  rawLocationId: number;
+  assets: AssetTreeNode[];
+}
+
+export interface AssetPilotSummary extends AssetValueSummary {
+  characterId: number;
+  characterName: string;
+  status: AssetPilotStatus;
+  locationCount: number;
+  lastRefreshedAt: number | null;
+  error: string | null;
+}
+
+export interface AssetSnapshot {
+  pilot: AssetPilotSummary;
+  locations: AssetLocationNode[];
+  categories: AssetCategorySummary[];
+}
+
+export interface AssetDashboard extends AssetValueSummary {
+  lastRefreshedAt: number | null;
+  categories: AssetCategorySummary[];
+}
+
+export interface AssetsResponse {
+  dashboard: AssetDashboard;
+  pilots: AssetSnapshot[];
+}
+
+export async function fetchAssets(): Promise<AssetsResponse | { error: string }> {
+  return jsonOrError(await fetch('/api/assets'));
+}
+
+export async function refreshAllAssets(): Promise<AssetsResponse | { error: string }> {
+  return jsonOrError(await fetch('/api/assets/refresh', { method: 'POST' }));
+}
+
+export async function refreshPilotAssets(characterId: number): Promise<{ dashboard: AssetDashboard; snapshot: AssetSnapshot } | { error: string }> {
+  return jsonOrError(await fetch(`/api/assets/characters/${characterId}/refresh`, { method: 'POST' }));
+}
+
 export async function fetchFits(visibility: LibraryVisibility = 'private'): Promise<SavedFitSummary[]> {
   const qs = new URLSearchParams({ visibility });
   const res = await fetch(`/api/fits?${qs}`);

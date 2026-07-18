@@ -10,10 +10,11 @@ import { MarketView } from './components/MarketView.tsx';
 import { IndustryView } from './components/IndustryView.tsx';
 import { ContractsView } from './components/ContractsView.tsx';
 import { FitsView } from './components/FitsView.tsx';
+import { AssetsView } from './components/AssetsView.tsx';
 import { AuthGate } from './components/AuthGate.tsx';
 import { deleteCharacter, fetchCurrentUser, logout, setBoss, setMainCharacter, type CharacterStatus, type CurrentUser } from './api.ts';
 
-type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits';
+type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits' | 'assets';
 
 interface HeaderDef {
   key: SortKey;
@@ -224,6 +225,7 @@ export function App() {
       {view === 'industry' && <IndustryView chars={list} />}
       {view === 'contracts' && <ContractsView />}
       {view === 'fits' && <FitsView chars={list} currentUser={currentUser} />}
+      {view === 'assets' && <AssetsView />}
     </div>
   );
 }

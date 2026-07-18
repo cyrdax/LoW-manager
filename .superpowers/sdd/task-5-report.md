@@ -1,65 +1,52 @@
-# Task 5 Report: Contracts Tab UI
+# Task 5 Report: Frontend Assets View
 
-## Files Changed
-- `web/src/api.ts`
-- `web/src/components/ContractsView.tsx`
-- `web/src/App.tsx`
-- `web/src/components/ControlPanel.tsx`
-- `web/src/styles.css`
+## Status
 
-## Behavior Implemented
-- Added frontend contract API types and fetch helpers for ship autocomplete and contract search using backend response field names verbatim.
-- Added a new `ContractsView` with:
-  - ship autocomplete using `/api/contracts/ships`
-  - origin system autocomplete using existing `searchSystems(q, signal)`
-  - persisted ship, origin, and jump-radius selections in `localStorage`
-  - compact search controls with accessible labels
-  - request error handling and warning display
-  - dense tabular results showing ship, contract type, price, quantity, location, jumps, expiry, title, and contract ID
-- Wired the top-level `contracts` view into `App.tsx`.
-- Added the Contracts nav entry and sidebar hint text in `ControlPanel.tsx`.
-- Added Contracts-specific CSS using existing app tokens and `--border` for table and input chrome.
-- Verified the Contracts tab renders in-browser on desktop and narrow mobile viewport without control overlap.
+DONE
 
-## Tests Run
-- `npm run typecheck` — PASS
-- `npm run build` — PASS
-- Browser sanity check at `http://localhost:5174/` — PASS
+## Summary
 
-## Pass/Fail Summary
-- TypeScript compile/typecheck: PASS
-- Production frontend build: PASS
-- Contracts tab render and responsive sanity check: PASS
+Implemented the Assets dashboard view with typed API helpers, summary and category controls, search filtering, expandable pilot/location/item tree rows, EVE type icons, full and per-pilot refresh actions, and sidebar navigation between Fits and Market.
 
-## Commit SHA
-- `e1927c61c7d885306ec1d8f695900888982e023e`
+The single-pilot refresh response replaces that pilot's local snapshot while preserving the complete roster returned by the prior read/all-refresh response.
 
-## Self-Review Notes
-- Kept scope limited to the frontend tab, API helpers, app wiring, and CSS required by Task 5.
-- Matched the existing operational app style with compact controls and a scan-friendly table rather than adding marketing-style layout.
-- Used a horizontally scrollable results table with fixed minimum width to avoid text overlap at smaller widths.
-- No additional automated frontend tests were added because the repo currently exposes Node test wiring for `src/**/*.test.ts` and the task brief required typecheck/build verification rather than a React test harness.
+## Commit
 
-## Fix Report
-- Files changed:
-  - `web/src/components/ContractsView.tsx`
-- Tests run:
-  - `npm run typecheck` — PASS
-  - `npm run build` — PASS
-- Self-review notes:
-  - Jumps now renders the literal `null` value for unknown-location rows instead of substituting placeholder text.
-  - Confirmed ship and origin selections now clear their saved `localStorage` keys when the selection is removed, preventing stale reload state.
-  - Kept the fix tightly scoped to the two reviewer findings and left the autocomplete accessibility note untouched.
+`feat: add assets dashboard view` (Task 5 commit)
 
-## Fix Report Addendum
-- Files changed:
-  - `web/src/components/ContractsView.tsx`
-- Tests run:
-  - `npm run typecheck` — PASS
-  - `npm run build` — PASS
-- Commit SHA:
-  - pending final commit hash
-- Self-review notes:
-  - Search requests are now invalidated when ship, origin, or radius edits occur, so an older in-flight response cannot repopulate stale results.
-  - Active searches are aborted on criteria changes and on unmount, and `busy` is cleared when the current request is invalidated.
-  - Prior Task 5 fixes remain intact: unknown jumps still render literal `null`, and cleared confirmed ship/origin keys still disappear from `localStorage`.
+## Verification
+
+The following commands completed successfully:
+
+```sh
+node --import tsx --test src/assets/assets-view.test.ts
+# 2 passed, 0 failed
+
+npm run build
+# tsc and Vite production build passed
+
+npm test
+# 238 passed, 0 failed, 8 skipped (Postgres tests gated on DATABASE_URL and TEST_DATABASE_URL)
+
+npm run typecheck
+# passed
+
+git diff --check
+# passed with no output
+```
+
+TDD evidence: the new structure test was added first and failed before implementation because `AssetsView` was not imported/wired and the component file did not exist. It passed after the implementation.
+
+## Self-Review
+
+- Confirmed Assets appears exactly between Fits and Market, with the sidebar count updated to eight views.
+- Confirmed the frontend consumes the Task 4 `{ dashboard, pilots }` roster for initial and all-refresh responses.
+- Confirmed single-pilot refresh replaces only the matching local snapshot and keeps placeholder roster entries intact.
+- Confirmed `AssetTreeNode` includes the optional `blueprintCopy` field and the UI labels blueprint copies.
+- Confirmed item rows use the required EVE type icon endpoint.
+- Confirmed tree expansion state is independent for pilots, locations, and nested assets.
+- Updated the existing navigation-order test to include Assets so the full suite tracks the required product order.
+
+## Concerns
+
+None. Browser-driven visual testing was not available in this task run; the responsive layout was verified by TypeScript/build validation and CSS review.

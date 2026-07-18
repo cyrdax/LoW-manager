@@ -51,6 +51,6 @@ test('sidebar main navigation follows the requested workflow order', () => {
   const navBlock = controlPanel.slice(navStart, navEnd);
   const labels = Array.from(navBlock.matchAll(/>\s*([A-Za-z]+)\s*<\/button>/g), match => match[1]);
 
-  assert.deepEqual(labels, ['Pilots', 'Fleet', 'Fits', 'Market', 'Contract', 'Industry', 'Planets']);
-  assert.match(navBlock, /view-nav-7/);
+  assert.deepEqual(labels, ['Pilots', 'Fleet', 'Fits', 'Assets', 'Market', 'Contract', 'Industry', 'Planets']);
+  assert.match(navBlock, /view-nav-8/);
 });
