@@ -27,7 +27,7 @@ function filterSnapshot(snapshot: AssetSnapshot, query: string, category: string
   const locations = snapshot.locations
     .map(location => filterLocation(location, query, category, pilotMatches))
     .filter((location): location is AssetLocationNode => location != null);
-  if (locations.length === 0) return null;
+  if (locations.length === 0 && (query !== '' || category !== 'all')) return null;
 
   return {
     ...snapshot,

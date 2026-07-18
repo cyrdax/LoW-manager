@@ -21,6 +21,36 @@ function snapshotWithAssets(characterId: number, characterName: string, assets: 
   });
 }
 
+function emptySnapshot(characterId: number, characterName: string): AssetSnapshot {
+  return buildAssetTree({
+    characterId,
+    characterName,
+    status: 'Needs refresh',
+    error: null,
+    lastRefreshedAt: null,
+    locations: [],
+    assets: [],
+  });
+}
+
+test('unfiltered assets view preserves zero-location pilot placeholders', () => {
+  const [filtered] = filterAssetSnapshots([emptySnapshot(1, 'Needs Refresh Pilot')], '', 'all');
+
+  assert.equal(filtered.pilot.characterName, 'Needs Refresh Pilot');
+  assert.equal(filtered.pilot.locationCount, 0);
+  assert.equal(filtered.pilot.itemCount, 0);
+  assert.equal(filtered.pilot.stackCount, 0);
+  assert.equal(filtered.pilot.totalValue, 0);
+  assert.deepEqual(filtered.locations, []);
+});
+
+test('asset and search filters hide zero-location pilot placeholders', () => {
+  const snapshot = emptySnapshot(1, 'Needs Refresh Pilot');
+
+  assert.deepEqual(filterAssetSnapshots([snapshot], '', 'ships'), []);
+  assert.deepEqual(filterAssetSnapshots([snapshot], 'needs', 'all'), []);
+});
+
 test('asset filters match rollup categories and recalculate visible aggregate summaries', () => {
   const matching = snapshotWithAssets(1, 'Matching Pilot', [
     { itemId: 1, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 60003760, locationFlag: 'Hangar', locationType: 'station', unitValue: 1_000, pricingStatus: 'priced' },
