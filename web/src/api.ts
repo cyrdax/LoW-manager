@@ -1108,6 +1108,7 @@ export interface AssetTreeNode extends AssetValueSummary {
   name: string;
   category: string;
   categoryLabel: string;
+  categoryRollups: string[];
   quantity: number;
   unitValue: number | null;
   stackValue: number;
@@ -1146,6 +1147,7 @@ export interface AssetSnapshot {
 }
 
 export interface AssetDashboard extends AssetValueSummary {
+  pilots: AssetPilotSummary[];
   lastRefreshedAt: number | null;
   categories: AssetCategorySummary[];
 }
@@ -1163,7 +1165,7 @@ export async function refreshAllAssets(): Promise<AssetsResponse | { error: stri
   return jsonOrError(await fetch('/api/assets/refresh', { method: 'POST' }));
 }
 
-export async function refreshPilotAssets(characterId: number): Promise<{ dashboard: AssetDashboard; snapshot: AssetSnapshot } | { error: string }> {
+export async function refreshPilotAssets(characterId: number): Promise<{ dashboard: AssetDashboard; pilots: AssetSnapshot[]; snapshot: AssetSnapshot } | { error: string }> {
   return jsonOrError(await fetch(`/api/assets/characters/${characterId}/refresh`, { method: 'POST' }));
 }
 

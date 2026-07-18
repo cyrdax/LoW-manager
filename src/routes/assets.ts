@@ -53,7 +53,7 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
     const currentTime = now();
     const snapshots = await store.listSnapshots(user.id, currentTime);
     const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime);
-    return { dashboard: summarizeAssets(pilots), snapshot };
+    return { dashboard: summarizeAssets(pilots), pilots, snapshot };
   });
 
   app.post('/api/assets/refresh', async (req, reply) => {
@@ -98,7 +98,7 @@ function mergeAssetRoster(
         pilot: {
           ...snapshot.pilot,
           characterName: character.character_name,
-          ...(authorizationStatus ? { status: authorizationStatus } : restoredStatus ? { status: restoredStatus, error: null } : {}),
+          ...(authorizationStatus ? { status: authorizationStatus, error: null } : restoredStatus ? { status: restoredStatus, error: null } : {}),
         },
       }
       : emptySnapshotFor(character.character_id, character.character_name, placeholderStatus(character));

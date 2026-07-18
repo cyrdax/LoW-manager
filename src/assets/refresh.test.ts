@@ -233,6 +233,40 @@ test('refreshPilotAssets preserves a cached snapshot when refresh fails', async 
   assert.equal(result.locations.length, 1);
 });
 
+test('refreshPilotAssets coalesces concurrent refreshes for the same pilot', async () => {
+  const snapshots = store();
+  let fetchCalls = 0;
+  let releaseFirstFetch: (() => void) | undefined;
+  const firstFetchStarted = new Promise<void>(resolve => { releaseFirstFetch = resolve; });
+  const first = refreshPilotAssets({
+    userId: 'user-a', character, characterStore: ownedCharacters(character), store: snapshots,
+    fetchAssets: async () => {
+      fetchCalls++;
+      await firstFetchStarted;
+      return [{ item_id: 1, type_id: 34, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: false }];
+    },
+    resolveItem: typeId => ({ typeId, name: 'First result', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material' }),
+    resolveLocation: async () => ({ locationId: 60003760, name: 'Jita', type: 'station', status: 'resolved' }),
+    quoteItems: async () => ({ hub: 'jita', systemName: 'Jita', regionName: 'The Forge', fetchedAt: 1, totalCost: 5, counts: { ok: 1, partial: 0, noOrders: 0, unknown: 0 }, items: [{ inputName: 'First result', resolvedName: 'First result', typeId: 34, requestedQty: 1, filledQty: 1, totalCost: 5, avgPrice: 5, shortfall: 0, status: 'ok' as const, bucket: 'minerals' }] }),
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const second = refreshPilotAssets({
+    userId: 'user-a', character, characterStore: ownedCharacters(character), store: snapshots,
+    fetchAssets: async () => {
+      fetchCalls++;
+      return [{ item_id: 2, type_id: 35, quantity: 1, location_id: 60003760, location_type: 'station', location_flag: 'Hangar', is_singleton: false }];
+    },
+  });
+
+  releaseFirstFetch!();
+  const [firstResult, secondResult] = await Promise.all([first, second]);
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(firstResult.locations[0].assets[0].name, 'First result');
+  assert.equal(secondResult.locations[0].assets[0].name, 'First result');
+  assert.equal((await snapshots.listSnapshots('user-a'))[0].locations[0].assets[0].name, 'First result');
+});
+
 test('refreshPilotAssets falls back for a failed root location and never resolves item container ids', async () => {
   const snapshots = store();
   const resolvedLocationIds: number[] = [];

@@ -56,6 +56,7 @@ export interface AssetTreeNode extends AssetValueSummary {
   name: string;
   category: AssetCategoryKey;
   categoryLabel: string;
+  categoryRollups: AssetCategoryKey[];
   quantity: number;
   unitValue: number | null;
   stackValue: number;

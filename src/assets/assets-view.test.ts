@@ -2,6 +2,49 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
+import { filterAssetSnapshots } from '../../web/src/assets-filter.ts';
+import { buildAssetTree } from './tree.ts';
+import type { AssetSnapshot } from './types.ts';
+
+function snapshotWithAssets(characterId: number, characterName: string, assets: Parameters<typeof buildAssetTree>[0]['assets']): AssetSnapshot {
+  return buildAssetTree({
+    characterId,
+    characterName,
+    status: 'Ready',
+    error: null,
+    lastRefreshedAt: 1,
+    locations: [
+      { locationId: 60003760, name: 'Jita', type: 'station', status: 'resolved' },
+      { locationId: 60008494, name: 'Amarr', type: 'station', status: 'resolved' },
+    ],
+    assets,
+  });
+}
+
+test('asset filters match rollup categories and recalculate visible aggregate summaries', () => {
+  const matching = snapshotWithAssets(1, 'Matching Pilot', [
+    { itemId: 1, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 60003760, locationFlag: 'Hangar', locationType: 'station', unitValue: 1_000, pricingStatus: 'priced' },
+    { itemId: 2, typeId: 34, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material', quantity: 10, singleton: false, locationId: 60008494, locationFlag: 'Hangar', locationType: 'station', unitValue: 5, pricingStatus: 'priced' },
+  ]);
+  const nonMatching = snapshotWithAssets(2, 'Mineral Pilot', [
+    { itemId: 3, typeId: 34, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material', quantity: 1, singleton: false, locationId: 60008494, locationFlag: 'Hangar', locationType: 'station', unitValue: 5, pricingStatus: 'priced' },
+  ]);
+
+  const [filtered] = filterAssetSnapshots([matching, nonMatching], '', 'ships');
+
+  assert.equal(filtered.pilot.characterName, 'Matching Pilot');
+  assert.equal(filtered.pilot.locationCount, 1);
+  assert.equal(filtered.pilot.itemCount, 1);
+  assert.equal(filtered.pilot.stackCount, 1);
+  assert.equal(filtered.pilot.totalValue, 1_000);
+  assert.equal(filtered.locations.length, 1);
+  assert.equal(filtered.locations[0].totalValue, 1_000);
+  assert.equal(filtered.locations[0].assets[0].name, 'Rifter');
+
+  const legacySnapshot = structuredClone(matching);
+  delete (legacySnapshot.locations[0].assets[0] as Partial<typeof legacySnapshot.locations[0]['assets'][number]>).categoryRollups;
+  assert.equal(filterAssetSnapshots([legacySnapshot], '', 'ships').length, 1);
+});
 
 test('assets view is wired into navigation between fits and market', () => {
   const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
@@ -19,6 +62,7 @@ test('assets api helpers and component expose dashboard refresh search and expan
   const view = readFileSync(resolve('web/src/components/AssetsView.tsx'), 'utf8');
 
   assert.match(api, /export interface AssetDashboard/);
+  assert.match(api, /export interface AssetDashboard extends AssetValueSummary \{[\s\S]*pilots: AssetPilotSummary\[\];/);
   assert.match(api, /export async function fetchAssets/);
   assert.match(api, /export async function refreshAllAssets/);
   assert.match(api, /export async function refreshPilotAssets/);
@@ -30,6 +74,7 @@ test('assets api helpers and component expose dashboard refresh search and expan
   assert.match(view, /expandedLocations/);
   assert.match(view, /expandedAssets/);
   assert.match(view, /refreshInFlight\.current/);
+  assert.match(view, /setPilots\(result\.pilots\)/);
   assert.match(view, /const requestGeneration = useRef\(0\)/);
   assert.match(view, /const generation = \+\+requestGeneration\.current/);
   assert.match(view, /generation !== requestGeneration\.current/);

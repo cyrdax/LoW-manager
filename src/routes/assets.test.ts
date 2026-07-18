@@ -117,7 +117,9 @@ test('GET /api/assets merges authenticated pilots with cached snapshots and read
 test('GET /api/assets overlays current authorization status on cached snapshots', async () => {
   const store = testStore();
   const missingScopeSnapshot = snapshotFor(124, 'Cached Missing Scope');
+  missingScopeSnapshot.pilot.error = 'obsolete ESI failure';
   const needsReauthSnapshot = snapshotFor(125, 'Cached Needs Re-auth');
+  needsReauthSnapshot.pilot.error = 'obsolete ESI failure';
   missingScopeSnapshot.pilot.lastRefreshedAt = 42;
   missingScopeSnapshot.pilot.totalValue = 123;
   missingScopeSnapshot.locations = [{
@@ -172,6 +174,8 @@ test('GET /api/assets overlays current authorization status on cached snapshots'
   assert.equal(body.pilots[0].pilot.totalValue, 123);
   assert.deepEqual(body.pilots[0].locations, missingScopeSnapshot.locations);
   assert.deepEqual(body.pilots[0].categories, missingScopeSnapshot.categories);
+  assert.equal(body.pilots[0].pilot.error, null);
+  assert.equal(body.pilots[1].pilot.error, null);
 });
 
 test('GET /api/assets restores cached missing-scope snapshots after asset scope is granted', async () => {
@@ -351,6 +355,14 @@ test('POST /api/assets/characters/:id/refresh summarizes the complete authorizat
   assert.deepEqual(body.dashboard.pilots.map((summary: { characterId: number; status: string }) => [
     summary.characterId,
     summary.status,
+  ]), [
+    [123, 'Ready'],
+    [124, 'Missing asset scope'],
+    [125, 'Needs re-auth'],
+  ]);
+  assert.deepEqual(body.pilots.map((rosterSnapshot: AssetSnapshot) => [
+    rosterSnapshot.pilot.characterId,
+    rosterSnapshot.pilot.status,
   ]), [
     [123, 'Ready'],
     [124, 'Missing asset scope'],

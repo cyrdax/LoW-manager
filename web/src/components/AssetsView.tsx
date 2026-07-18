@@ -8,6 +8,7 @@ import {
   type AssetSnapshot,
   type AssetTreeNode,
 } from '../api.ts';
+import { filterAssetSnapshots } from '../assets-filter.ts';
 
 export function AssetsView() {
   const [dashboard, setDashboard] = useState<AssetDashboard | null>(null);
@@ -48,7 +49,7 @@ export function AssetsView() {
     return () => { cancelled = true; };
   }, []);
 
-  const filtered = useMemo(() => filterPilots(pilots, query, category), [pilots, query, category]);
+  const filtered = useMemo(() => filterAssetSnapshots(pilots, query, category), [pilots, query, category]);
   const refreshDisabled = busy != null || loadState === 'loading';
 
   const doRefreshAll = async () => {
@@ -89,10 +90,7 @@ export function AssetsView() {
         return;
       }
       setDashboard(result.dashboard);
-      setPilots(current => current
-        .filter(snapshot => snapshot.pilot.characterId !== result.snapshot.pilot.characterId)
-        .concat(result.snapshot)
-        .sort((a, b) => a.pilot.characterName.localeCompare(b.pilot.characterName)));
+      setPilots(result.pilots);
       setExpandedPilots(current => new Set(current).add(characterId));
       setLoadState('ready');
     } catch {
@@ -272,43 +270,4 @@ function formatIsk(value: number): string {
 function formatTime(value: number | null): string {
   if (value == null) return 'Never';
   return new Date(value).toLocaleString();
-}
-
-function filterPilots(pilots: AssetSnapshot[], query: string, category: string): AssetSnapshot[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  return pilots
-    .map(snapshot => filterSnapshot(snapshot, normalizedQuery, category))
-    .filter((snapshot): snapshot is AssetSnapshot => snapshot != null);
-}
-
-function filterSnapshot(snapshot: AssetSnapshot, query: string, category: string): AssetSnapshot | null {
-  const pilotMatches = matches(snapshot.pilot.characterName, query);
-  const locations = snapshot.locations
-    .map(location => filterLocation(location, query, category, pilotMatches))
-    .filter((location): location is AssetLocationNode => location != null);
-  if (pilotMatches || locations.length > 0 || (query === '' && category === 'all')) return { ...snapshot, locations };
-  return null;
-}
-
-function filterLocation(location: AssetLocationNode, query: string, category: string, parentMatches: boolean): AssetLocationNode | null {
-  const selfMatches = parentMatches || matches(location.name, query);
-  const assets = location.assets
-    .map(asset => filterAsset(asset, query, category, selfMatches))
-    .filter((asset): asset is AssetTreeNode => asset != null);
-  if (selfMatches || assets.length > 0 || (query === '' && category === 'all')) return { ...location, assets };
-  return null;
-}
-
-function filterAsset(asset: AssetTreeNode, query: string, category: string, parentMatches: boolean): AssetTreeNode | null {
-  const categoryMatches = category === 'all' || asset.category === category;
-  const selfMatches = parentMatches || matches(asset.name, query) || matches(asset.categoryLabel, query);
-  const children = asset.children
-    .map(child => filterAsset(child, query, category, selfMatches))
-    .filter((child): child is AssetTreeNode => child != null);
-  if ((selfMatches && categoryMatches) || children.length > 0 || (query === '' && categoryMatches)) return { ...asset, children };
-  return null;
-}
-
-function matches(value: string, query: string): boolean {
-  return query === '' || value.toLowerCase().includes(query);
 }

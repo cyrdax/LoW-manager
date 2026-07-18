@@ -39,7 +39,22 @@ export interface AssetDashboardResponse extends AssetValueSummary {
   lastRefreshedAt: number | null;
 }
 
-export async function refreshPilotAssets(input: RefreshPilotAssetsInput): Promise<AssetSnapshot> {
+const inFlightPilotRefreshes = new Map<string, Promise<AssetSnapshot>>();
+
+export function refreshPilotAssets(input: RefreshPilotAssetsInput): Promise<AssetSnapshot> {
+  const key = `${input.userId}:${input.character.character_id}`;
+  const inFlight = inFlightPilotRefreshes.get(key);
+  if (inFlight) return inFlight;
+
+  let refresh: Promise<AssetSnapshot>;
+  refresh = refreshPilotAssetsUncoordinated(input).finally(() => {
+    if (inFlightPilotRefreshes.get(key) === refresh) inFlightPilotRefreshes.delete(key);
+  });
+  inFlightPilotRefreshes.set(key, refresh);
+  return refresh;
+}
+
+async function refreshPilotAssetsUncoordinated(input: RefreshPilotAssetsInput): Promise<AssetSnapshot> {
   const character = await input.characterStore.getOwned(input.userId, input.character.character_id);
   if (!character) {
     return rejectedSnapshot(input.character, 'Character does not belong to this user.');

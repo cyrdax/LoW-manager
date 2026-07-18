@@ -33,6 +33,7 @@ export function aggregateAssetSnapshot(input: AssetSnapshotInput): AssetSnapshot
       name: raw.name,
       category: category.primary,
       categoryLabel: category.label,
+      categoryRollups: category.rollups,
       quantity: raw.quantity,
       unitValue: raw.unitValue,
       stackValue,
