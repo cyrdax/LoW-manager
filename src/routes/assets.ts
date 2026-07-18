@@ -85,15 +85,31 @@ function mergeAssetRoster(
   const snapshotsByCharacterId = new Map(snapshots.map(snapshot => [snapshot.pilot.characterId, snapshot]));
   return characters.map(character => {
     const snapshot = snapshotsByCharacterId.get(character.character_id);
+    const authorizationStatus = currentAuthorizationStatus(character);
     return snapshot
-      ? { ...snapshot, pilot: { ...snapshot.pilot, characterName: character.character_name } }
+      ? {
+        ...snapshot,
+        pilot: {
+          ...snapshot.pilot,
+          characterName: character.character_name,
+          ...(authorizationStatus ? { status: authorizationStatus } : {}),
+        },
+      }
       : emptySnapshotFor(character.character_id, character.character_name, placeholderStatus(character));
   });
 }
 
-function placeholderStatus(character: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>[number]): AssetPilotStatus {
+function currentAuthorizationStatus(
+  character: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>[number],
+): Extract<AssetPilotStatus, 'Missing asset scope' | 'Needs re-auth'> | undefined {
   if (character.needs_reauth === 1) return 'Needs re-auth';
   if (!character.scopes.split(/\s+/).includes('esi-assets.read_assets.v1')) return 'Missing asset scope';
+  return undefined;
+}
+
+function placeholderStatus(character: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>[number]): AssetPilotStatus {
+  const authorizationStatus = currentAuthorizationStatus(character);
+  if (authorizationStatus) return authorizationStatus;
   return 'Needs refresh';
 }
 

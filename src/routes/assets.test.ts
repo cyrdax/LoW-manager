@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import Fastify from 'fastify';
 import { createSqliteAssetSnapshotStore, migrateAssetSnapshotsDb } from '../assets/store.ts';
 import { migrateCharactersDb } from '../characters/store.ts';
+import type { AssetSnapshot } from '../assets/types.ts';
 import { registerAssetsRoutes } from './assets.ts';
 
 function testStore() {
@@ -17,6 +18,8 @@ function testStore() {
     ) VALUES (?, ?, ?, 'owner', '', 'refresh', NULL, NULL, 1, 0, 0)
   `);
   insertCharacter.run(123, 'user-a', 'Asset Pilot');
+  insertCharacter.run(124, 'user-a', 'Missing Scope');
+  insertCharacter.run(125, 'user-a', 'Needs Re-auth');
   insertCharacter.run(456, 'user-b', 'Other Pilot');
   return createSqliteAssetSnapshotStore(db);
 }
@@ -109,6 +112,66 @@ test('GET /api/assets merges authenticated pilots with cached snapshots and read
     [125, 'Needs re-auth'],
   ]);
   assert.equal(body.dashboard.pilots.length, 3);
+});
+
+test('GET /api/assets overlays current authorization status on cached snapshots', async () => {
+  const store = testStore();
+  const missingScopeSnapshot = snapshotFor(124, 'Cached Missing Scope');
+  const needsReauthSnapshot = snapshotFor(125, 'Cached Needs Re-auth');
+  missingScopeSnapshot.pilot.lastRefreshedAt = 42;
+  missingScopeSnapshot.pilot.totalValue = 123;
+  missingScopeSnapshot.locations = [{
+    locationId: 9001,
+    name: 'Cached location',
+    type: 'station',
+    status: 'resolved',
+    rawLocationId: 9001,
+    assets: [],
+    itemCount: 0,
+    stackCount: 0,
+    pricedValue: 0,
+    totalValue: 0,
+    unpricedStacks: 0,
+  }];
+  missingScopeSnapshot.categories = [{
+    key: 'other',
+    label: 'Other',
+    itemCount: 1,
+    stackCount: 1,
+    pricedValue: 123,
+    totalValue: 123,
+    unpricedStacks: 0,
+  }];
+  needsReauthSnapshot.pilot.lastRefreshedAt = 43;
+  store.replaceSnapshot('user-a', missingScopeSnapshot);
+  store.replaceSnapshot('user-a', needsReauthSnapshot);
+
+  const app = Fastify();
+  registerAssetsRoutes(app, {
+    currentUser: async () => userA,
+    store,
+    characters: {
+      listByUser: async () => [missingScopePilot, needsReauthPilot],
+      listUsableByUser: async () => [],
+      getOwned: async () => undefined,
+    },
+    now: () => 1,
+  });
+
+  const res = await app.inject({ method: 'GET', url: '/api/assets' });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.deepEqual(body.pilots.map((snapshot: ReturnType<typeof snapshotFor>) => [
+    snapshot.pilot.characterId,
+    snapshot.pilot.status,
+  ]), [
+    [124, 'Missing asset scope'],
+    [125, 'Needs re-auth'],
+  ]);
+  assert.equal(body.pilots[0].pilot.lastRefreshedAt, 42);
+  assert.equal(body.pilots[0].pilot.totalValue, 123);
+  assert.deepEqual(body.pilots[0].locations, missingScopeSnapshot.locations);
+  assert.deepEqual(body.pilots[0].categories, missingScopeSnapshot.categories);
 });
 
 test('POST /api/assets/characters/:id/refresh scopes refresh to owned pilot', async () => {
@@ -204,7 +267,33 @@ test('POST /api/assets/refresh returns a full cached and placeholder roster', as
   assert.deepEqual(body.dashboard.pilots.map((summary: { characterId: number }) => summary.characterId), [123, 124, 125]);
 });
 
-function snapshotFor(characterId: number, characterName: string) {
+test('POST /api/assets/refresh overlays current authorization status in roster and dashboard', async () => {
+  const store = testStore();
+  store.replaceSnapshot('user-a', snapshotFor(124, 'Cached Missing Scope'));
+  store.replaceSnapshot('user-a', snapshotFor(125, 'Cached Needs Re-auth'));
+  const app = Fastify();
+  const characters = {
+    listByUser: async () => [missingScopePilot, needsReauthPilot],
+    listUsableByUser: async () => [],
+    getOwned: async () => undefined,
+  };
+  registerAssetsRoutes(app, {
+    currentUser: async () => userA,
+    store,
+    characters,
+    refreshAll: async () => [],
+  });
+
+  const res = await app.inject({ method: 'POST', url: '/api/assets/refresh' });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  const rosterStatuses = body.pilots.map((snapshot: ReturnType<typeof snapshotFor>) => snapshot.pilot.status);
+  const dashboardStatuses = body.dashboard.pilots.map((summary: { status: string }) => summary.status);
+  assert.deepEqual(rosterStatuses, ['Missing asset scope', 'Needs re-auth']);
+  assert.deepEqual(dashboardStatuses, rosterStatuses);
+});
+
+function snapshotFor(characterId: number, characterName: string): AssetSnapshot {
   return {
     pilot: {
       characterId,
