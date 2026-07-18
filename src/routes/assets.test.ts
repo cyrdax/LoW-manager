@@ -212,10 +212,14 @@ test('POST /api/assets/characters/:id/refresh summarizes the complete authorizat
   store.replaceSnapshot('user-a', snapshotFor(124, 'Cached Missing Scope'));
   store.replaceSnapshot('user-b', snapshotFor(456, 'Other Pilot'));
   const refreshedSnapshot = snapshotFor(123, 'Asset Pilot');
+  const listByUserCalls: string[] = [];
   const refreshUserIds: string[] = [];
   const app = Fastify();
   const characters = {
-    listByUser: async () => [pilot, missingScopePilot, needsReauthPilot],
+    listByUser: async (userId: string) => {
+      listByUserCalls.push(userId);
+      return [pilot, missingScopePilot, needsReauthPilot];
+    },
     listUsableByUser: async () => [],
     getOwned: async () => pilot,
   };
@@ -235,6 +239,7 @@ test('POST /api/assets/characters/:id/refresh summarizes the complete authorizat
   const res = await app.inject({ method: 'POST', url: '/api/assets/characters/123/refresh' });
   assert.equal(res.statusCode, 200);
   const body = JSON.parse(res.body);
+  assert.deepEqual(listByUserCalls, ['user-a']);
   assert.deepEqual(refreshUserIds, ['user-a']);
   assert.deepEqual(body.snapshot, refreshedSnapshot);
   assert.equal(body.snapshot.pilot.characterId, 123);

@@ -201,3 +201,30 @@ DONE
 ## Concerns
 
 - The full suite may skip Postgres integration tests when `DATABASE_URL` and `TEST_DATABASE_URL` are not configured.
+
+---
+
+# Task 4 Follow-up Fix Report: Single-Pilot Refresh User Boundary Assertion
+
+## Status
+
+DONE
+
+## Fixed Review Finding
+
+- Recorded the `userId` passed to `listByUser` in the single-pilot refresh roster regression and asserted the exact call list is `['user-a']`, matching the GET and refresh-all boundary tests.
+
+## Verification
+
+- `node --import tsx --test src/routes/assets.test.ts src/server-postgres-runtime-view.test.ts`
+  - Result: 10 passed, 0 failed.
+- `npm test`
+  - Result: 233 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` are not configured for Postgres integration tests.
+- `npm run typecheck`
+  - Result: passed with exit code 0.
+- `git diff --check`
+  - Result: passed with no output.
+
+## Concerns
+
+- The eight skipped full-suite tests require external Postgres environment variables.
