@@ -127,3 +127,42 @@ DONE
 ## Concerns
 
 - The eight skipped full-suite tests require external Postgres environment variables.
+
+---
+
+# Task 4 Follow-up Fix Report: Single-Pilot Refresh Uses Complete Roster
+
+## Status
+
+DONE
+
+## Commit
+
+- Pending commit: fix single-pilot refresh roster assembly
+
+## Fixed Review Finding
+
+- `POST /api/assets/characters/:id/refresh` now reloads `characters.listByUser(user.id)`, merges that authorization-aware roster with current user snapshots, and summarizes the merged roster for `dashboard`.
+- Added a regression covering a refreshed pilot, another pilot with cached Ready data that currently lacks asset scope, and an owned pilot with no snapshot. The response preserves the refreshed snapshot and reports the cached authorization overlay and no-snapshot placeholder in `dashboard.pilots`.
+
+## Verification
+
+- `node --import tsx --test src/routes/assets.test.ts src/server-postgres-runtime-view.test.ts`
+  - Result: 10 passed, 0 failed.
+- `npm test`
+  - Result: 233 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` are not configured for Postgres integration tests.
+- `npm run typecheck`
+  - Result: passed with exit code 0.
+- `git diff --check`
+  - Result: passed with no output.
+
+## Self-Review
+
+- Confirmed the single-pilot response now uses the same `mergeAssetRoster` helper as GET and refresh-all.
+- Confirmed the refreshed snapshot remains returned in the dedicated `snapshot` field.
+- Confirmed roster reads remain scoped to the authenticated user and the regression verifies both current authorization overlays and no-snapshot placeholders.
+- Confirmed tracked edits are limited to `src/routes/assets.ts`, `src/routes/assets.test.ts`, and this report.
+
+## Concerns
+
+- The eight skipped full-suite tests require external Postgres environment variables and are unrelated to this fix.

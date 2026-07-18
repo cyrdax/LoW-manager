@@ -207,6 +207,41 @@ test('POST /api/assets/characters/:id/refresh scopes refresh to owned pilot', as
   assert.deepEqual(getOwnedCalls, [['user-a', 123], ['user-a', 456]]);
 });
 
+test('POST /api/assets/characters/:id/refresh summarizes the complete authorization-aware roster', async () => {
+  const store = testStore();
+  store.replaceSnapshot('user-a', snapshotFor(124, 'Cached Missing Scope'));
+  const refreshedSnapshot = snapshotFor(123, 'Asset Pilot');
+  const app = Fastify();
+  const characters = {
+    listByUser: async () => [pilot, missingScopePilot, needsReauthPilot],
+    listUsableByUser: async () => [],
+    getOwned: async () => pilot,
+  };
+  registerAssetsRoutes(app, {
+    currentUser: async () => userA,
+    store,
+    characters,
+    now: () => 1,
+    refreshPilot: async input => {
+      store.replaceSnapshot('user-a', refreshedSnapshot);
+      return input.character.character_id === 123 ? refreshedSnapshot : snapshotFor(0, 'Unexpected');
+    },
+  });
+
+  const res = await app.inject({ method: 'POST', url: '/api/assets/characters/123/refresh' });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.deepEqual(body.snapshot, refreshedSnapshot);
+  assert.deepEqual(body.dashboard.pilots.map((summary: { characterId: number; status: string }) => [
+    summary.characterId,
+    summary.status,
+  ]), [
+    [123, 'Ready'],
+    [124, 'Missing asset scope'],
+    [125, 'Needs re-auth'],
+  ]);
+});
+
 test('POST /api/assets/characters/:id/refresh rejects non-canonical IDs before ownership lookup', async () => {
   for (const characterId of ['0', '-1', '1.5', '00123', '123abc', '9007199254740992']) {
     const app = Fastify();

@@ -50,7 +50,8 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
 
     const snapshot = await refreshPilot({ userId: user.id, character, characterStore: characters, store, now });
     const snapshots = await store.listSnapshots(user.id, now());
-    return { dashboard: summarizeAssets(snapshots), snapshot };
+    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots);
+    return { dashboard: summarizeAssets(pilots), snapshot };
   });
 
   app.post('/api/assets/refresh', async (req, reply) => {
