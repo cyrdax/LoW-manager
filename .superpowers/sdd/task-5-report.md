@@ -89,3 +89,28 @@ git diff --check
 - Confirmed loading, initial-load failure, and successfully empty data each have distinct UI states.
 - Confirmed the expected sidebar sequence includes `Contracts` between Market and Industry.
 - Confirmed the focused assets-view test, production build, full test suite, typecheck, and whitespace validation all pass.
+
+---
+
+## Review Fix: Request Ordering (2026-07-17)
+
+Added a ref-backed request generation to the initial assets GET and both refresh handlers. A response or error now changes state only when it belongs to the latest generation. Refresh controls are also disabled while the initial load is pending, preventing a POST-first/GET-last overwrite. The focused static test now asserts the generation guard and the shared loading disabled state.
+
+### Verification
+
+```sh
+node --import tsx --test src/assets/assets-view.test.ts
+# 2 passed, 0 failed
+
+npm run build
+# passed
+
+npm test
+# 238 passed, 0 failed, 8 skipped (database-gated)
+
+npm run typecheck
+# passed
+
+git diff --check
+# passed with no output
+```

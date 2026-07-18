@@ -30,7 +30,12 @@ test('assets api helpers and component expose dashboard refresh search and expan
   assert.match(view, /expandedLocations/);
   assert.match(view, /expandedAssets/);
   assert.match(view, /refreshInFlight\.current/);
-  assert.match(view, /refreshDisabled=\{busy != null\}/);
+  assert.match(view, /const requestGeneration = useRef\(0\)/);
+  assert.match(view, /const generation = \+\+requestGeneration\.current/);
+  assert.match(view, /generation !== requestGeneration\.current/);
+  assert.match(view, /const refreshDisabled = busy != null \|\| loadState === 'loading'/);
+  assert.match(view, /disabled=\{refreshDisabled\}/);
+  assert.match(view, /refreshDisabled=\{refreshDisabled\}/);
   assert.match(view, /loadState === 'loading'/);
   assert.match(view, /loadState === 'error'/);
   assert.match(view, /assets-tree-content/);

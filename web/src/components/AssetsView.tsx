@@ -18,15 +18,17 @@ export function AssetsView() {
   const [error, setError] = useState<string | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const refreshInFlight = useRef(false);
+  const requestGeneration = useRef(0);
   const [expandedPilots, setExpandedPilots] = useState<Set<number>>(new Set());
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const [expandedAssets, setExpandedAssets] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
+    const generation = ++requestGeneration.current;
     fetchAssets()
       .then(result => {
-        if (cancelled) return;
+        if (cancelled || generation !== requestGeneration.current) return;
         if ('error' in result) {
           setError(result.error);
           setLoadState('error');
@@ -38,7 +40,7 @@ export function AssetsView() {
         }
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!cancelled && generation === requestGeneration.current) {
           setError('Unable to load assets.');
           setLoadState('error');
         }
@@ -47,14 +49,17 @@ export function AssetsView() {
   }, []);
 
   const filtered = useMemo(() => filterPilots(pilots, query, category), [pilots, query, category]);
+  const refreshDisabled = busy != null || loadState === 'loading';
 
   const doRefreshAll = async () => {
-    if (refreshInFlight.current) return;
+    if (refreshInFlight.current || loadState === 'loading') return;
     refreshInFlight.current = true;
+    const generation = ++requestGeneration.current;
     setBusy('all');
     setError(null);
     try {
       const result = await refreshAllAssets();
+      if (generation !== requestGeneration.current) return;
       if ('error' in result) setError(result.error);
       else {
         setDashboard(result.dashboard);
@@ -63,7 +68,7 @@ export function AssetsView() {
         setLoadState('ready');
       }
     } catch {
-      setError('Unable to refresh assets.');
+      if (generation === requestGeneration.current) setError('Unable to refresh assets.');
     } finally {
       refreshInFlight.current = false;
       setBusy(null);
@@ -71,12 +76,14 @@ export function AssetsView() {
   };
 
   const doRefreshPilot = async (characterId: number) => {
-    if (refreshInFlight.current) return;
+    if (refreshInFlight.current || loadState === 'loading') return;
     refreshInFlight.current = true;
+    const generation = ++requestGeneration.current;
     setBusy(String(characterId));
     setError(null);
     try {
       const result = await refreshPilotAssets(characterId);
+      if (generation !== requestGeneration.current) return;
       if ('error' in result) {
         setError(result.error);
         return;
@@ -89,7 +96,7 @@ export function AssetsView() {
       setExpandedPilots(current => new Set(current).add(characterId));
       setLoadState('ready');
     } catch {
-      setError('Unable to refresh pilot assets.');
+      if (generation === requestGeneration.current) setError('Unable to refresh pilot assets.');
     } finally {
       refreshInFlight.current = false;
       setBusy(null);
@@ -117,7 +124,7 @@ export function AssetsView() {
       </section>
 
       <section className="assets-controls" aria-label="Assets controls">
-        <button className="primary" onClick={doRefreshAll} disabled={busy != null}>{busy === 'all' ? 'Refreshing...' : 'Refresh All'}</button>
+        <button className="primary" onClick={doRefreshAll} disabled={refreshDisabled}>{busy === 'all' ? 'Refreshing...' : 'Refresh All'}</button>
         <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search assets" aria-label="Search assets" />
         {category !== 'all' && <button onClick={() => setCategory('all')}>Clear filter</button>}
         {error && <span className="asset-error" role="alert">{error}</span>}
@@ -135,7 +142,7 @@ export function AssetsView() {
               key={snapshot.pilot.characterId}
               snapshot={snapshot}
               busy={busy === String(snapshot.pilot.characterId)}
-              refreshDisabled={busy != null}
+              refreshDisabled={refreshDisabled}
               expandedPilots={expandedPilots}
               expandedLocations={expandedLocations}
               expandedAssets={expandedAssets}
