@@ -143,6 +143,8 @@ test('assets api helpers and component expose dashboard refresh search and expan
 
   assert.match(view, /Refresh All/);
   assert.match(view, /Search assets/);
+  assert.match(view, /Asset access needs EVE re-auth/);
+  assert.match(view, /Missing asset scope/);
   assert.match(view, /All assets/);
   assert.match(view, /expandedPilots/);
   assert.match(view, /expandedLocations/);

@@ -50,6 +50,7 @@ export function AssetsView() {
   }, []);
 
   const filtered = useMemo(() => filterAssetSnapshots(pilots, query, category), [pilots, query, category]);
+  const assetAccessNotice = useMemo(() => assetAccessMessage(pilots), [pilots]);
   const refreshDisabled = busy != null || loadState === 'loading';
 
   const doRefreshAll = async () => {
@@ -126,6 +127,7 @@ export function AssetsView() {
         <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search assets" aria-label="Search assets" />
         {category !== 'all' && <button onClick={() => setCategory('all')}>Clear filter</button>}
         {error && <span className="asset-error" role="alert">{error}</span>}
+        {!error && assetAccessNotice && <span className="asset-warning" role="status">{assetAccessNotice}</span>}
       </section>
 
       <section className="assets-tree" aria-label="Assets tree">
@@ -159,6 +161,18 @@ export function AssetsView() {
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return <div className="asset-summary-card"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function assetAccessMessage(pilots: AssetSnapshot[]): string | null {
+  if (pilots.length === 0) return null;
+  const missingScope = pilots.filter(snapshot => snapshot.pilot.status === 'Missing asset scope').length;
+  const needsReauth = pilots.filter(snapshot => snapshot.pilot.status === 'Needs re-auth').length;
+  if (missingScope === 0 && needsReauth === 0) return null;
+  const parts = [
+    missingScope > 0 ? `${missingScope} pilot${missingScope === 1 ? '' : 's'} missing the assets scope` : null,
+    needsReauth > 0 ? `${needsReauth} pilot${needsReauth === 1 ? '' : 's'} need re-auth` : null,
+  ].filter(Boolean);
+  return `Asset access needs EVE re-auth: ${parts.join('; ')}. Use Add character to authorize assets.`;
 }
 
 function PilotRow(props: {

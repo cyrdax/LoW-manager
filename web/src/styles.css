@@ -2797,6 +2797,7 @@ body {
 .assets-controls input { width: min(340px, 100%); }
 .assets-controls input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
 .asset-error { color: var(--red); }
+.asset-warning { color: var(--amber); }
 .assets-tree {
   min-width: 0;
   overflow-x: auto;
