@@ -1,59 +1,50 @@
-# Task 4 Report
+# Task 4 Report: Private Assets API Routes And Runtime Wiring
 
-Implemented the contract API route layer and registered it in the server.
+## Status
 
-## Changes
+DONE
 
-- Added `src/routes/contracts.ts`
-  - Registers `GET /api/contracts/ships`
-  - Registers `GET /api/contracts/search`
-  - Uses injectable `loadData` and `runSearch` dependencies
-  - Validates query params with `zod`
-- Added `src/routes/contracts.test.ts`
-  - Covers ship suggestions
-  - Covers required query validation
-  - Covers delegation into the contract search service
-- Updated `src/server.ts`
-  - Registers `registerContractRoutes(app)` after industry routes
+## Commit
+
+- `38a0393 feat: add private assets api`
+
+## Delivered
+
+- Added `src/routes/assets.ts` with authenticated cached dashboard reads, per-pilot refresh, and refresh-all endpoints.
+- Scoped every route to the authenticated app user. Per-pilot refresh performs an owned-character lookup; refresh-all starts from usable owned pilots.
+- Passed the injected `characters` store as `characterStore` to both refresh services for Task 3's authoritative ownership validation.
+- Added `esi-assets.read_assets.v1` to future SSO scopes.
+- Wired the PostgreSQL asset snapshot store and assets route registration into `src/server.ts`.
+- Added route/runtime tests, including cached user-only reads, no GET refresh call, auth, ownership, and character-store forwarding.
+
+## TDD Evidence
+
+1. Added `src/routes/assets.test.ts` and the runtime wiring expectations before the route implementation.
+2. Ran `node --import tsx --test src/routes/assets.test.ts src/server-postgres-runtime-view.test.ts`.
+   - Result: expected failure: `ERR_MODULE_NOT_FOUND` for `src/routes/assets.ts`; the new runtime wiring assertions also failed because the server had not been updated.
+3. Implemented the routes, scope, runtime wiring, and authoritative `characterStore` forwarding.
+4. Re-ran the focused command.
+   - Result: 6 passed, 0 failed.
 
 ## Verification
 
-- Focused route test: `npm test -- src/routes/contracts.test.ts`
-- Full test suite: `npm test`
-- Typecheck: `npm run typecheck`
+- `node --import tsx --test src/routes/assets.test.ts src/server-postgres-runtime-view.test.ts`
+  - Result: 6 passed, 0 failed.
+- `npm test`
+  - Result: 229 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` are not configured for Postgres integration tests.
+- `npm run typecheck`
+  - Result: passed with exit code 0.
+- `git diff --check`
+  - Result: passed with no output.
 
-## Notes
+## Self-Review
 
-- No concerns at this time.
+- Confirmed `GET /api/assets` only reads snapshots for the current user and never invokes either refresh dependency.
+- Confirmed refresh routes require authentication, use owned/usable character queries, and return refreshed dashboard data.
+- Confirmed both refresh service calls receive the authoritative character-store boundary required by Task 3 before any ESI/token-dependent activity.
+- Confirmed runtime uses the Postgres asset snapshot store alongside the shared Postgres character store.
+- Kept tracked edits confined to the Task 4 files.
 
-## Fix
+## Concerns
 
-- Files changed:
-  - `src/routes/contracts.ts`
-  - `src/routes/contracts.test.ts`
-  - `.superpowers/sdd/task-4-report.md`
-- Tests run:
-  - `npm test -- src/routes/contracts.test.ts` - pass, 27 tests passed / 0 failed
-  - `npm test` - pass, 27 tests passed / 0 failed
-  - `npm run typecheck` - pass, exit code 0
-- Self-review:
-  - Narrowly mapped the known contract map topology origin-system error to HTTP 400.
-  - Added a regression test for the exact thrown message so the route behavior stays pinned.
-  - Kept the existing ship-not-found and radius validation handling unchanged.
-- Commit SHA: 608ad5eaf932177f6244b43f78853015ba24f420
-
-## Fix 2
-
-- Files changed:
-  - `src/routes/contracts.ts`
-  - `src/routes/contracts.test.ts`
-  - `.superpowers/sdd/task-4-report.md`
-- Tests run:
-  - `npm test -- src/routes/contracts.test.ts` - pass, 30 tests passed / 0 failed
-  - `npm test` - pass, 30 tests passed / 0 failed
-  - `npm run typecheck` - pass, exit code 0
-- Self-review:
-  - Moved radius range enforcement into the route schema using the shared contract radius constants.
-  - Pinned omitted-radius defaulting and both invalid boundary values at the route boundary.
-  - Removed the route’s dependence on the service’s radius error message for normal validation.
-- Commit SHA: ab1fcbf3738a2117b1de34c4a2414f7b3783f9cf
+- The eight skipped full-suite tests require external Postgres environment variables and are unrelated to Task 4.

@@ -21,6 +21,8 @@ import { registerIndustryRoutes } from './routes/industry.ts';
 import { registerContractRoutes } from './routes/contracts.ts';
 import { registerDoctrineRoutes } from './routes/doctrines.ts';
 import { registerFitRoutes } from './routes/fits.ts';
+import { registerAssetsRoutes } from './routes/assets.ts';
+import { createPostgresAssetSnapshotStore } from './assets/store.ts';
 import { createPostgresDoctrineStore } from './fits/doctrines.ts';
 import { createPostgresFitStore } from './fits/store.ts';
 import { startPolling } from './polling/scheduler.ts';
@@ -39,6 +41,7 @@ const characterStore = createPostgresCharacterStore();
 const savedSkillPlans = createPostgresSavedSkillPlanStore();
 const fitStore = createPostgresFitStore();
 const doctrineStore = createPostgresDoctrineStore(undefined, { fitStore });
+const assetSnapshotStore = createPostgresAssetSnapshotStore();
 
 setPilotAccessCharacterStore(characterStore);
 setAccessTokenCharacterStore(characterStore);
@@ -59,6 +62,7 @@ registerIndustryRoutes(app);
 registerContractRoutes(app);
 registerFitRoutes(app, { store: fitStore });
 registerDoctrineRoutes(app, { store: doctrineStore, fitStore });
+registerAssetsRoutes(app, { characters: characterStore, store: assetSnapshotStore });
 
 app.get('/api/health', async () => ({ ok: true }));
 

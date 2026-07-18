@@ -5,6 +5,7 @@ export const SCOPES = [
   'esi-wallet.read_character_wallet.v1',
   'esi-skills.read_skillqueue.v1',
   'esi-skills.read_skills.v1',
+  'esi-assets.read_assets.v1',
   'esi-clones.read_implants.v1',
   'esi-fleets.read_fleet.v1',
   'esi-fleets.write_fleet.v1',
