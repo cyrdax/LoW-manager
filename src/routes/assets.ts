@@ -10,7 +10,7 @@ import {
   type RefreshPilotAssetsInput,
 } from '../assets/refresh.ts';
 import { createPostgresAssetSnapshotStore, type AssetSnapshotStore } from '../assets/store.ts';
-import type { AssetPilotStatus, AssetSnapshot } from '../assets/types.ts';
+import { ASSET_STALE_MS, type AssetPilotStatus, type AssetSnapshot } from '../assets/types.ts';
 
 export interface AssetsRouteDeps {
   currentUser?: CurrentUserResolver;
@@ -33,8 +33,9 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
     const user = await currentUser(req);
     if (!user) return reply.code(401).send({ error: 'authentication_required' });
 
-    const snapshots = await store.listSnapshots(user.id, now());
-    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots);
+    const currentTime = now();
+    const snapshots = await store.listSnapshots(user.id, currentTime);
+    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime);
     return { dashboard: summarizeAssets(pilots), pilots };
   });
 
@@ -49,8 +50,9 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
     if (!character) return reply.code(404).send({ error: 'character_not_found' });
 
     const snapshot = await refreshPilot({ userId: user.id, character, characterStore: characters, store, now });
-    const snapshots = await store.listSnapshots(user.id, now());
-    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots);
+    const currentTime = now();
+    const snapshots = await store.listSnapshots(user.id, currentTime);
+    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime);
     return { dashboard: summarizeAssets(pilots), snapshot };
   });
 
@@ -67,8 +69,9 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
       now,
       concurrency: 2,
     });
-    const snapshots = await store.listSnapshots(user.id, now());
-    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots);
+    const currentTime = now();
+    const snapshots = await store.listSnapshots(user.id, currentTime);
+    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime);
     return { dashboard: summarizeAssets(pilots), pilots };
   });
 }
@@ -82,12 +85,13 @@ function parseCharacterId(value: string): number | undefined {
 function mergeAssetRoster(
   characters: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>,
   snapshots: AssetSnapshot[],
+  now: number,
 ): AssetSnapshot[] {
   const snapshotsByCharacterId = new Map(snapshots.map(snapshot => [snapshot.pilot.characterId, snapshot]));
   return characters.map(character => {
     const snapshot = snapshotsByCharacterId.get(character.character_id);
     const authorizationStatus = currentAuthorizationStatus(character);
-    const restoredStatus = snapshot && !authorizationStatus ? restoredAuthorizationStatus(snapshot) : undefined;
+    const restoredStatus = snapshot && !authorizationStatus ? restoredAuthorizationStatus(snapshot, now) : undefined;
     return snapshot
       ? {
         ...snapshot,
@@ -109,9 +113,10 @@ function currentAuthorizationStatus(
   return undefined;
 }
 
-function restoredAuthorizationStatus(snapshot: AssetSnapshot): AssetPilotStatus | undefined {
+function restoredAuthorizationStatus(snapshot: AssetSnapshot, now: number): AssetPilotStatus | undefined {
   if (snapshot.pilot.status !== 'Missing asset scope' && snapshot.pilot.status !== 'Needs re-auth') return undefined;
-  return snapshot.pilot.lastRefreshedAt == null ? 'Needs refresh' : 'Ready';
+  if (snapshot.pilot.lastRefreshedAt == null) return 'Needs refresh';
+  return now - snapshot.pilot.lastRefreshedAt > ASSET_STALE_MS ? 'Stale' : 'Ready';
 }
 
 function placeholderStatus(character: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>[number]): AssetPilotStatus {

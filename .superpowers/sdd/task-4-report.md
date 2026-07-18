@@ -257,3 +257,26 @@ DONE
 ## Concerns
 
 - The eight skipped full-suite tests require external Postgres environment variables.
+
+# Task 4 Follow-up Fix Report: Restore Freshness After Authorization Recovery
+
+## Status
+
+DONE
+
+## Fixed Review Finding
+
+- Authorization-recovered cached snapshots now use the injected route clock: `Needs refresh` without a timestamp, `Ready` for a fresh timestamp, and `Stale` once older than `ASSET_STALE_MS`.
+- Preserved cached assets, values, and timestamps while clearing obsolete authorization errors.
+- Made the existing `Ready` recovery test deterministic and added stale-recovery coverage.
+
+## Verification
+
+- `node --import tsx --test src/routes/assets.test.ts src/server-postgres-runtime-view.test.ts`: 13 passed, 0 failed.
+- `npm test`: 236 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` are not configured.
+- `npm run typecheck`: passed with exit code 0.
+- `git diff --check`: passed with no output.
+
+## Concerns
+
+- The eight skipped full-suite tests require external Postgres environment variables.

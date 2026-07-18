@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import Fastify from 'fastify';
 import { createSqliteAssetSnapshotStore, migrateAssetSnapshotsDb } from '../assets/store.ts';
 import { migrateCharactersDb } from '../characters/store.ts';
-import type { AssetSnapshot } from '../assets/types.ts';
+import { ASSET_STALE_MS, type AssetSnapshot } from '../assets/types.ts';
 import { registerAssetsRoutes } from './assets.ts';
 
 function testStore() {
@@ -219,10 +219,11 @@ test('GET /api/assets restores cached missing-scope snapshots after asset scope 
 
 test('GET /api/assets restores cached reauth snapshots after reauthentication', async () => {
   const store = testStore();
+  const now = 100_000;
   const snapshot = snapshotFor(125, 'Cached Needs Re-auth');
   snapshot.pilot.status = 'Needs re-auth';
   snapshot.pilot.error = 'token expired';
-  snapshot.pilot.lastRefreshedAt = 43;
+  snapshot.pilot.lastRefreshedAt = now - 1_000;
   snapshot.pilot.totalValue = 789;
   store.replaceSnapshot('user-a', snapshot);
 
@@ -230,6 +231,7 @@ test('GET /api/assets restores cached reauth snapshots after reauthentication', 
   registerAssetsRoutes(app, {
     currentUser: async () => userA,
     store,
+    now: () => now,
     characters: {
       listByUser: async () => [{ ...needsReauthPilot, needs_reauth: 0, scopes: 'esi-assets.read_assets.v1' }],
       listUsableByUser: async () => [],
@@ -242,8 +244,39 @@ test('GET /api/assets restores cached reauth snapshots after reauthentication', 
   const body = JSON.parse(res.body);
   assert.equal(body.pilots[0].pilot.status, 'Ready');
   assert.equal(body.pilots[0].pilot.error, null);
-  assert.equal(body.pilots[0].pilot.lastRefreshedAt, 43);
+  assert.equal(body.pilots[0].pilot.lastRefreshedAt, now - 1_000);
   assert.equal(body.pilots[0].pilot.totalValue, 789);
+});
+
+test('GET /api/assets restores stale cached authorization snapshots as stale after reauthorization', async () => {
+  const store = testStore();
+  const now = 100_000;
+  const snapshot = snapshotFor(124, 'Cached Missing Scope');
+  snapshot.pilot.status = 'Missing asset scope';
+  snapshot.pilot.error = 'asset scope missing';
+  snapshot.pilot.lastRefreshedAt = now - ASSET_STALE_MS - 1;
+  snapshot.pilot.totalValue = 456;
+  store.replaceSnapshot('user-a', snapshot);
+
+  const app = Fastify();
+  registerAssetsRoutes(app, {
+    currentUser: async () => userA,
+    store,
+    now: () => now,
+    characters: {
+      listByUser: async () => [{ ...missingScopePilot, scopes: 'esi-assets.read_assets.v1' }],
+      listUsableByUser: async () => [],
+      getOwned: async () => undefined,
+    },
+  });
+
+  const res = await app.inject({ method: 'GET', url: '/api/assets' });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.pilots[0].pilot.status, 'Stale');
+  assert.equal(body.pilots[0].pilot.error, null);
+  assert.equal(body.pilots[0].pilot.lastRefreshedAt, now - ASSET_STALE_MS - 1);
+  assert.equal(body.pilots[0].pilot.totalValue, 456);
 });
 
 test('POST /api/assets/characters/:id/refresh scopes refresh to owned pilot', async () => {
