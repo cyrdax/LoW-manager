@@ -23,10 +23,11 @@ export function filterAssetSnapshots(pilots: AssetSnapshot[], query: string, cat
 }
 
 function filterSnapshot(snapshot: AssetSnapshot, query: string, category: string): AssetSnapshot | null {
+  const pilotMatches = matches(snapshot.pilot.characterName, query);
   const locations = snapshot.locations
-    .map(location => filterLocation(location, query, category))
+    .map(location => filterLocation(location, query, category, pilotMatches))
     .filter((location): location is AssetLocationNode => location != null);
-  if (!matches(snapshot.pilot.characterName, query) && locations.length === 0 && !showsAll(query, category)) return null;
+  if (locations.length === 0) return null;
 
   return {
     ...snapshot,
@@ -35,28 +36,31 @@ function filterSnapshot(snapshot: AssetSnapshot, query: string, category: string
   };
 }
 
-function filterLocation(location: AssetLocationNode, query: string, category: string): AssetLocationNode | null {
+function filterLocation(location: AssetLocationNode, query: string, category: string, ancestorMatches: boolean): AssetLocationNode | null {
+  const locationMatches = ancestorMatches || matches(location.name, query);
   const assets = location.assets
-    .map(asset => filterAsset(asset, query, category))
+    .map(asset => filterAsset(asset, query, category, locationMatches))
     .filter((asset): asset is AssetTreeNode => asset != null);
-  if (!matches(location.name, query) && assets.length === 0 && !showsAll(query, category)) return null;
+  if (assets.length === 0) return null;
 
   return { ...location, assets, ...summarize(assets) };
 }
 
-function filterAsset(asset: AssetTreeNode, query: string, category: string): AssetTreeNode | null {
+function filterAsset(asset: AssetTreeNode, query: string, category: string, ancestorMatches: boolean): AssetTreeNode | null {
+  const selfMatches = query === '' || matches(asset.name, query) || matches(asset.categoryLabel, query);
+  const queryMatches = ancestorMatches || selfMatches;
   const children = asset.children
-    .map(child => filterAsset(child, query, category))
+    .map(child => filterAsset(child, query, category, queryMatches))
     .filter((child): child is AssetTreeNode => child != null);
   const rollups = asset.categoryRollups ?? LEGACY_CATEGORY_ROLLUPS[asset.category] ?? [];
   const categoryMatches = category === 'all' || asset.category === category || rollups.includes(category);
-  const selfMatches = query === '' || matches(asset.name, query) || matches(asset.categoryLabel, query);
-  if (!((categoryMatches && selfMatches) || children.length > 0)) return null;
+  const includeOwnSummary = categoryMatches && queryMatches;
+  if (!includeOwnSummary && children.length === 0) return null;
 
   return {
     ...asset,
     children,
-    ...summarize([ownSummary(asset), ...children]),
+    ...summarize(includeOwnSummary ? [ownSummary(asset), ...children] : children),
   };
 }
 
@@ -82,8 +86,4 @@ function summarize(rows: AssetValueSummary[]): AssetValueSummary {
 
 function matches(value: string, query: string): boolean {
   return query !== '' && value.toLowerCase().includes(query);
-}
-
-function showsAll(query: string, category: string): boolean {
-  return query === '' && category === 'all';
 }

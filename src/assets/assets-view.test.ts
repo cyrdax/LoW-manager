@@ -46,6 +46,50 @@ test('asset filters match rollup categories and recalculate visible aggregate su
   assert.equal(filterAssetSnapshots([legacySnapshot], '', 'ships').length, 1);
 });
 
+test('rollup filters exclude a retained nonmatching container from summaries', () => {
+  const snapshot = snapshotWithAssets(1, 'Container Pilot', [
+    { itemId: 1, typeId: 1, name: 'Cargo Container', groupId: 1, groupName: 'Container', categoryId: 1, categoryName: 'Other', quantity: 1, singleton: true, locationId: 60003760, locationFlag: 'Hangar', locationType: 'station', unitValue: 100, pricingStatus: 'priced' },
+    { itemId: 2, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 1, locationFlag: 'Cargo', locationType: 'item', unitValue: 1_000, pricingStatus: 'priced' },
+  ]);
+
+  const [filtered] = filterAssetSnapshots([snapshot], '', 'ships');
+
+  assert.equal(filtered.pilot.totalValue, 1_000);
+  assert.equal(filtered.pilot.stackCount, 1);
+  assert.equal(filtered.locations[0].assets[0].totalValue, 1_000);
+  assert.equal(filtered.locations[0].assets[0].stackCount, 1);
+});
+
+test('pilot-name searches retain category-matching descendants and recompute totals', () => {
+  const snapshot = snapshotWithAssets(1, 'Needle Pilot', [
+    { itemId: 1, typeId: 1, name: 'Cargo Container', groupId: 1, groupName: 'Container', categoryId: 1, categoryName: 'Other', quantity: 1, singleton: true, locationId: 60003760, locationFlag: 'Hangar', locationType: 'station', unitValue: 100, pricingStatus: 'priced' },
+    { itemId: 2, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 1, locationFlag: 'Cargo', locationType: 'item', unitValue: 1_000, pricingStatus: 'priced' },
+    { itemId: 3, typeId: 34, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material', quantity: 1, singleton: false, locationId: 60008494, locationFlag: 'Hangar', locationType: 'station', unitValue: 5, pricingStatus: 'priced' },
+  ]);
+
+  const [filtered] = filterAssetSnapshots([snapshot], 'needle', 'ships');
+
+  assert.equal(filtered.pilot.totalValue, 1_000);
+  assert.equal(filtered.pilot.stackCount, 1);
+  assert.equal(filtered.locations.length, 1);
+  assert.equal(filtered.locations[0].assets[0].children[0].name, 'Rifter');
+});
+
+test('location-name searches retain category-matching descendants and recompute totals', () => {
+  const snapshot = snapshotWithAssets(1, 'Location Pilot', [
+    { itemId: 1, typeId: 1, name: 'Cargo Container', groupId: 1, groupName: 'Container', categoryId: 1, categoryName: 'Other', quantity: 1, singleton: true, locationId: 60003760, locationFlag: 'Hangar', locationType: 'station', unitValue: 100, pricingStatus: 'priced' },
+    { itemId: 2, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 1, locationFlag: 'Cargo', locationType: 'item', unitValue: 1_000, pricingStatus: 'priced' },
+    { itemId: 3, typeId: 34, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material', quantity: 1, singleton: false, locationId: 60008494, locationFlag: 'Hangar', locationType: 'station', unitValue: 5, pricingStatus: 'priced' },
+  ]);
+
+  const [filtered] = filterAssetSnapshots([snapshot], 'jita', 'ships');
+
+  assert.equal(filtered.pilot.totalValue, 1_000);
+  assert.equal(filtered.pilot.stackCount, 1);
+  assert.equal(filtered.locations.length, 1);
+  assert.equal(filtered.locations[0].assets[0].children[0].name, 'Rifter');
+});
+
 test('assets view is wired into navigation between fits and market', () => {
   const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
   const panel = readFileSync(resolve('web/src/components/ControlPanel.tsx'), 'utf8');
