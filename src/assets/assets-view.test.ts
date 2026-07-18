@@ -159,3 +159,11 @@ test('assets api helpers and component expose dashboard refresh search and expan
   assert.match(view, /loadState === 'error'/);
   assert.match(view, /assets-tree-content/);
 });
+
+test('assets layout allows expanded asset rows to scroll vertically', () => {
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
+
+  assert.match(styles, /\.assets-view\s*\{[\s\S]*min-height:\s*0;/);
+  assert.match(styles, /\.assets-view\s*\{[\s\S]*overflow-y:\s*auto;/);
+  assert.doesNotMatch(styles, /\.assets-tree\s*\{[^}]*overflow-y:\s*hidden;/);
+});
