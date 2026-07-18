@@ -48,3 +48,41 @@ DONE
 ## Concerns
 
 - The eight skipped full-suite tests require external Postgres environment variables and are unrelated to Task 4.
+
+---
+
+# Task 4 Follow-up Fix Report: Complete Asset Rosters And Route Validation
+
+## Status
+
+DONE
+
+## Fixed Review Findings
+
+- `GET /api/assets` now merges every authenticated user's character from `listByUser(user.id)` with that user's cached snapshots. Pilots without a snapshot receive a read-only empty placeholder with `Needs re-auth`, `Missing asset scope`, or `Needs refresh` status as appropriate.
+- `POST /api/assets/refresh` now refreshes usable owned pilots, reloads snapshots, rebuilds the complete roster, and uses that exact roster for both `pilots` and `dashboard`.
+- Per-character refresh validates canonical positive safe-integer IDs before querying ownership and returns `{ error: 'invalid_character_id' }` with HTTP 400 for malformed values.
+- Expanded route tests cover all three unauthenticated routes without dependency execution, exact authenticated user arguments for character-store calls, cross-account snapshot exclusion, no-snapshot placeholders, and invalid IDs.
+
+## Verification
+
+- `node --import tsx --test src/routes/assets.test.ts src/server-postgres-runtime-view.test.ts`
+  - Result: 7 passed, 0 failed.
+- `npm test`
+  - Result: 230 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` are not configured for Postgres integration tests.
+- `npm run typecheck`
+  - Result: passed with exit code 0.
+- `git diff --check`
+  - Result: passed with no output.
+
+## Self-Review
+
+- Confirmed unauthenticated requests return before invoking stores, character queries, or refresh services.
+- Confirmed roster construction reads only existing state and never invokes ESI or persistence during GET.
+- Confirmed cached snapshots remain user-scoped and are emitted only for characters owned by the authenticated user's roster.
+- Confirmed refresh-all returns dashboard totals and pilot rows from the same reloaded merged collection.
+- Confirmed malformed character IDs do not reach `getOwned`.
+
+## Concerns
+
+- The eight skipped full-suite tests require external Postgres environment variables and are unrelated to this route fix.

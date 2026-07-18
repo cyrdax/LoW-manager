@@ -10,6 +10,7 @@ import {
   type RefreshPilotAssetsInput,
 } from '../assets/refresh.ts';
 import { createPostgresAssetSnapshotStore, type AssetSnapshotStore } from '../assets/store.ts';
+import type { AssetPilotStatus, AssetSnapshot } from '../assets/types.ts';
 
 export interface AssetsRouteDeps {
   currentUser?: CurrentUserResolver;
@@ -33,15 +34,18 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
     if (!user) return reply.code(401).send({ error: 'authentication_required' });
 
     const snapshots = await store.listSnapshots(user.id, now());
-    return { dashboard: summarizeAssets(snapshots), pilots: snapshots };
+    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots);
+    return { dashboard: summarizeAssets(pilots), pilots };
   });
 
   app.post('/api/assets/characters/:characterId/refresh', async (req, reply) => {
     const user = await currentUser(req);
     if (!user) return reply.code(401).send({ error: 'authentication_required' });
 
-    const characterId = Number((req.params as { characterId: string }).characterId);
-    const character = Number.isFinite(characterId) ? await characters.getOwned(user.id, characterId) : undefined;
+    const characterId = parseCharacterId((req.params as { characterId: string }).characterId);
+    if (characterId == null) return reply.code(400).send({ error: 'invalid_character_id' });
+
+    const character = await characters.getOwned(user.id, characterId);
     if (!character) return reply.code(404).send({ error: 'character_not_found' });
 
     const snapshot = await refreshPilot({ userId: user.id, character, characterStore: characters, store, now });
@@ -54,7 +58,7 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
     if (!user) return reply.code(401).send({ error: 'authentication_required' });
 
     const owned = await characters.listUsableByUser(user.id);
-    const snapshots = await refreshAll({
+    await refreshAll({
       userId: user.id,
       characters: owned,
       characterStore: characters,
@@ -62,6 +66,53 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
       now,
       concurrency: 2,
     });
-    return { dashboard: summarizeAssets(await store.listSnapshots(user.id, now())), pilots: snapshots };
+    const snapshots = await store.listSnapshots(user.id, now());
+    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots);
+    return { dashboard: summarizeAssets(pilots), pilots };
   });
+}
+
+function parseCharacterId(value: string): number | undefined {
+  if (!/^[1-9]\d*$/.test(value)) return undefined;
+  const characterId = Number(value);
+  return Number.isSafeInteger(characterId) && String(characterId) === value ? characterId : undefined;
+}
+
+function mergeAssetRoster(
+  characters: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>,
+  snapshots: AssetSnapshot[],
+): AssetSnapshot[] {
+  const snapshotsByCharacterId = new Map(snapshots.map(snapshot => [snapshot.pilot.characterId, snapshot]));
+  return characters.map(character => {
+    const snapshot = snapshotsByCharacterId.get(character.character_id);
+    return snapshot
+      ? { ...snapshot, pilot: { ...snapshot.pilot, characterName: character.character_name } }
+      : emptySnapshotFor(character.character_id, character.character_name, placeholderStatus(character));
+  });
+}
+
+function placeholderStatus(character: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>[number]): AssetPilotStatus {
+  if (character.needs_reauth === 1) return 'Needs re-auth';
+  if (!character.scopes.split(/\s+/).includes('esi-assets.read_assets.v1')) return 'Missing asset scope';
+  return 'Needs refresh';
+}
+
+function emptySnapshotFor(characterId: number, characterName: string, status: AssetPilotStatus): AssetSnapshot {
+  return {
+    pilot: {
+      characterId,
+      characterName,
+      status,
+      error: null,
+      lastRefreshedAt: null,
+      locationCount: 0,
+      itemCount: 0,
+      stackCount: 0,
+      pricedValue: 0,
+      totalValue: 0,
+      unpricedStacks: 0,
+    },
+    locations: [],
+    categories: [],
+  };
 }
