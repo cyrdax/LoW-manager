@@ -143,6 +143,8 @@ test('assets api helpers and component expose dashboard refresh search and expan
 
   assert.match(view, /Refresh All/);
   assert.match(view, /Search assets/);
+  assert.match(view, /asset-pilot-avatar/);
+  assert.match(view, /images\.evetech\.net\/characters\/\$\{id\}\/portrait\?size=32/);
   assert.match(view, /Asset access needs EVE re-auth/);
   assert.match(view, /Missing asset scope/);
   assert.match(view, /All assets/);
@@ -167,5 +169,7 @@ test('assets layout allows expanded asset rows to scroll vertically', () => {
 
   assert.match(styles, /\.assets-view\s*\{[\s\S]*min-height:\s*0;/);
   assert.match(styles, /\.assets-view\s*\{[\s\S]*overflow-y:\s*auto;/);
+  assert.match(styles, /\.asset-pilot-row\s*\{[\s\S]*grid-template-columns:\s*20px 32px minmax\(200px, 1fr\)/);
+  assert.match(styles, /\.asset-pilot-avatar\s*\{[\s\S]*width:\s*32px;/);
   assert.doesNotMatch(styles, /\.assets-tree\s*\{[^}]*overflow-y:\s*hidden;/);
 });

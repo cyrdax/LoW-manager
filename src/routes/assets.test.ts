@@ -287,9 +287,13 @@ test('POST /api/assets/characters/:id/refresh scopes refresh to owned pilot', as
   const app = Fastify();
   let refreshed = 0;
   const getOwnedCalls: Array<[string, number]> = [];
+  const listUsableByUserCalls: string[] = [];
   const characters = {
     listByUser: async () => [pilot],
-    listUsableByUser: async () => [pilot],
+    listUsableByUser: async (userId: string) => {
+      listUsableByUserCalls.push(userId);
+      return [pilot, { ...pilot, character_id: 222, character_name: 'Structure Resolver' }];
+    },
     getOwned: async (userId: string, id: number) => {
       getOwnedCalls.push([userId, id]);
       return id === 123 ? pilot : undefined;
@@ -302,6 +306,7 @@ test('POST /api/assets/characters/:id/refresh scopes refresh to owned pilot', as
     refreshPilot: async input => {
       refreshed++;
       assert.equal(input.characterStore, characters);
+      assert.deepEqual(input.structureCharacterIds, [123, 222]);
       return snapshotFor(input.character.character_id, input.character.character_name);
     },
   });
@@ -310,6 +315,7 @@ test('POST /api/assets/characters/:id/refresh scopes refresh to owned pilot', as
   assert.equal(ok.statusCode, 200);
   assert.equal(refreshed, 1);
   assert.deepEqual(getOwnedCalls, [['user-a', 123]]);
+  assert.deepEqual(listUsableByUserCalls, ['user-a']);
 
   const missing = await app.inject({ method: 'POST', url: '/api/assets/characters/456/refresh' });
   assert.equal(missing.statusCode, 404);

@@ -296,6 +296,7 @@ test('refreshAllAssets limits concurrency and returns per-pilot results', async 
   let active = 0;
   let maxActive = 0;
   const characters = [1, 2, 3].map(id => ({ ...character, character_id: id, character_name: `Pilot ${id}` }));
+  const resolverIdsByPilot: number[][] = [];
 
   const results = await refreshAllAssets({
     userId: 'user-a',
@@ -309,6 +310,7 @@ test('refreshAllAssets limits concurrency and returns per-pilot results', async 
       maxActive = Math.max(maxActive, active);
       await new Promise(resolve => setTimeout(resolve, 5));
       active--;
+      resolverIdsByPilot.push(input.structureCharacterIds ?? []);
       return {
         pilot: {
           characterId: input.character.character_id,
@@ -323,6 +325,11 @@ test('refreshAllAssets limits concurrency and returns per-pilot results', async 
 
   assert.equal(results.length, 3);
   assert.equal(maxActive, 2);
+  assert.deepEqual(resolverIdsByPilot.map(ids => [...ids].sort((a, b) => a - b)), [
+    [1, 2, 3],
+    [1, 2, 3],
+    [1, 2, 3],
+  ]);
 });
 
 test('refreshAllAssets validates ownership before delegating to a custom refresher', async () => {

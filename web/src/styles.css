@@ -2838,12 +2838,19 @@ body {
 .asset-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .asset-disclosure { color: var(--dim); text-align: center; }
 .asset-pilot-row {
-  grid-template-columns: 20px minmax(200px, 1fr) 150px 130px 110px 170px;
+  grid-template-columns: 20px 32px minmax(200px, 1fr) 150px 130px 110px 170px;
   border-bottom: 0;
   background: var(--panel-2);
   cursor: pointer;
 }
 .asset-pilot-row span { color: var(--dim); }
+.asset-pilot-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--panel);
+}
 .asset-refresh-small { flex: 0 0 auto; align-self: center; margin: 5px 8px; }
 .asset-location-row {
   grid-template-columns: 20px minmax(240px, 1fr) 180px 130px 110px;

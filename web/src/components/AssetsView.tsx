@@ -195,6 +195,12 @@ function PilotRow(props: {
       <div className="asset-pilot-head">
         <button className="asset-row asset-pilot-row" onClick={() => props.setExpandedPilots(current => toggled(current, id))} aria-expanded={open}>
           <span className="asset-disclosure">{open ? '▾' : '▸'}</span>
+          <img
+            className="asset-pilot-avatar"
+            src={`https://images.evetech.net/characters/${id}/portrait?size=32`}
+            alt=""
+            loading="lazy"
+          />
           <strong>{snapshot.pilot.characterName}</strong>
           <span>{snapshot.pilot.status}</span>
           <span>{formatIsk(snapshot.pilot.totalValue)}</span>

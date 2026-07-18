@@ -21,6 +21,7 @@ export interface RefreshPilotAssetsInput {
   characterStore: Pick<AsyncCharacterStore, 'getOwned'>;
   store: AssetSnapshotStore;
   now?: () => number;
+  structureCharacterIds?: number[];
   fetchAssets?: (characterId: number) => Promise<EsiCharacterAsset[]>;
   resolveItem?: (typeId: number) => AssetItemMetadata | null;
   resolveLocation?: (locationId: number, locationType: string, characterId: number) => Promise<RawAssetLocationInput>;
@@ -74,7 +75,10 @@ async function refreshPilotAssetsUncoordinated(input: RefreshPilotAssetsInput): 
     const resolveItem = input.resolveItem ?? resolveItemByTypeId;
     const normalized = assets.map(asset => normalizeAsset(asset, resolveItem(asset.type_id) ?? unknownItem(asset.type_id)));
     const unitPrices = await priceAssets(normalized, input.quoteItems ?? quoteResolvedMarketItems);
-    const locations = await resolveRootLocations(assets, character.character_id, input.resolveLocation ?? resolveAssetLocation);
+    const structureCharacterIds = uniqueCharacterIds([character.character_id, ...(input.structureCharacterIds ?? [])]);
+    const resolveLocation = input.resolveLocation
+      ?? ((locationId, locationType, ownerCharacterId) => resolveAssetLocation(locationId, locationType, ownerCharacterId, structureCharacterIds));
+    const locations = await resolveRootLocations(assets, character.character_id, resolveLocation);
     const snapshot = buildAssetTree({
       characterId: character.character_id,
       characterName: character.character_name,
@@ -100,6 +104,10 @@ async function refreshPilotAssetsUncoordinated(input: RefreshPilotAssetsInput): 
 export async function refreshAllAssets(input: RefreshAllAssetsInput): Promise<AssetSnapshot[]> {
   const refreshOne = input.refreshOne ?? refreshPilotAssets;
   const results = new Array<AssetSnapshot>(input.characters.length);
+  const structureCharacterIds = uniqueCharacterIds([
+    ...input.characters.map(character => character.character_id),
+    ...(input.structureCharacterIds ?? []),
+  ]);
   const concurrency = Number.isFinite(input.concurrency) && input.concurrency! > 0
     ? Math.max(1, Math.floor(input.concurrency!))
     : 3;
@@ -113,7 +121,7 @@ export async function refreshAllAssets(input: RefreshAllAssetsInput): Promise<As
       const requestedCharacter = characters[index];
       const character = await input.characterStore.getOwned(input.userId, requestedCharacter.character_id);
       results[index] = character
-        ? await refreshOne({ ...shared, character })
+        ? await refreshOne({ ...shared, character, structureCharacterIds })
         : rejectedSnapshot(requestedCharacter, 'Character does not belong to this user.');
     }
   }
@@ -151,6 +159,7 @@ export async function resolveAssetLocation(
   locationId: number,
   locationType: string,
   characterId: number,
+  structureCharacterIds: number[] = [characterId],
 ): Promise<RawAssetLocationInput> {
   if (locationType === 'station') {
     return { locationId, name: await resolveStation(locationId), type: 'station', status: 'resolved' };
@@ -159,8 +168,11 @@ export async function resolveAssetLocation(
     return { locationId, name: await resolveSystem(locationId), type: 'solar_system', status: 'resolved' };
   }
   if (locationType === 'other') {
-    const name = await resolveStructure(locationId, characterId);
-    return { locationId, name: name ?? 'Unknown structure', type: 'structure', status: name ? 'resolved' : 'unresolved' };
+    for (const resolverCharacterId of uniqueCharacterIds([characterId, ...structureCharacterIds])) {
+      const name = await resolveStructure(locationId, resolverCharacterId);
+      if (name) return { locationId, name, type: 'structure', status: 'resolved' };
+    }
+    return { locationId, name: 'Unknown structure', type: 'structure', status: 'unresolved' };
   }
   return { locationId, name: `Unknown location ${locationId}`, type: locationType, status: 'unresolved' };
 }
@@ -274,4 +286,8 @@ function addSummary(target: AssetValueSummary, source: AssetValueSummary): void 
   target.pricedValue += source.pricedValue;
   target.totalValue += source.totalValue;
   target.unpricedStacks += source.unpricedStacks;
+}
+
+function uniqueCharacterIds(characterIds: number[]): number[] {
+  return [...new Set(characterIds.filter(id => Number.isSafeInteger(id) && id > 0))];
 }

@@ -49,7 +49,8 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
     const character = await characters.getOwned(user.id, characterId);
     if (!character) return reply.code(404).send({ error: 'character_not_found' });
 
-    const snapshot = await refreshPilot({ userId: user.id, character, characterStore: characters, store, now });
+    const structureCharacterIds = (await characters.listUsableByUser(user.id)).map(pilot => pilot.character_id);
+    const snapshot = await refreshPilot({ userId: user.id, character, characterStore: characters, store, now, structureCharacterIds });
     const currentTime = now();
     const snapshots = await store.listSnapshots(user.id, currentTime);
     const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime);
