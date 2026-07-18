@@ -6,7 +6,7 @@ DONE
 
 ## Commit
 
-- `38a0393 feat: add private assets api`
+- `9720945 fix: return complete asset rosters`
 
 ## Delivered
 
@@ -86,3 +86,44 @@ DONE
 ## Concerns
 
 - The eight skipped full-suite tests require external Postgres environment variables and are unrelated to this route fix.
+
+---
+
+# Task 4 Follow-up Fix Report: Overlay Current Character Authorization
+
+## Status
+
+DONE
+
+## Commit
+
+- `5fd1591 fix: overlay current asset authorization status`
+
+## Fixed Review Finding
+
+- `mergeAssetRoster` now overlays current character authorization on cached snapshots: `Needs re-auth` takes precedence when `needs_reauth === 1`, and `Missing asset scope` is shown when `esi-assets.read_assets.v1` is absent.
+- Cached locations, categories, values, and `lastRefreshedAt` remain unchanged.
+- GET and refresh-all responses use the same authorization-aware roster, so refresh-all `pilots` and `dashboard.pilots` stay consistent.
+- Added regressions for cached `Ready` snapshots becoming `Missing asset scope` and `Needs re-auth`, including refresh-all dashboard consistency.
+
+## Verification
+
+- `node --import tsx --test src/routes/assets.test.ts src/server-postgres-runtime-view.test.ts`
+  - Result: 9 passed, 0 failed.
+- `npm test`
+  - Result: 230 passed, 0 failed, 8 skipped because `DATABASE_URL` and `TEST_DATABASE_URL` are not configured for Postgres integration tests.
+- `npm run typecheck`
+  - Result: passed with exit code 0.
+- `git diff --check`
+  - Result: passed with no output.
+
+## Self-Review
+
+- Confirmed re-authentication takes precedence over missing scope for cached and placeholder roster entries.
+- Confirmed authorized characters retain cached status, while unauthorized characters receive the current authorization status without losing cached asset data or refresh timestamps.
+- Confirmed refresh-all rebuilds one merged roster and passes it to both response fields.
+- Confirmed tracked implementation edits remained confined to `src/routes/assets.ts`, `src/routes/assets.test.ts`, and this report.
+
+## Concerns
+
+- The eight skipped full-suite tests require external Postgres environment variables.
