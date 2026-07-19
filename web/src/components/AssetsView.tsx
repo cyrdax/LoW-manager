@@ -9,6 +9,16 @@ import {
   type AssetTreeNode,
 } from '../api.ts';
 import { filterAssetSnapshots } from '../assets-filter.ts';
+import { sortAssetSnapshots, type AssetSortColumn, type AssetSortDirection } from '../assets-sort.ts';
+
+const ASSET_SORT_COLUMNS: Array<{ column: AssetSortColumn; label: string }> = [
+  { column: 'asset', label: 'Asset' },
+  { column: 'category', label: 'Category' },
+  { column: 'quantity', label: 'Quantity' },
+  { column: 'unitValue', label: 'Unit value' },
+  { column: 'totalValue', label: 'Total value' },
+  { column: 'price', label: 'Price' },
+];
 
 export function AssetsView() {
   const [dashboard, setDashboard] = useState<AssetDashboard | null>(null);
@@ -23,6 +33,7 @@ export function AssetsView() {
   const [expandedPilots, setExpandedPilots] = useState<Set<number>>(new Set());
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const [expandedAssets, setExpandedAssets] = useState<Set<number>>(new Set());
+  const [sort, setSort] = useState<{ column: AssetSortColumn; direction: AssetSortDirection }>({ column: 'totalValue', direction: 'desc' });
 
   useEffect(() => {
     let cancelled = false;
@@ -50,8 +61,15 @@ export function AssetsView() {
   }, []);
 
   const filtered = useMemo(() => filterAssetSnapshots(pilots, query, category), [pilots, query, category]);
+  const sorted = useMemo(() => sortAssetSnapshots(filtered, sort), [filtered, sort]);
   const assetAccessNotice = useMemo(() => assetAccessMessage(pilots), [pilots]);
   const refreshDisabled = busy != null || loadState === 'loading';
+
+  const updateSort = (column: AssetSortColumn) => {
+    setSort(current => current.column === column
+      ? { column, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+      : { column, direction: defaultSortDirection(column) });
+  };
 
   const doRefreshAll = async () => {
     if (refreshInFlight.current || loadState === 'loading') return;
@@ -132,12 +150,22 @@ export function AssetsView() {
 
       <section className="assets-tree" aria-label="Assets tree">
         <div className="assets-tree-content">
-          <div className="assets-column-headings" aria-hidden="true">
-            <span>Asset</span><span>Category</span><span>Quantity</span><span>Unit value</span><span>Total value</span><span>Price</span>
+          <div className="assets-column-headings">
+            {ASSET_SORT_COLUMNS.map(({ column, label }) => (
+              <button
+                key={column}
+                className={`asset-sort-button${sort.column === column ? ' active' : ''}`}
+                onClick={() => updateSort(column)}
+                aria-sort={sort.column === column ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+              >
+                <span>{label}</span>
+                {sort.column === column && <span className="asset-sort-indicator" aria-hidden="true">{sort.direction === 'asc' ? '▲' : '▼'}</span>}
+              </button>
+            ))}
           </div>
           {loadState === 'loading' && <div className="assets-empty" role="status">Loading assets...</div>}
           {loadState === 'error' && <div className="assets-empty asset-load-error" role="alert">Unable to load assets. Try refreshing.</div>}
-          {loadState === 'ready' && filtered.map(snapshot => (
+          {loadState === 'ready' && sorted.map(snapshot => (
             <PilotRow
               key={snapshot.pilot.characterId}
               snapshot={snapshot}
@@ -152,11 +180,15 @@ export function AssetsView() {
               onRefresh={doRefreshPilot}
             />
           ))}
-          {loadState === 'ready' && filtered.length === 0 && <div className="assets-empty">No assets found.</div>}
+          {loadState === 'ready' && sorted.length === 0 && <div className="assets-empty">No assets found.</div>}
         </div>
       </section>
     </main>
   );
+}
+
+function defaultSortDirection(column: AssetSortColumn): AssetSortDirection {
+  return column === 'asset' || column === 'category' || column === 'price' ? 'asc' : 'desc';
 }
 
 function SummaryCard({ label, value }: { label: string; value: string }) {

@@ -2817,6 +2817,29 @@ body {
   font-size: 11px;
   text-transform: uppercase;
 }
+.asset-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  text-transform: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.asset-sort-button span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asset-sort-button:hover,
+.asset-sort-button.active { color: var(--text); }
+.asset-sort-indicator { color: var(--accent); font-size: 10px; line-height: 1; }
 .asset-pilot { border-bottom: 1px solid var(--border); }
 .asset-pilot:last-child { border-bottom: 0; }
 .asset-pilot-head { display: flex; align-items: stretch; background: var(--panel-2); }

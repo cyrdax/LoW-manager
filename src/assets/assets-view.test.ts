@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import { filterAssetSnapshots } from '../../web/src/assets-filter.ts';
+import { sortAssetSnapshots } from '../../web/src/assets-sort.ts';
 import { buildAssetTree } from './tree.ts';
 import type { AssetSnapshot } from './types.ts';
 
@@ -120,6 +121,27 @@ test('location-name searches retain category-matching descendants and recompute 
   assert.equal(filtered.locations[0].assets[0].children[0].name, 'Rifter');
 });
 
+test('asset sort helper sorts pilots locations and nested assets without mutating input', () => {
+  const alpha = snapshotWithAssets(1, 'Alpha Pilot', [
+    { itemId: 1, typeId: 100, name: 'Zeta Container', groupId: 1, groupName: 'Container', categoryId: 1, categoryName: 'Other', quantity: 1, singleton: true, locationId: 60003760, locationFlag: 'Hangar', locationType: 'station', unitValue: 1, pricingStatus: 'priced' },
+    { itemId: 2, typeId: 101, name: 'Acolyte II', groupId: 18, groupName: 'Drone', categoryId: 18, categoryName: 'Drone', quantity: 3, singleton: false, locationId: 1, locationFlag: 'Cargo', locationType: 'item', unitValue: 2, pricingStatus: 'priced' },
+    { itemId: 3, typeId: 102, name: 'Barrage XL', groupId: 83, groupName: 'Projectile Ammo', categoryId: 8, categoryName: 'Charge', quantity: 50, singleton: false, locationId: 1, locationFlag: 'Cargo', locationType: 'item', unitValue: null, pricingStatus: 'unpriced' },
+    { itemId: 4, typeId: 103, name: 'Mjolnir Torpedo', groupId: 83, groupName: 'Missile', categoryId: 8, categoryName: 'Charge', quantity: 10, singleton: false, locationId: 60008494, locationFlag: 'Hangar', locationType: 'station', unitValue: 4, pricingStatus: 'priced' },
+  ]);
+  const beta = snapshotWithAssets(2, 'Beta Pilot', [
+    { itemId: 5, typeId: 104, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 60008494, locationFlag: 'Hangar', locationType: 'station', unitValue: 100, pricingStatus: 'priced' },
+  ]);
+  const originalFirstLocation = alpha.locations[0].name;
+
+  const sorted = sortAssetSnapshots([alpha, beta], { column: 'totalValue', direction: 'desc' });
+
+  assert.deepEqual(sorted.map(snapshot => snapshot.pilot.characterName), ['Beta Pilot', 'Alpha Pilot']);
+  assert.deepEqual(sorted[1].locations.map(location => location.name), ['Amarr', 'Jita']);
+  assert.deepEqual(sorted[1].locations[1].assets[0].children.map(asset => asset.name), ['Acolyte II', 'Barrage XL']);
+  assert.equal(alpha.locations[0].name, originalFirstLocation);
+  assert.notEqual(sorted[1], alpha);
+});
+
 test('assets view is wired into navigation between fits and market', () => {
   const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
   const panel = readFileSync(resolve('web/src/components/ControlPanel.tsx'), 'utf8');
@@ -143,6 +165,9 @@ test('assets api helpers and component expose dashboard refresh search and expan
 
   assert.match(view, /Refresh All/);
   assert.match(view, /Search assets/);
+  assert.match(view, /sortAssetSnapshots\(filtered, sort\)/);
+  assert.match(view, /ASSET_SORT_COLUMNS\.map/);
+  assert.match(view, /aria-sort=\{sort\.column === column/);
   assert.match(view, /asset-pilot-avatar/);
   assert.match(view, /images\.evetech\.net\/characters\/\$\{id\}\/portrait\?size=32/);
   assert.match(view, /Asset access needs EVE re-auth/);
@@ -171,5 +196,7 @@ test('assets layout allows expanded asset rows to scroll vertically', () => {
   assert.match(styles, /\.assets-view\s*\{[\s\S]*overflow-y:\s*auto;/);
   assert.match(styles, /\.asset-pilot-row\s*\{[\s\S]*grid-template-columns:\s*20px 32px minmax\(200px, 1fr\)/);
   assert.match(styles, /\.asset-pilot-avatar\s*\{[\s\S]*width:\s*32px;/);
+  assert.match(styles, /\.asset-sort-button\s*\{[\s\S]*cursor:\s*pointer;/);
+  assert.match(styles, /\.asset-sort-indicator\s*\{[\s\S]*color:\s*var\(--accent\);/);
   assert.doesNotMatch(styles, /\.assets-tree\s*\{[^}]*overflow-y:\s*hidden;/);
 });
