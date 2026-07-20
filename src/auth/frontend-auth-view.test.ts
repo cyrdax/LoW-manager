@@ -34,7 +34,8 @@ test('frontend exposes auth api helpers and gates the dashboard behind login', (
   assert.match(authGate, /Create account/);
   assert.match(authGate, /Sign in/);
   assert.match(authGate, /Continue with Google/);
-  assert.match(authGate, /\/auth\/google\/start/);
+  assert.match(authGate, /googleStartUrl/);
+  assert.match(authGate, /returnTo/);
   assert.match(authGate, /Forgot password\?/);
   assert.doesNotMatch(authGate, />Reset password<\/button>/);
   assert.match(authGate, /requestPasswordReset/);

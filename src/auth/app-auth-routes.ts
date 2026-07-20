@@ -116,12 +116,12 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
     return { user: publicUser(found.user) };
   });
 
-  app.get('/auth/google/start', async (_req, reply) => {
+  app.get<{ Querystring: { returnTo?: string } }>('/auth/google/start', async (req, reply) => {
     const configured = normalizedGoogleConfig(google, appBaseUrl);
     if (!configured) return reply.code(503).send({ error: 'google_auth_not_configured' });
     const state = await appTokens.issue({
       purpose: 'google_oauth_state',
-      metadata: { provider: 'google' },
+      metadata: { provider: 'google', returnTo: safeLocalReturnTo(req.query.returnTo) },
       ttlMs: GOOGLE_OAUTH_STATE_TTL_MS,
     });
     const url = new URL(configured.authorizeUrl);
@@ -162,7 +162,7 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
 
     setSessionCookie(reply, cookieName, issued.token, secureCookies);
     await users.markActive(user.id);
-    return reply.redirect('/');
+    return reply.redirect(safeLocalReturnTo(consumed.metadata.returnTo));
   });
 
   app.post('/api/auth/logout', async (req, reply) => {
@@ -358,6 +358,21 @@ function hashOptional(value: string | string[] | undefined): string | null {
 
 function defaultAppBaseUrl(): string {
   return process.env.APP_BASE_URL ?? `http://localhost:${process.env.PORT ?? 3100}`;
+}
+
+function safeLocalReturnTo(value: unknown): string {
+  if (typeof value !== 'string') return '/';
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return '/';
+
+  try {
+    const base = 'https://outfit.local';
+    const url = new URL(trimmed, base);
+    if (url.origin !== base || url.pathname.startsWith('/auth/')) return '/';
+    return `${url.pathname}${url.search}${url.hash}` || '/';
+  } catch {
+    return '/';
+  }
 }
 
 function isUniqueViolation(err: unknown): boolean {

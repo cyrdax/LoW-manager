@@ -19,6 +19,12 @@ export function AuthGate({ onAuthenticated }: Props) {
     const params = new URLSearchParams(window.location.search);
     return window.location.pathname === '/auth/password/reset' ? params.get('token') ?? '' : '';
   }, []);
+  const googleStartUrl = useMemo(() => {
+    const returnTo = window.location.pathname.startsWith('/auth/')
+      ? '/'
+      : `${window.location.pathname}${window.location.search}`;
+    return `/auth/google/start?${new URLSearchParams({ returnTo }).toString()}`;
+  }, []);
   const [mode, setMode] = useState<Mode>(resetToken ? 'reset' : 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -103,7 +109,7 @@ export function AuthGate({ onAuthenticated }: Props) {
         {message && <div className="auth-note">{message}</div>}
         {error && <div className="auth-error">{error}</div>}
 
-        <a className="google-auth-button" href="/auth/google/start">Continue with Google</a>
+        <a className="google-auth-button" href={googleStartUrl}>Continue with Google</a>
 
         {mode === 'login' && (
           <form className="auth-form" onSubmit={submitLogin}>

@@ -289,6 +289,20 @@ test('google auth callback creates a session for a verified Google account', asy
   await app.close();
 });
 
+test('google auth callback returns to a safe local path from oauth state', async () => {
+  const deps = testDeps();
+  deps.google = testGoogleConfig();
+  const app = await appWithAuth(deps);
+
+  await app.inject({ method: 'GET', url: '/auth/google/start?returnTo=%2Ffit%2F42%3Fhub%3DJita' });
+  const callback = await app.inject({ method: 'GET', url: '/auth/google/callback?state=google-token-1&code=oauth-code' });
+
+  assert.equal(callback.statusCode, 302);
+  assert.equal(callback.headers.location, '/fit/42?hub=Jita');
+
+  await app.close();
+});
+
 async function appWithAuth(deps: ReturnType<typeof testDeps>) {
   const app = Fastify();
   await app.register(cookie, { secret: 'test-secret' });
