@@ -13,8 +13,7 @@ import { FitsView } from './components/FitsView.tsx';
 import { AssetsView } from './components/AssetsView.tsx';
 import { AuthGate } from './components/AuthGate.tsx';
 import { deleteCharacter, fetchCurrentUser, logout, setBoss, setMainCharacter, type CharacterStatus, type CurrentUser } from './api.ts';
-
-type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits' | 'assets';
+import { parseAppRoute, pathForRoute, routeForView, type AppRoute, type View } from './app-routes.ts';
 
 interface HeaderDef {
   key: SortKey;
@@ -79,8 +78,35 @@ export function App() {
     return () => { cancelled = true; };
   }, []);
 
-  const [view, setView] = useState<View>(() => (localStorage.getItem('efd.view') as View) || 'pilots');
+  const [route, setRoute] = useState<AppRoute>(() => parseAppRoute(window.location.pathname));
+  const view = route.view;
   useEffect(() => { localStorage.setItem('efd.view', view); }, [view]);
+
+  function navigateToRoute(next: AppRoute, replace = false) {
+    const path = pathForRoute(next);
+    setRoute(next);
+    if (window.location.pathname !== path) {
+      if (replace) window.history.replaceState({}, '', path);
+      else window.history.pushState({}, '', path);
+    }
+  }
+
+  function navigateToView(nextView: View) {
+    navigateToRoute(routeForView(nextView));
+  }
+
+  useEffect(() => {
+    const onPopState = () => setRoute(parseAppRoute(window.location.pathname));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    const canonical = pathForRoute(route);
+    if (window.location.pathname !== canonical && !window.location.pathname.startsWith('/auth')) {
+      window.history.replaceState({}, '', canonical);
+    }
+  }, [route]);
 
   const list = useMemo(() => {
     const arr = Array.from(chars.values());
@@ -171,7 +197,7 @@ export function App() {
         selection={selection}
         onRefresh={refresh}
         view={view}
-        setView={setView}
+        setView={navigateToView}
         currentUser={currentUser}
         onLogout={onLogout}
         onSetMainCharacter={onSetMainCharacter}
@@ -224,7 +250,18 @@ export function App() {
       {view === 'market' && <MarketView chars={list} />}
       {view === 'industry' && <IndustryView chars={list} />}
       {view === 'contracts' && <ContractsView />}
-      {view === 'fits' && <FitsView chars={list} currentUser={currentUser} />}
+      {view === 'fits' && (
+        <FitsView
+          chars={list}
+          currentUser={currentUser}
+          route={route}
+          routeFitId={route.view === 'fits' && route.fitId != null ? route.fitId : null}
+          routeDoctrineId={route.view === 'fits' && route.doctrineId != null ? route.doctrineId : null}
+          onOpenFitRoute={(id) => navigateToRoute({ view: 'fits', mode: 'fits', fitId: id })}
+          onOpenDoctrineRoute={(id) => navigateToRoute({ view: 'fits', mode: 'doctrines', doctrineId: id })}
+          onModeRoute={(mode) => navigateToRoute({ view: 'fits', mode })}
+        />
+      )}
       {view === 'assets' && <AssetsView />}
     </div>
   );

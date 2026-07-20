@@ -22,7 +22,9 @@ interface Props {
   visibility: LibraryVisibility;
   setVisibility: (visibility: LibraryVisibility) => void;
   onOpenFit: (fit: SavedFitSummary) => void;
-  openDoctrineTarget: { id: number; visibility: LibraryVisibility } | null;
+  routeDoctrineId: number | null;
+  onOpenDoctrineRoute: (id: number) => void;
+  onModeRoute: (mode: 'fits' | 'doctrines') => void;
 }
 
 function iconUrl(typeId: number): string {
@@ -38,7 +40,7 @@ function googleDocPreviewUrl(url: string): string | null {
   return match ? `https://docs.google.com/document/d/${match[1]}/preview` : null;
 }
 
-export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFit, openDoctrineTarget }: Props) {
+export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFit, routeDoctrineId, onOpenDoctrineRoute, onModeRoute }: Props) {
   const [query, setQuery] = useState('');
   const [doctrines, setDoctrines] = useState<DoctrineSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -59,6 +61,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setDoctrines(rows);
     setSelectedId(current => {
       if (draftModeRef.current) return current;
+      if (routeDoctrineId != null) return routeDoctrineId;
       return (current != null && rows.some(row => row.id === current)) ? current : rows[0]?.id ?? null;
     });
   }
@@ -72,7 +75,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   useEffect(() => {
     leaveDraftMode();
     setDetail(null);
-    setSelectedId(null);
+    setSelectedId(routeDoctrineId);
     reloadList(query, visibility);
   }, [visibility]);
   useEffect(() => {
@@ -90,18 +93,21 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     fetchDoctrine(selectedId).then(res => {
       if (cancelled) return;
       if ('error' in res) setDetail(null);
-      else setDetail(res);
+      else {
+        setDetail(res);
+        if (routeDoctrineId === res.id && res.visibility !== visibility) setVisibility(res.visibility);
+      }
     });
     return () => { cancelled = true; };
-  }, [selectedId]);
+  }, [selectedId, routeDoctrineId, visibility]);
 
   useEffect(() => {
-    if (!openDoctrineTarget) return;
+    if (routeDoctrineId == null) return;
     leaveDraftMode();
     setQuery('');
     setDetail(null);
-    setSelectedId(openDoctrineTarget.id);
-  }, [openDoctrineTarget]);
+    setSelectedId(routeDoctrineId);
+  }, [routeDoctrineId]);
 
   useEffect(() => {
     setName(detail?.name ?? '');
@@ -142,6 +148,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setFitQuery('');
     setStatus(null);
     setQuery('');
+    onModeRoute('doctrines');
   }
 
   async function publishCurrentDoctrine() {
@@ -154,6 +161,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setVisibility('public');
     setSelectedId(res.id);
     setDetail(res);
+    onOpenDoctrineRoute(res.id);
     setStatus('Published.');
     await reloadList(query, 'public');
   }
@@ -168,6 +176,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setVisibility('private');
     setSelectedId(res.id);
     setDetail(res);
+    onOpenDoctrineRoute(res.id);
     setStatus('Copied to private library.');
     await reloadList('', 'private');
   }
@@ -189,6 +198,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setEditing(false);
     setDetail(res);
     setSelectedId(res.id);
+    onOpenDoctrineRoute(res.id);
     setStatus('Saved.');
     await reloadList('', res.visibility);
   }
@@ -208,6 +218,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     if ('error' in res) { setStatus(res.error); return; }
     setSelectedId(null);
     setDetail(null);
+    onModeRoute('doctrines');
     await reloadList();
   }
 
@@ -246,7 +257,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
         <input className="fits-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search doctrines" />
         <div className="fits-list">
           {doctrines.map(row => (
-            <button key={row.id} className={`fits-row${selectedId === row.id && !draftMode ? ' active' : ''}`} onClick={() => { leaveDraftMode(); setSelectedId(row.id); }}>
+            <button key={row.id} className={`fits-row${selectedId === row.id && !draftMode ? ' active' : ''}`} onClick={() => { leaveDraftMode(); setSelectedId(row.id); onOpenDoctrineRoute(row.id); }}>
               <span className="fits-row-ship">{row.name}</span>
               <span className="fits-row-name">{row.description || row.shipNames.join(', ') || 'No description'}</span>
               <span className="fits-row-meta">{row.fitCount} fits - {row.visibility === 'public' ? 'Public' : 'Private'}</span>

@@ -98,16 +98,16 @@ test('clicking a doctrine member opens that saved fit in the fit view', () => {
   const fitsView = readFileSync(resolve('web/src/components/FitsView.tsx'), 'utf8');
   const doctrinesView = readFileSync(resolve('web/src/components/DoctrinesView.tsx'), 'utf8');
 
-  assert.match(fitsView, /type FitOpenTarget = \{ id: number; visibility: LibraryVisibility \} \| null/);
-  assert.match(fitsView, /const \[openFitTarget, setOpenFitTarget\] = useState<FitOpenTarget>\(null\)/);
+  assert.match(fitsView, /routeFitId: number \| null/);
+  assert.match(fitsView, /onOpenFitRoute: \(id: number\) => void/);
   assert.match(fitsView, /function openDoctrineFit\(fit: SavedFitSummary\)/);
-  assert.match(fitsView, /setOpenFitTarget\(\{ id: fit\.id, visibility: fit\.visibility \}\)/);
   assert.match(fitsView, /setVisibility\(fit\.visibility\)/);
   assert.match(fitsView, /setMode\('fits'\)/);
+  assert.match(fitsView, /onOpenFitRoute\(fit\.id\)/);
   assert.match(fitsView, /<DoctrinesView[^>]+onOpenFit=\{openDoctrineFit\}/s);
-  assert.match(fitsView, /<SavedFitsView[^>]+openFitTarget=\{openFitTarget\}/s);
-  assert.match(fitsView, /if \(!openFitTarget\) return/);
-  assert.match(fitsView, /setSelectedId\(openFitTarget\.id\)/);
+  assert.match(fitsView, /<SavedFitsView[^>]+routeFitId=\{routeFitId\}/s);
+  assert.match(fitsView, /if \(routeFitId == null\) return/);
+  assert.match(fitsView, /setSelectedId\(routeFitId\)/);
 
   assert.match(doctrinesView, /onOpenFit: \(fit: SavedFitSummary\) => void/);
   assert.match(doctrinesView, /className="doctrine-member-open"/);
@@ -117,13 +117,13 @@ test('clicking a doctrine member opens that saved fit in the fit view', () => {
 test('saved fit view lists containing doctrines and opens them in doctrine view', () => {
   const fitsView = readFileSync(resolve('web/src/components/FitsView.tsx'), 'utf8');
 
-  assert.match(fitsView, /type DoctrineOpenTarget = \{ id: number; visibility: LibraryVisibility \} \| null/);
-  assert.match(fitsView, /const \[openDoctrineTarget, setOpenDoctrineTarget\] = useState<DoctrineOpenTarget>\(null\)/);
+  assert.match(fitsView, /routeDoctrineId: number \| null/);
+  assert.match(fitsView, /onOpenDoctrineRoute: \(id: number\) => void/);
   assert.match(fitsView, /function openFitDoctrine\(doctrine: DoctrineSummary\)/);
-  assert.match(fitsView, /setOpenDoctrineTarget\(\{ id: doctrine\.id, visibility: doctrine\.visibility \}\)/);
   assert.match(fitsView, /setVisibility\(doctrine\.visibility\)/);
   assert.match(fitsView, /setMode\('doctrines'\)/);
-  assert.match(fitsView, /<DoctrinesView[^>]+openDoctrineTarget=\{openDoctrineTarget\}/s);
+  assert.match(fitsView, /onOpenDoctrineRoute\(doctrine\.id\)/);
+  assert.match(fitsView, /<DoctrinesView[^>]+routeDoctrineId=\{routeDoctrineId\}/s);
   assert.match(fitsView, /<SavedFitsView[^>]+onOpenDoctrine=\{openFitDoctrine\}/s);
   assert.match(fitsView, /const \[fitDoctrines, setFitDoctrines\] = useState<DoctrineSummary\[\]>\(\[\]\)/);
   assert.match(fitsView, /fetchDoctrines\('', activeVisibility, activeSavedId\)/);

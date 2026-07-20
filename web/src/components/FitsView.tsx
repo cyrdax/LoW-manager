@@ -30,8 +30,18 @@ import {
 import { DoctrinesView } from './DoctrinesView.tsx';
 import { FitModeSwitch, type FitMode } from './FitModeSwitch.tsx';
 import { LibraryScopeSwitch } from './LibraryScopeSwitch.tsx';
+import type { AppRoute } from '../app-routes.ts';
 
-interface Props { chars: CharacterStatus[]; currentUser: CurrentUser }
+interface Props {
+  chars: CharacterStatus[];
+  currentUser: CurrentUser;
+  route: AppRoute;
+  routeFitId: number | null;
+  routeDoctrineId: number | null;
+  onOpenFitRoute: (id: number) => void;
+  onOpenDoctrineRoute: (id: number) => void;
+  onModeRoute: (mode: FitMode) => void;
+}
 
 const FITS_HUB_KEY = 'efd.fits.hub';
 const FITS_MODE_KEY = 'efd.fits.mode';
@@ -68,8 +78,6 @@ type FitTooltipHandlers = {
   show: (label: string, target: HTMLElement) => void;
   hide: () => void;
 };
-type FitOpenTarget = { id: number; visibility: LibraryVisibility } | null;
-type DoctrineOpenTarget = { id: number; visibility: LibraryVisibility } | null;
 
 function formatIsk(n: number | null | undefined): string {
   if (n == null) return '-';
@@ -84,35 +92,44 @@ function iconUrl(typeId: number): string {
   return `https://images.evetech.net/types/${typeId}/icon?size=64`;
 }
 
-export function FitsView({ chars, currentUser }: Props) {
-  const [mode, setMode] = useState<FitMode>(() => (localStorage.getItem(FITS_MODE_KEY) as FitMode) || 'fits');
+export function FitsView({ chars, currentUser, route, routeFitId, routeDoctrineId, onOpenFitRoute, onOpenDoctrineRoute, onModeRoute }: Props) {
+  const routeMode = route.view === 'fits' ? route.mode : undefined;
+  const [mode, setMode] = useState<FitMode>(() => routeMode ?? ((localStorage.getItem(FITS_MODE_KEY) as FitMode) || 'fits'));
   const [visibility, setVisibility] = useState<LibraryVisibility>(() => (localStorage.getItem(FITS_VISIBILITY_KEY) as LibraryVisibility) || 'private');
-  const [openFitTarget, setOpenFitTarget] = useState<FitOpenTarget>(null);
-  const [openDoctrineTarget, setOpenDoctrineTarget] = useState<DoctrineOpenTarget>(null);
   useEffect(() => { localStorage.setItem(FITS_MODE_KEY, mode); }, [mode]);
   useEffect(() => { localStorage.setItem(FITS_VISIBILITY_KEY, visibility); }, [visibility]);
+  useEffect(() => {
+    if (routeFitId != null) setMode('fits');
+    else if (routeDoctrineId != null) setMode('doctrines');
+    else if (routeMode != null) setMode(routeMode);
+  }, [routeFitId, routeDoctrineId, routeMode]);
+
+  function chooseMode(nextMode: FitMode) {
+    setMode(nextMode);
+    onModeRoute(nextMode);
+  }
 
   function openDoctrineFit(fit: SavedFitSummary) {
-    setOpenFitTarget({ id: fit.id, visibility: fit.visibility });
     setVisibility(fit.visibility);
     setMode('fits');
+    onOpenFitRoute(fit.id);
   }
 
   function openFitDoctrine(doctrine: DoctrineSummary) {
-    setOpenDoctrineTarget({ id: doctrine.id, visibility: doctrine.visibility });
     setVisibility(doctrine.visibility);
     setMode('doctrines');
+    onOpenDoctrineRoute(doctrine.id);
   }
 
   return (
     <main className="rows-wrap fits-page">
       <div className="fits-topbar">
-        <FitModeSwitch mode={mode} onMode={setMode} />
+        <FitModeSwitch mode={mode} onMode={chooseMode} />
         <LibraryScopeSwitch value={visibility} onChange={setVisibility} />
       </div>
       {mode === 'doctrines'
-        ? <DoctrinesView currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} onOpenFit={openDoctrineFit} openDoctrineTarget={openDoctrineTarget} />
-        : <SavedFitsView chars={chars} currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} openFitTarget={openFitTarget} onOpenDoctrine={openFitDoctrine} />}
+        ? <DoctrinesView currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} onOpenFit={openDoctrineFit} routeDoctrineId={routeDoctrineId} onOpenDoctrineRoute={onOpenDoctrineRoute} onModeRoute={onModeRoute} />
+        : <SavedFitsView chars={chars} currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} routeFitId={routeFitId} onOpenFitRoute={onOpenFitRoute} onModeRoute={onModeRoute} onOpenDoctrine={openFitDoctrine} />}
     </main>
   );
 }
@@ -122,9 +139,11 @@ function SavedFitsView({
   currentUser,
   visibility,
   setVisibility,
-  openFitTarget,
+  routeFitId,
+  onOpenFitRoute,
+  onModeRoute,
   onOpenDoctrine,
-}: Props & { visibility: LibraryVisibility; setVisibility: (visibility: LibraryVisibility) => void; openFitTarget: FitOpenTarget; onOpenDoctrine: (doctrine: DoctrineSummary) => void }) {
+}: Pick<Props, 'chars' | 'currentUser'> & { visibility: LibraryVisibility; setVisibility: (visibility: LibraryVisibility) => void; routeFitId: number | null; onOpenFitRoute: (id: number) => void; onModeRoute: (mode: FitMode) => void; onOpenDoctrine: (doctrine: DoctrineSummary) => void }) {
   const [fits, setFits] = useState<SavedFitSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<SavedFitDetail | null>(null);
@@ -175,22 +194,25 @@ function SavedFitsView({
   const reloadList = async (scope = visibility) => {
     const rows = await fetchFits(scope);
     setFits(rows);
-    setSelectedId(current => (current != null && rows.some(row => row.id === current)) ? current : rows[0]?.id ?? null);
+    setSelectedId(current => {
+      if (routeFitId != null) return routeFitId;
+      return (current != null && rows.some(row => row.id === current)) ? current : rows[0]?.id ?? null;
+    });
   };
   useEffect(() => {
     setDraft(null);
     setDetail(null);
-    setSelectedId(null);
+    setSelectedId(routeFitId);
     reloadList(visibility);
   }, [visibility]);
 
   useEffect(() => {
-    if (!openFitTarget) return;
+    if (routeFitId == null) return;
     setDraft(null);
     setDetail(null);
     setSearch('');
-    setSelectedId(openFitTarget.id);
-  }, [openFitTarget]);
+    setSelectedId(routeFitId);
+  }, [routeFitId]);
 
   useEffect(() => {
     if (selectedId == null || draft) { setDetail(null); return; }
@@ -198,10 +220,13 @@ function SavedFitsView({
     fetchFit(selectedId).then(res => {
       if (cancelled) return;
       if ('error' in res) setDetail(null);
-      else setDetail(res);
+      else {
+        setDetail(res);
+        if (routeFitId === res.id && res.visibility !== visibility) setVisibility(res.visibility);
+      }
     });
     return () => { cancelled = true; };
-  }, [selectedId, draft]);
+  }, [selectedId, draft, routeFitId, visibility]);
 
   const active = draft ?? detail;
   const activeSavedId = draft ? null : detail?.id ?? null;
@@ -370,6 +395,7 @@ function SavedFitsView({
     setDraft(null);
     setDetail(res);
     setSelectedId(res.id);
+    onOpenFitRoute(res.id);
     setStatus('Saved.');
     await reloadList(res.visibility);
   };
@@ -385,6 +411,7 @@ function SavedFitsView({
     setDraft(null);
     setDetail(res);
     setSelectedId(res.id);
+    onOpenFitRoute(res.id);
     setStatus('Published.');
     await reloadList('public');
   };
@@ -400,6 +427,7 @@ function SavedFitsView({
     setDraft(null);
     setDetail(res);
     setSelectedId(res.id);
+    onOpenFitRoute(res.id);
     setStatus('Copied to private library.');
     await reloadList('private');
   };
@@ -411,6 +439,7 @@ function SavedFitsView({
     if ('error' in res) { setStatus(res.error); return; }
     setDetail(null);
     setSelectedId(null);
+    onModeRoute('fits');
     await reloadList();
   };
 
@@ -465,7 +494,7 @@ function SavedFitsView({
             <button
               key={row.id}
               className={`fits-row${selectedId === row.id && !draft ? ' active' : ''}`}
-              onClick={() => { setDraft(null); setSelectedId(row.id); }}
+              onClick={() => { setDraft(null); setSelectedId(row.id); onOpenFitRoute(row.id); }}
             >
               <span className="fits-row-ship">{row.shipName}</span>
               <span className="fits-row-name">{row.fitName}</span>
