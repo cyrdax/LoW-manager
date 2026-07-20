@@ -23,12 +23,21 @@ test('frontend exposes doctrine api helpers and doctrine view controls', () => {
   assert.match(doctrinesView, /const \[editing, setEditing\] = useState\(false\)/);
   assert.match(doctrinesView, /canStartEditing/);
   assert.match(doctrinesView, />Edit<\/button>/);
+  assert.match(doctrinesView, /doctrine-head \$\{isEditing \? 'editing' : 'viewing'\}/);
   assert.match(doctrinesView, /doctrine-description-view/);
   assert.match(doctrinesView, /Google Doc URL/);
   assert.match(doctrinesView, /google-doc-frame/);
   assert.match(doctrinesView, /googleDocPreviewUrl/);
   assert.match(doctrinesView, /Add fit/);
   assert.match(doctrinesView, /Remove/);
+});
+
+test('doctrine view description spans the full detail container', () => {
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
+
+  assert.match(styles, /\.doctrine-head\.viewing \.doctrine-fields \{\n  display: contents;\n\}/);
+  assert.match(styles, /\.doctrine-head\.viewing \.doctrine-view-summary \{\n  grid-column: 1 \/ -1;\n\}/);
+  assert.match(styles, /\.google-doc-frame \{[\s\S]*?width: 100%;/);
 });
 
 test('frontend exposes public and private fit library controls', () => {

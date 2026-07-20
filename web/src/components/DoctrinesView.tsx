@@ -260,7 +260,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
         {!showEditor && <div className="fits-empty large">Create a doctrine from saved fits.</div>}
         {showEditor && (
           <>
-            <div className="doctrine-head">
+            <div className={`doctrine-head ${isEditing ? 'editing' : 'viewing'}`}>
               <div className="doctrine-fields">
                 <div className="fits-title-line">
                   {draftMode && <span className="fits-state draft">Draft</span>}

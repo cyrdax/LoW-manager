@@ -2588,6 +2588,16 @@ body {
   flex-direction: column;
   gap: 8px;
 }
+.doctrine-head.viewing .doctrine-fields {
+  display: contents;
+}
+.doctrine-head.viewing .doctrine-view-summary {
+  grid-column: 1 / -1;
+}
+.doctrine-head.viewing .fits-actions {
+  grid-column: 2;
+  grid-row: 1;
+}
 .doctrine-fields input,
 .doctrine-fields textarea,
 .doctrine-add input {
