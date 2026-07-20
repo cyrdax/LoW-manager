@@ -28,10 +28,19 @@ const userB = { id: 'user-b', email: null, role: 'user' as const, status: 'activ
 test('doctrine CRUD routes create list get update and delete', async () => {
   const { app } = appWithStores();
 
-  const created = await app.inject({ method: 'POST', url: '/api/doctrines', payload: { name: 'Armor Bomb', description: 'Dread comp' } });
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/doctrines',
+    payload: {
+      name: 'Armor Bomb',
+      description: 'Dread comp',
+      googleDocUrl: 'https://docs.google.com/document/d/abc123/edit',
+    },
+  });
   assert.equal(created.statusCode, 200);
   const doctrine = JSON.parse(created.body);
   assert.equal(doctrine.name, 'Armor Bomb');
+  assert.equal(doctrine.googleDocUrl, 'https://docs.google.com/document/d/abc123/edit');
 
   const list = await app.inject({ method: 'GET', url: '/api/doctrines?q=dread' });
   assert.equal(JSON.parse(list.body)[0].id, doctrine.id);
@@ -39,8 +48,18 @@ test('doctrine CRUD routes create list get update and delete', async () => {
   const got = await app.inject({ method: 'GET', url: `/api/doctrines/${doctrine.id}` });
   assert.equal(JSON.parse(got.body).description, 'Dread comp');
 
-  const updated = await app.inject({ method: 'PUT', url: `/api/doctrines/${doctrine.id}`, payload: { name: 'Updated Bomb', description: 'Updated' } });
-  assert.equal(JSON.parse(updated.body).name, 'Updated Bomb');
+  const updated = await app.inject({
+    method: 'PUT',
+    url: `/api/doctrines/${doctrine.id}`,
+    payload: {
+      name: 'Updated Bomb',
+      description: 'Updated',
+      googleDocUrl: 'https://docs.google.com/document/d/updated456/edit',
+    },
+  });
+  const updatedBody = JSON.parse(updated.body);
+  assert.equal(updatedBody.name, 'Updated Bomb');
+  assert.equal(updatedBody.googleDocUrl, 'https://docs.google.com/document/d/updated456/edit');
 
   const deleted = await app.inject({ method: 'DELETE', url: `/api/doctrines/${doctrine.id}` });
   assert.equal(deleted.statusCode, 200);

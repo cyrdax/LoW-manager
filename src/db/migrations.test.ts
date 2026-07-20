@@ -97,6 +97,13 @@ test('asset snapshots are scoped to users and characters', () => {
   assert.match(block, /PRIMARY KEY \(user_id, character_id\)/);
 });
 
+test('doctrine google doc migration adds optional document url', () => {
+  const sql = readFileSync(resolve('src/db/migrations/0003_doctrine_google_doc_url.sql'), 'utf8');
+
+  assert.match(sql, /ALTER TABLE doctrines/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS google_doc_url text/);
+});
+
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }

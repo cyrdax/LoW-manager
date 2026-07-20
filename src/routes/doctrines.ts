@@ -33,12 +33,13 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
   app.post('/api/doctrines', async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
-    const body = req.body as { name?: string; description?: string; visibility?: string } | undefined;
+    const body = req.body as { name?: string; description?: string; googleDocUrl?: string; visibility?: string } | undefined;
     if (!body?.name?.trim()) return reply.code(400).send({ error: 'name is required' });
     try {
       return await store.create({
         name: body.name,
         description: body.description,
+        googleDocUrl: body.googleDocUrl,
         ownerUserId: user.id,
         visibility: parseVisibility(body.visibility),
       });
@@ -66,10 +67,10 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
-    const body = req.body as { name?: string; description?: string } | undefined;
+    const body = req.body as { name?: string; description?: string; googleDocUrl?: string } | undefined;
     if (body?.name != null && !body.name.trim()) return reply.code(400).send({ error: 'name is required' });
     try {
-      const doctrine = await store.update(id, { name: body?.name, description: body?.description });
+      const doctrine = await store.update(id, { name: body?.name, description: body?.description, googleDocUrl: body?.googleDocUrl });
       if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
       return doctrine;
     } catch (err) {

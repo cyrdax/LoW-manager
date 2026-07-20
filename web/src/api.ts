@@ -1029,6 +1029,7 @@ export interface DoctrineSummary {
   sourcePublicDoctrineId: number | null;
   name: string;
   description: string;
+  googleDocUrl: string;
   createdAt: number;
   updatedAt: number;
   fitCount: number;
@@ -1189,7 +1190,7 @@ export async function fetchDoctrine(id: number): Promise<DoctrineDetail | { erro
   return jsonOrError(await fetch(`/api/doctrines/${id}`));
 }
 
-export async function createDoctrine(input: { name: string; description?: string; visibility?: LibraryVisibility }): Promise<DoctrineDetail | { error: string }> {
+export async function createDoctrine(input: { name: string; description?: string; googleDocUrl?: string; visibility?: LibraryVisibility }): Promise<DoctrineDetail | { error: string }> {
   return jsonOrError(await fetch('/api/doctrines', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1199,7 +1200,7 @@ export async function createDoctrine(input: { name: string; description?: string
 
 export async function updateDoctrine(
   id: number,
-  input: { name?: string; description?: string },
+  input: { name?: string; description?: string; googleDocUrl?: string },
 ): Promise<DoctrineDetail | { error: string }> {
   return jsonOrError(await fetch(`/api/doctrines/${id}`, {
     method: 'PUT',

@@ -36,20 +36,30 @@ test('migrateDoctrinesDb creates doctrine tables and indexes', () => {
 test('doctrine store creates updates deletes and preserves saved fits', () => {
   const { db, fits, doctrines } = stores();
   const fit = fits.create({ rawEft: naglfar, fitName: 'Dread DPS' });
-  const doctrine = doctrines.create({ name: 'Armor Dread Bomb', description: 'Dreads with carrier support.' });
+  const doctrine = doctrines.create({
+    name: 'Armor Dread Bomb',
+    description: 'Dreads with carrier support.',
+    googleDocUrl: 'https://docs.google.com/document/d/abc123/edit',
+  });
 
   const withFit = doctrines.addFit(doctrine.id, fit.id)!;
   assert.equal(withFit.fitCount, 1);
   assert.equal(withFit.fits[0].fitName, 'Dread DPS');
+  assert.equal(withFit.googleDocUrl, 'https://docs.google.com/document/d/abc123/edit');
   assert.equal(withFit.fits[0].sortOrder, 1);
 
   const duplicate = doctrines.addFit(doctrine.id, fit.id)!;
   assert.equal(duplicate.fitCount, 1);
   assert.equal(duplicate.fits[0].sortOrder, 1);
 
-  const updated = doctrines.update(doctrine.id, { name: 'Updated Bomb', description: 'Updated description.' })!;
+  const updated = doctrines.update(doctrine.id, {
+    name: 'Updated Bomb',
+    description: 'Updated description.',
+    googleDocUrl: 'https://docs.google.com/document/d/updated456/edit',
+  })!;
   assert.equal(updated.name, 'Updated Bomb');
   assert.equal(updated.description, 'Updated description.');
+  assert.equal(updated.googleDocUrl, 'https://docs.google.com/document/d/updated456/edit');
 
   assert.equal(doctrines.delete(doctrine.id), true);
   assert.equal(fits.get(fit.id)?.fitName, 'Dread DPS');

@@ -20,6 +20,13 @@ test('frontend exposes doctrine api helpers and doctrine view controls', () => {
   assert.match(switchView, /Doctrines/);
   assert.match(doctrinesView, /Search doctrines/);
   assert.match(doctrinesView, /Create doctrine/);
+  assert.match(doctrinesView, /const \[editing, setEditing\] = useState\(false\)/);
+  assert.match(doctrinesView, /canStartEditing/);
+  assert.match(doctrinesView, />Edit<\/button>/);
+  assert.match(doctrinesView, /doctrine-description-view/);
+  assert.match(doctrinesView, /Google Doc URL/);
+  assert.match(doctrinesView, /google-doc-frame/);
+  assert.match(doctrinesView, /googleDocPreviewUrl/);
   assert.match(doctrinesView, /Add fit/);
   assert.match(doctrinesView, /Remove/);
 });
@@ -34,6 +41,7 @@ test('frontend exposes public and private fit library controls', () => {
   assert.match(api, /visibility: LibraryVisibility/);
   assert.match(api, /sourcePublicFitId: number \| null/);
   assert.match(api, /sourcePublicDoctrineId: number \| null/);
+  assert.match(api, /googleDocUrl: string;/);
   assert.match(api, /export async function fetchFits\(visibility: LibraryVisibility = 'private'\)/);
   assert.match(api, /export async function publishFit/);
   assert.match(api, /export async function copyFitToPrivate/);
@@ -74,7 +82,7 @@ test('new doctrine starts as an unnamed draft instead of saved placeholder text'
   assert.doesNotMatch(doctrinesView, /createDoctrine\(\{ name: 'New Doctrine'/);
   assert.match(doctrinesView, /placeholder="New doctrine"/);
   assert.match(doctrinesView, /if \(!trimmedName\)/);
-  assert.match(doctrinesView, /await createDoctrine\(\{ name: trimmedName, description, visibility \}\)/);
+  assert.match(doctrinesView, /await createDoctrine\(\{ name: trimmedName, description, googleDocUrl, visibility \}\)/);
 });
 
 test('clicking a doctrine member opens that saved fit in the fit view', () => {

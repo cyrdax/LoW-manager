@@ -24,6 +24,7 @@ export interface DoctrineSummary {
   sourcePublicDoctrineId: number | null;
   name: string;
   description: string;
+  googleDocUrl: string;
   createdAt: number;
   updatedAt: number;
   fitCount: number;
@@ -37,8 +38,8 @@ export interface DoctrineDetail extends DoctrineSummary {
 export interface DoctrineStore {
   list(queryOrFilters?: string | DoctrineListFilters): DoctrineSummary[];
   get(id: number): DoctrineDetail | null;
-  create(input: { name: string; description?: string; ownerUserId?: string | null; visibility?: LibraryVisibility; sourcePublicDoctrineId?: number | null }): DoctrineDetail;
-  update(id: number, input: { name?: string; description?: string }): DoctrineDetail | null;
+  create(input: { name: string; description?: string; googleDocUrl?: string; ownerUserId?: string | null; visibility?: LibraryVisibility; sourcePublicDoctrineId?: number | null }): DoctrineDetail;
+  update(id: number, input: { name?: string; description?: string; googleDocUrl?: string }): DoctrineDetail | null;
   publish(id: number): DoctrineDetail | null;
   copyToPrivate(id: number, ownerUserId: string): DoctrineDetail | null;
   delete(id: number): boolean;
@@ -49,8 +50,8 @@ export interface DoctrineStore {
 export interface AsyncDoctrineStore {
   list(queryOrFilters?: string | DoctrineListFilters): Promise<DoctrineSummary[]>;
   get(id: number): Promise<DoctrineDetail | null>;
-  create(input: { name: string; description?: string; ownerUserId?: string | null; visibility?: LibraryVisibility; sourcePublicDoctrineId?: number | null }): Promise<DoctrineDetail>;
-  update(id: number, input: { name?: string; description?: string }): Promise<DoctrineDetail | null>;
+  create(input: { name: string; description?: string; googleDocUrl?: string; ownerUserId?: string | null; visibility?: LibraryVisibility; sourcePublicDoctrineId?: number | null }): Promise<DoctrineDetail>;
+  update(id: number, input: { name?: string; description?: string; googleDocUrl?: string }): Promise<DoctrineDetail | null>;
   publish(id: number): Promise<DoctrineDetail | null>;
   copyToPrivate(id: number, ownerUserId: string): Promise<DoctrineDetail | null>;
   delete(id: number): Promise<boolean>;
@@ -72,6 +73,7 @@ interface DoctrineRow {
   source_public_doctrine_id: number | null;
   name: string;
   description: string;
+  google_doc_url: string;
   created_at: number;
   updated_at: number;
 }
@@ -83,6 +85,7 @@ interface PostgresDoctrineRow {
   source_public_doctrine_id: string | number | null;
   name: string;
   description: string;
+  google_doc_url?: string | null;
   created_at: Date | string | number;
   updated_at: Date | string | number;
 }
@@ -101,6 +104,7 @@ export function migrateDoctrinesDb(database: SqliteDatabase): void {
       source_public_doctrine_id INTEGER,
       name        TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
+      google_doc_url TEXT NOT NULL DEFAULT '',
       created_at  INTEGER NOT NULL,
       updated_at  INTEGER NOT NULL,
       FOREIGN KEY (source_public_doctrine_id) REFERENCES doctrines(id) ON DELETE SET NULL
@@ -123,6 +127,7 @@ export function migrateDoctrinesDb(database: SqliteDatabase): void {
   if (!columns.some(col => col.name === 'owner_user_id')) database.prepare('ALTER TABLE doctrines ADD COLUMN owner_user_id TEXT').run();
   if (!columns.some(col => col.name === 'visibility')) database.prepare("ALTER TABLE doctrines ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'").run();
   if (!columns.some(col => col.name === 'source_public_doctrine_id')) database.prepare('ALTER TABLE doctrines ADD COLUMN source_public_doctrine_id INTEGER REFERENCES doctrines(id) ON DELETE SET NULL').run();
+  if (!columns.some(col => col.name === 'google_doc_url')) database.prepare("ALTER TABLE doctrines ADD COLUMN google_doc_url TEXT NOT NULL DEFAULT ''").run();
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_doctrines_owner_visibility ON doctrines(owner_user_id, visibility, updated_at);
     CREATE INDEX IF NOT EXISTS idx_doctrines_public ON doctrines(updated_at) WHERE visibility = 'public';
@@ -135,13 +140,14 @@ export function createDoctrineStore(database: SqliteDatabase, options: { now?: (
 
   const getRow = database.prepare('SELECT * FROM doctrines WHERE id = ?');
   const insertDoctrine = database.prepare(`
-    INSERT INTO doctrines (owner_user_id, visibility, source_public_doctrine_id, name, description, created_at, updated_at)
-    VALUES (@ownerUserId, @visibility, @sourcePublicDoctrineId, @name, @description, @createdAt, @updatedAt)
+    INSERT INTO doctrines (owner_user_id, visibility, source_public_doctrine_id, name, description, google_doc_url, created_at, updated_at)
+    VALUES (@ownerUserId, @visibility, @sourcePublicDoctrineId, @name, @description, @googleDocUrl, @createdAt, @updatedAt)
   `);
   const updateDoctrine = database.prepare(`
     UPDATE doctrines
     SET name = @name,
         description = @description,
+        google_doc_url = @googleDocUrl,
         updated_at = @updatedAt
     WHERE id = @id
   `);
@@ -191,13 +197,14 @@ export function createDoctrineStore(database: SqliteDatabase, options: { now?: (
         sourcePublicDoctrineId: input.sourcePublicDoctrineId ?? null,
         name,
         description: input.description?.trim() ?? '',
+        googleDocUrl: cleanGoogleDocUrl(input.googleDocUrl),
         createdAt: timestamp,
         updatedAt: timestamp,
       });
       return readDetail(database, fitStore, Number(info.lastInsertRowid))!;
     },
 
-    update(id: number, input: { name?: string; description?: string }): DoctrineDetail | null {
+    update(id: number, input: { name?: string; description?: string; googleDocUrl?: string }): DoctrineDetail | null {
       const existing = getRow.get(id) as DoctrineRow | undefined;
       if (!existing) return null;
       const name = input.name == null ? existing.name : cleanName(input.name);
@@ -206,6 +213,7 @@ export function createDoctrineStore(database: SqliteDatabase, options: { now?: (
         id,
         name,
         description: input.description == null ? existing.description : input.description.trim(),
+        googleDocUrl: input.googleDocUrl == null ? existing.google_doc_url : cleanGoogleDocUrl(input.googleDocUrl),
         updatedAt: now(),
       });
       return readDetail(database, fitStore, id);
@@ -228,6 +236,7 @@ export function createDoctrineStore(database: SqliteDatabase, options: { now?: (
       const copiedDoctrine = this.create({
         name: source.name,
         description: source.description,
+        googleDocUrl: source.googleDocUrl,
         ownerUserId,
         visibility: 'private',
         sourcePublicDoctrineId: source.id,
@@ -276,6 +285,7 @@ export function createPostgresDoctrineStore(
   async function createDoctrine(client: QueryClient, input: {
     name: string;
     description?: string;
+    googleDocUrl?: string;
     ownerUserId?: string | null;
     visibility?: LibraryVisibility;
     sourcePublicDoctrineId?: number | null;
@@ -286,9 +296,9 @@ export function createPostgresDoctrineStore(
     const result = await client.query<{ id: string | number }>(
       `
         INSERT INTO doctrines (
-          owner_user_id, visibility, source_public_doctrine_id, name, description, created_at, updated_at
+          owner_user_id, visibility, source_public_doctrine_id, name, description, google_doc_url, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
       `,
       [
@@ -297,6 +307,7 @@ export function createPostgresDoctrineStore(
         input.sourcePublicDoctrineId ?? null,
         name,
         input.description?.trim() ?? '',
+        cleanGoogleDocUrl(input.googleDocUrl),
         timestamp,
         timestamp,
       ],
@@ -374,13 +385,15 @@ export function createPostgresDoctrineStore(
           UPDATE doctrines
           SET name = $1,
               description = $2,
-              updated_at = $3
-          WHERE id = $4
+              google_doc_url = $3,
+              updated_at = $4
+          WHERE id = $5
           RETURNING id
         `,
         [
           name,
           input.description == null ? existing.description : input.description.trim(),
+          input.googleDocUrl == null ? existing.google_doc_url : cleanGoogleDocUrl(input.googleDocUrl),
           now(),
           id,
         ],
@@ -409,6 +422,7 @@ export function createPostgresDoctrineStore(
         const copiedDoctrine = await createDoctrine(client, {
           name: sourceDoctrine.name,
           description: sourceDoctrine.description,
+          googleDocUrl: sourceDoctrine.googleDocUrl,
           ownerUserId,
           visibility: 'private',
           sourcePublicDoctrineId: sourceDoctrine.id,
@@ -482,6 +496,7 @@ function readDetail(database: SqliteDatabase, fitStore: FitStore, id: number): D
     sourcePublicDoctrineId: row.source_public_doctrine_id,
     name: row.name,
     description: row.description,
+    googleDocUrl: row.google_doc_url ?? '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     fitCount: fits.length,
@@ -537,6 +552,7 @@ async function readPostgresDetail(
     sourcePublicDoctrineId: row.source_public_doctrine_id,
     name: row.name,
     description: row.description,
+    googleDocUrl: row.google_doc_url ?? '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     fitCount: fits.length,
@@ -553,6 +569,7 @@ function mapPostgresDoctrineRow(row: PostgresDoctrineRow): DoctrineRow {
     source_public_doctrine_id: row.source_public_doctrine_id == null ? null : Number(row.source_public_doctrine_id),
     name: row.name,
     description: row.description,
+    google_doc_url: row.google_doc_url ?? '',
     created_at: toEpochMs(row.created_at),
     updated_at: toEpochMs(row.updated_at),
   };
@@ -567,6 +584,7 @@ function matchesDoctrine(detail: DoctrineDetail, query: string): boolean {
   const haystack = [
     detail.name,
     detail.description,
+    detail.googleDocUrl,
     ...detail.fits.map(fit => fit.shipName),
     ...detail.fits.map(fit => fit.fitName),
   ].join(' ').toLowerCase();
@@ -574,6 +592,10 @@ function matchesDoctrine(detail: DoctrineDetail, query: string): boolean {
 }
 
 function cleanName(value: string | undefined): string {
+  return value?.trim() ?? '';
+}
+
+function cleanGoogleDocUrl(value: string | undefined): string {
   return value?.trim() ?? '';
 }
 

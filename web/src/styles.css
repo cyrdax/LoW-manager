@@ -2609,6 +2609,37 @@ body {
   min-height: 94px;
   resize: vertical;
 }
+.doctrine-field-label {
+  display: grid;
+  gap: 6px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.doctrine-view-summary {
+  display: grid;
+  gap: 12px;
+}
+.doctrine-view-summary h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(24px, 3vw, 36px);
+  letter-spacing: 0;
+}
+.doctrine-description-view {
+  color: var(--text);
+  line-height: 1.5;
+}
+.doctrine-description-view p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.google-doc-frame {
+  width: 100%;
+  min-height: 520px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+}
 .doctrine-add,
 .doctrine-members {
   margin-top: 12px;

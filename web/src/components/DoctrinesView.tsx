@@ -33,6 +33,11 @@ function warningCount(fit: SavedFitSummary): number {
   return fit.warningCounts.unmatched + fit.warningCounts.overSlot + fit.warningCounts.unassignable;
 }
 
+function googleDocPreviewUrl(url: string): string | null {
+  const match = /^https:\/\/docs\.google\.com\/document\/d\/([A-Za-z0-9_-]+)/.exec(url.trim());
+  return match ? `https://docs.google.com/document/d/${match[1]}/preview` : null;
+}
+
 export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFit, openDoctrineTarget }: Props) {
   const [query, setQuery] = useState('');
   const [doctrines, setDoctrines] = useState<DoctrineSummary[]>([]);
@@ -40,8 +45,10 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   const [detail, setDetail] = useState<DoctrineDetail | null>(null);
   const [draftMode, setDraftMode] = useState(false);
   const draftModeRef = useRef(false);
+  const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [googleDocUrl, setGoogleDocUrl] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fitQuery, setFitQuery] = useState('');
@@ -59,6 +66,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   function leaveDraftMode() {
     draftModeRef.current = false;
     setDraftMode(false);
+    setEditing(false);
   }
 
   useEffect(() => {
@@ -98,6 +106,8 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   useEffect(() => {
     setName(detail?.name ?? '');
     setDescription(detail?.description ?? '');
+    setGoogleDocUrl(detail?.googleDocUrl ?? '');
+    setEditing(false);
     setStatus(null);
   }, [detail?.id]);
 
@@ -110,13 +120,16 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
       .slice(0, 12);
   }, [savedFits, fitQuery, detail?.fits, draftMode]);
 
-  const canEditDoctrine = draftMode || !detail || currentUser.role === 'admin' || detail.ownerUserId === currentUser.id;
-  const canPublishDoctrine = !!detail && canEditDoctrine && detail.visibility === 'private';
+  const canStartEditing = !!detail && (currentUser.role === 'admin' || detail.ownerUserId === currentUser.id);
+  const isEditing = draftMode || editing;
+  const canSaveDoctrine = draftMode || (editing && canStartEditing);
+  const canPublishDoctrine = !!detail && canStartEditing && detail.visibility === 'private';
   const canCopyDoctrine = !!detail && detail.visibility === 'public';
   const showEditor = draftMode || !!detail;
   const editorVisibility = draftMode ? visibility : detail?.visibility ?? visibility;
   const editorFits = draftMode ? [] : detail?.fits ?? [];
   const editorFitCount = draftMode ? 0 : detail?.fitCount ?? 0;
+  const docPreviewUrl = googleDocPreviewUrl(detail?.googleDocUrl ?? googleDocUrl);
 
   function createNewDoctrine() {
     draftModeRef.current = true;
@@ -125,6 +138,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setDetail(null);
     setName('');
     setDescription('');
+    setGoogleDocUrl('');
     setFitQuery('');
     setStatus(null);
     setQuery('');
@@ -159,18 +173,20 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   }
 
   async function saveDoctrine() {
+    if (!canSaveDoctrine) return;
     const trimmedName = name.trim();
     if (!trimmedName) { setStatus('Doctrine name is required.'); return; }
     setBusy(true);
     setStatus(null);
     const res = draftMode
-      ? await createDoctrine({ name: trimmedName, description, visibility })
+      ? await createDoctrine({ name: trimmedName, description, googleDocUrl, visibility })
       : detail
-        ? await updateDoctrine(detail.id, { name: trimmedName, description })
+        ? await updateDoctrine(detail.id, { name: trimmedName, description, googleDocUrl })
         : { error: 'No doctrine selected.' };
     setBusy(false);
     if ('error' in res) { setStatus(res.error); return; }
     leaveDraftMode();
+    setEditing(false);
     setDetail(res);
     setSelectedId(res.id);
     setStatus('Saved.');
@@ -182,6 +198,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
       leaveDraftMode();
       setName('');
       setDescription('');
+      setGoogleDocUrl('');
       setStatus(null);
       return;
     }
@@ -192,6 +209,14 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setSelectedId(null);
     setDetail(null);
     await reloadList();
+  }
+
+  function cancelEditing() {
+    setName(detail?.name ?? '');
+    setDescription(detail?.description ?? '');
+    setGoogleDocUrl(detail?.googleDocUrl ?? '');
+    setEditing(false);
+    setStatus(null);
   }
 
   async function addFit(fitId: number) {
@@ -241,14 +266,35 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
                   {draftMode && <span className="fits-state draft">Draft</span>}
                   <span className={`fits-state ${editorVisibility}`}>{editorVisibility === 'public' ? 'Public' : 'Private'}</span>
                 </div>
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="New doctrine" readOnly={!canEditDoctrine} />
-                <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Description of how this doctrine works" readOnly={!canEditDoctrine} />
+                {isEditing ? (
+                  <>
+                    <input value={name} onChange={e => setName(e.target.value)} placeholder="New doctrine" />
+                    <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Description of how this doctrine works" />
+                    <label className="doctrine-field-label">
+                      <span>Google Doc URL</span>
+                      <input value={googleDocUrl} onChange={e => setGoogleDocUrl(e.target.value)} placeholder="https://docs.google.com/document/d/..." />
+                    </label>
+                  </>
+                ) : (
+                  <div className="doctrine-view-summary">
+                    <h2>{detail?.name}</h2>
+                    <div className="doctrine-description-view">
+                      {docPreviewUrl
+                        ? <iframe className="google-doc-frame" src={docPreviewUrl} title={`${detail?.name ?? 'Doctrine'} description`} />
+                        : detail?.description
+                          ? <p>{detail.description}</p>
+                          : <p>No description provided.</p>}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="fits-actions">
-                {canEditDoctrine && <button onClick={saveDoctrine} disabled={busy}>Save</button>}
+                {canStartEditing && !isEditing && <button onClick={() => setEditing(true)} disabled={busy}>Edit</button>}
+                {canSaveDoctrine && <button onClick={saveDoctrine} disabled={busy}>Save</button>}
+                {editing && <button onClick={cancelEditing} disabled={busy}>Cancel</button>}
                 {canPublishDoctrine && <button onClick={publishCurrentDoctrine} disabled={busy}>Publish</button>}
                 {canCopyDoctrine && <button onClick={copyCurrentDoctrineToPrivate} disabled={busy}>Copy private</button>}
-                {canEditDoctrine && <button className="danger" onClick={removeDoctrine}>{draftMode ? 'Discard' : 'Delete'}</button>}
+                {isEditing && canSaveDoctrine && <button className="danger" onClick={removeDoctrine}>{draftMode ? 'Discard' : 'Delete'}</button>}
                 {status && <small className={['Saved.', 'Published.', 'Copied to private library.'].includes(status) ? 'fits-status ok' : 'fits-status err'}>{status}</small>}
               </div>
             </div>
@@ -259,7 +305,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
                 <div className="fits-empty">Save the doctrine before adding fits.</div>
               </section>
             )}
-            {!draftMode && canEditDoctrine && (
+            {!draftMode && isEditing && canStartEditing && (
               <section className="doctrine-add">
                 <h3>Add fit</h3>
                 <input value={fitQuery} onChange={e => setFitQuery(e.target.value)} placeholder="Search saved fits by ship or fit name" />
@@ -290,7 +336,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
                         {warningCount(fit) > 0 && <small>{warningCount(fit)} warnings</small>}
                       </span>
                     </button>
-                    {canEditDoctrine && <button onClick={() => removeFit(fit.id)}>Remove</button>}
+                    {isEditing && canStartEditing && <button onClick={() => removeFit(fit.id)}>Remove</button>}
                   </div>
                 ))}
                 {editorFits.length === 0 && <div className="fits-empty">No fits in this doctrine yet.</div>}
