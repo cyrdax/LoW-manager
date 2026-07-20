@@ -196,7 +196,6 @@ CREATE TABLE IF NOT EXISTS doctrines (
   source_public_doctrine_id bigint REFERENCES doctrines(id) ON DELETE SET NULL,
   name text NOT NULL,
   description text NOT NULL DEFAULT '',
-  google_doc_url text NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   archived_at timestamptz
