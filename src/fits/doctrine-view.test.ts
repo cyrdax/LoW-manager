@@ -37,8 +37,22 @@ test('frontend exposes doctrine api helpers and doctrine view controls', () => {
   assert.match(doctrinesView, /activeGoogleDocTabId/);
   assert.match(doctrinesView, /visibleDoctrineFits/);
   assert.match(doctrinesView, /doctrine-doc-tabs/);
+  assert.match(doctrinesView, /doctrine-doc-tabs-head/);
+  assert.match(doctrinesView, /Active Google Doc tab/);
+  assert.match(doctrinesView, /<strong>\{activeGoogleDocTab\.title\}<\/strong>/);
+  assert.match(doctrinesView, /aria-pressed=\{tab\.id === activeGoogleDocTab\.id\}/);
   assert.match(doctrinesView, /Add fit/);
   assert.match(doctrinesView, /Remove/);
+});
+
+test('doctrine google doc tabs clearly identify the active tab', () => {
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
+
+  assert.match(styles, /\.doctrine-doc-tabs-head/);
+  assert.match(styles, /\.doctrine-doc-tabs button\[aria-pressed="true"\]/);
+  assert.match(styles, /\.doctrine-doc-tabs button\[aria-pressed="true"\]::before/);
+  assert.match(styles, /content: 'Active';/);
+  assert.match(styles, /box-shadow: 0 0 0 2px/);
 });
 
 test('doctrine view description spans the full detail container', () => {

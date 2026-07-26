@@ -351,14 +351,25 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
             {refreshResult && <DoctrineRefreshSummary result={refreshResult} />}
 
             {!draftMode && googleDocTabs.length > 0 && (
-              <div className="doctrine-doc-tabs" aria-label="Google Doc tabs">
-                {googleDocTabs.map(tab => (
-                  <button key={tab.id} className={tab.id === activeGoogleDocTab.id ? 'active' : ''} onClick={() => setActiveGoogleDocTabId(tab.id)}>
-                    <span>{tab.title}</span>
-                    <small>{tab.fitCount}</small>
-                  </button>
-                ))}
-              </div>
+              <section className="doctrine-doc-tabs-wrap">
+                <div className="doctrine-doc-tabs-head">
+                  <span>Active Google Doc tab</span>
+                  <strong>{activeGoogleDocTab.title}</strong>
+                </div>
+                <div className="doctrine-doc-tabs" aria-label="Google Doc tabs">
+                  {googleDocTabs.map(tab => (
+                    <button
+                      key={tab.id}
+                      className={tab.id === activeGoogleDocTab.id ? 'active' : ''}
+                      aria-pressed={tab.id === activeGoogleDocTab.id}
+                      onClick={() => setActiveGoogleDocTabId(tab.id)}
+                    >
+                      <span>{tab.title}</span>
+                      <small>{tab.fitCount}</small>
+                    </button>
+                  ))}
+                </div>
+              </section>
             )}
 
             {draftMode && (

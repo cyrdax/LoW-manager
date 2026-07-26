@@ -70,6 +70,22 @@ ${archon}`);
   assert.equal(blocks[1].fitName, 'Carrier Support');
 });
 
+test('google doc fit sync stops a fit block before trailing prose after a blank separator', () => {
+  const blocks = extractEftBlocksFromText(`${newNaglfar}
+
+How this fit works:
+Use it with links and cap chain notes.
+
+${archon}`);
+
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0].fitName, 'Dread DPS');
+  assert.equal(blocks[0].rawEft.includes('Hail XL x20'), true);
+  assert.equal(blocks[0].rawEft.includes('How this fit works'), false);
+  assert.equal(blocks[0].rawEft.includes('Use it with links'), false);
+  assert.equal(blocks[1].fitName, 'Carrier Support');
+});
+
 test('google doc fit sync extracts text from every Google Doc tab', () => {
   const tabs = extractGoogleDocTabs({
     tabs: [

@@ -10,6 +10,7 @@ import type {
   SavedFitDetail,
 } from './store.ts';
 import { buildFitDraft } from './assignment.ts';
+import { resolveItemByName } from './metadata.ts';
 
 export interface ParsedEftBlock {
   shipName: string;
@@ -60,6 +61,7 @@ export interface DoctrineTabFitSyncInput {
 
 const EFT_HEADER = /^\s*\[([^,\]]+),\s*([^\]]+)\]\s*$/;
 const GOOGLE_DOC_URL = /^https:\/\/docs\.google\.com\/document\/d\/([A-Za-z0-9_-]+)/;
+const QUANTITY_SUFFIX = /\s+x[\d,]+\s*$/i;
 
 export function googleDocTextExportUrl(url: string): string | null {
   const match = GOOGLE_DOC_URL.exec(url.trim());
@@ -77,7 +79,7 @@ export function googleDocApiUrl(url: string, apiKey?: string): string | null {
 export function extractEftBlocksFromText(text: string): ParsedEftBlock[] {
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
   const blocks: ParsedEftBlock[] = [];
-  let current: { shipName: string; fitName: string; startLine: number; lines: string[] } | null = null;
+  let current: { shipName: string; fitName: string; startLine: number; lines: string[]; hasFitLine: boolean; afterBlank: boolean } | null = null;
 
   lines.forEach((line, index) => {
     const header = EFT_HEADER.exec(line);
@@ -88,10 +90,25 @@ export function extractEftBlocksFromText(text: string): ParsedEftBlock[] {
         fitName: header[2].trim(),
         startLine: index + 1,
         lines: [line.trim()],
+        hasFitLine: false,
+        afterBlank: false,
       };
       return;
     }
-    if (current) current.lines.push(line);
+    if (!current) return;
+    if (!line.trim()) {
+      current.lines.push(line);
+      current.afterBlank = true;
+      return;
+    }
+    if (current.hasFitLine && current.afterBlank && !looksLikeEftItemLine(line)) {
+      blocks.push(finishBlock(current));
+      current = null;
+      return;
+    }
+    current.lines.push(line);
+    current.hasFitLine = current.hasFitLine || looksLikeEftItemLine(line);
+    current.afterBlank = false;
   });
 
   if (current) blocks.push(finishBlock(current));
@@ -263,6 +280,18 @@ function trimBlankEdges(lines: string[]): string[] {
   while (start < end && !lines[start].trim()) start += 1;
   while (end > start && !lines[end - 1].trim()) end -= 1;
   return lines.slice(start, end);
+}
+
+function looksLikeEftItemLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+  const body = trimmed.replace(QUANTITY_SUFFIX, '').trim();
+  const commaIndex = body.indexOf(',');
+  const itemName = (commaIndex >= 0 ? body.slice(0, commaIndex) : body).trim();
+  const chargeName = commaIndex >= 0 ? body.slice(commaIndex + 1).trim() : '';
+  if (!itemName) return false;
+  if (resolveItemByName(itemName)) return true;
+  return !!chargeName && !!resolveItemByName(chargeName);
 }
 
 function walkGoogleDocTabs(rawTabs: unknown[], out: GoogleDocTabText[], baseOrder: number): void {
