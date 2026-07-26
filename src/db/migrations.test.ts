@@ -104,6 +104,15 @@ test('doctrine google doc migration adds optional document url', () => {
   assert.match(sql, /ADD COLUMN IF NOT EXISTS google_doc_url text/);
 });
 
+test('doctrine google doc tabs migration scopes memberships by tab', () => {
+  const sql = readFileSync(resolve('src/db/migrations/0004_doctrine_google_doc_tabs.sql'), 'utf8');
+
+  assert.match(tableBlock(sql, 'doctrine_tabs'), /PRIMARY KEY \(doctrine_id, tab_id\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS google_doc_tab_id text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS google_doc_tab_title text/);
+  assert.match(sql, /ADD PRIMARY KEY \(doctrine_id, google_doc_tab_id, fit_id\)/);
+});
+
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }

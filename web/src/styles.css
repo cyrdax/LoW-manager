@@ -2680,6 +2680,35 @@ body {
   font-size: 12px;
   line-height: 1.45;
 }
+.doctrine-doc-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.doctrine-doc-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--dim);
+  font: inherit;
+  cursor: pointer;
+}
+.doctrine-doc-tabs button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b0e13;
+  font-weight: 700;
+}
+.doctrine-doc-tabs small {
+  color: inherit;
+  opacity: 0.8;
+}
 .doctrine-add,
 .doctrine-members {
   margin-top: 12px;

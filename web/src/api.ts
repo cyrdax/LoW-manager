@@ -1020,6 +1020,15 @@ export interface SavedFitSummary {
 
 export interface DoctrineFitMember extends SavedFitSummary {
   sortOrder: number;
+  googleDocTabId: string;
+  googleDocTabTitle: string;
+}
+
+export interface DoctrineTab {
+  id: string;
+  title: string;
+  sortOrder: number;
+  fitCount: number;
 }
 
 export interface DoctrineSummary {
@@ -1034,6 +1043,7 @@ export interface DoctrineSummary {
   updatedAt: number;
   fitCount: number;
   shipNames: string[];
+  tabs: DoctrineTab[];
 }
 
 export interface DoctrineDetail extends DoctrineSummary {
@@ -1042,8 +1052,8 @@ export interface DoctrineDetail extends DoctrineSummary {
 
 export interface DoctrineFitRefreshResult {
   doctrine: DoctrineDetail;
-  updated: Array<{ fitId: number; fitName: string; shipName: string }>;
-  created: Array<{ fitId: number; fitName: string; shipName: string }>;
+  updated: Array<{ fitId: number; fitName: string; shipName: string; tabId?: string; tabTitle?: string }>;
+  created: Array<{ fitId: number; fitName: string; shipName: string; tabId?: string; tabTitle?: string }>;
   skipped: Array<{ fitName: string; reason: string }>;
   ambiguous: Array<{ fitName: string; matchedFitIds: number[] }>;
   failed: Array<{ fitName: string; error: string }>;
@@ -1222,16 +1232,21 @@ export async function deleteDoctrine(id: number): Promise<{ ok: true } | { error
   return jsonOrError(await fetch(`/api/doctrines/${id}`, { method: 'DELETE' }));
 }
 
-export async function addDoctrineFit(id: number, fitId: number): Promise<DoctrineDetail | { error: string }> {
+export async function addDoctrineFit(
+  id: number,
+  fitId: number,
+  tab?: { id: string; title: string; sortOrder?: number },
+): Promise<DoctrineDetail | { error: string }> {
   return jsonOrError(await fetch(`/api/doctrines/${id}/fits`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fitId }),
+    body: JSON.stringify({ fitId, tabId: tab?.id, tabTitle: tab?.title, tabSortOrder: tab?.sortOrder }),
   }));
 }
 
-export async function removeDoctrineFit(id: number, fitId: number): Promise<DoctrineDetail | { error: string }> {
-  return jsonOrError(await fetch(`/api/doctrines/${id}/fits/${fitId}`, { method: 'DELETE' }));
+export async function removeDoctrineFit(id: number, fitId: number, tabId?: string): Promise<DoctrineDetail | { error: string }> {
+  const qs = tabId ? `?${new URLSearchParams({ tabId }).toString()}` : '';
+  return jsonOrError(await fetch(`/api/doctrines/${id}/fits/${fitId}${qs}`, { method: 'DELETE' }));
 }
 
 export async function refreshDoctrineFits(id: number): Promise<DoctrineFitRefreshResult | { error: string }> {

@@ -59,6 +59,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   const [refreshResult, setRefreshResult] = useState<DoctrineFitRefreshResult | null>(null);
   const [fitQuery, setFitQuery] = useState('');
   const [savedFits, setSavedFits] = useState<SavedFitSummary[]>([]);
+  const [activeGoogleDocTabId, setActiveGoogleDocTabId] = useState('default');
 
   async function reloadList(q = query, scope = visibility) {
     const rows = await fetchDoctrines(q, scope);
@@ -120,16 +121,23 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setEditing(false);
     setStatus(null);
     setRefreshResult(null);
+    setActiveGoogleDocTabId(detail?.tabs[0]?.id ?? 'default');
   }, [detail?.id]);
+
+  useEffect(() => {
+    const tabs = detail?.tabs ?? [];
+    if (tabs.length === 0) return;
+    if (!tabs.some(tab => tab.id === activeGoogleDocTabId)) setActiveGoogleDocTabId(tabs[0].id);
+  }, [detail?.tabs, activeGoogleDocTabId]);
 
   const availableFits = useMemo(() => {
     const q = fitQuery.trim().toLowerCase();
-    const used = new Set(!draftMode ? detail?.fits.map(fit => fit.id) ?? [] : []);
+    const used = new Set(!draftMode ? detail?.fits.filter(fit => fit.googleDocTabId === activeGoogleDocTabId).map(fit => fit.id) ?? [] : []);
     return savedFits
       .filter(fit => !used.has(fit.id))
       .filter(fit => !q || `${fit.shipName} ${fit.fitName}`.toLowerCase().includes(q))
       .slice(0, 12);
-  }, [savedFits, fitQuery, detail?.fits, draftMode]);
+  }, [savedFits, fitQuery, detail?.fits, draftMode, activeGoogleDocTabId]);
 
   const canStartEditing = !!detail && (currentUser.role === 'admin' || detail.ownerUserId === currentUser.id);
   const isEditing = draftMode || editing;
@@ -139,8 +147,11 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   const canRefreshFits = !!detail && canStartEditing && !!detail.googleDocUrl.trim();
   const showEditor = draftMode || !!detail;
   const editorVisibility = draftMode ? visibility : detail?.visibility ?? visibility;
-  const editorFits = draftMode ? [] : detail?.fits ?? [];
-  const editorFitCount = draftMode ? 0 : detail?.fitCount ?? 0;
+  const googleDocTabs = draftMode ? [] : detail?.tabs ?? [];
+  const activeGoogleDocTab = googleDocTabs.find(tab => tab.id === activeGoogleDocTabId) ?? googleDocTabs[0] ?? { id: 'default', title: 'Fits', sortOrder: 0, fitCount: 0 };
+  const visibleDoctrineFits = draftMode ? [] : detail?.fits.filter(fit => fit.googleDocTabId === activeGoogleDocTab.id) ?? [];
+  const editorFits = visibleDoctrineFits;
+  const editorFitCount = visibleDoctrineFits.length;
   const docPreviewUrl = googleDocPreviewUrl(detail?.googleDocUrl ?? googleDocUrl);
 
   function createNewDoctrine() {
@@ -154,6 +165,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setFitQuery('');
     setStatus(null);
     setRefreshResult(null);
+    setActiveGoogleDocTabId('default');
     setQuery('');
     onModeRoute('doctrines');
   }
@@ -198,6 +210,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     if ('error' in res) { setStatus(res.error); return; }
     setDetail(res.doctrine);
     setSelectedId(res.doctrine.id);
+    setActiveGoogleDocTabId(current => res.doctrine.tabs.some(tab => tab.id === current) ? current : res.doctrine.tabs[0]?.id ?? 'default');
     setRefreshResult(res);
     const changed = res.updated.length + res.created.length;
     setStatus(`Refresh complete: ${res.updated.length} updated, ${res.created.length} created${changed === 0 ? ', no changes' : ''}.`);
@@ -256,7 +269,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
 
   async function addFit(fitId: number) {
     if (!detail) return;
-    const res = await addDoctrineFit(detail.id, fitId);
+    const res = await addDoctrineFit(detail.id, fitId, activeGoogleDocTab);
     if ('error' in res) { setStatus(res.error); return; }
     setDetail(res);
     setFitQuery('');
@@ -265,7 +278,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
 
   async function removeFit(fitId: number) {
     if (!detail) return;
-    const res = await removeDoctrineFit(detail.id, fitId);
+    const res = await removeDoctrineFit(detail.id, fitId, activeGoogleDocTab.id);
     if ('error' in res) { setStatus(res.error); return; }
     setDetail(res);
     await reloadList();
@@ -337,6 +350,17 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
 
             {refreshResult && <DoctrineRefreshSummary result={refreshResult} />}
 
+            {!draftMode && googleDocTabs.length > 0 && (
+              <div className="doctrine-doc-tabs" aria-label="Google Doc tabs">
+                {googleDocTabs.map(tab => (
+                  <button key={tab.id} className={tab.id === activeGoogleDocTab.id ? 'active' : ''} onClick={() => setActiveGoogleDocTabId(tab.id)}>
+                    <span>{tab.title}</span>
+                    <small>{tab.fitCount}</small>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {draftMode && (
               <section className="doctrine-add">
                 <h3>Add fit</h3>
@@ -362,7 +386,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
             )}
 
             <section className="doctrine-members">
-              <h3>Fits <span>{editorFitCount}</span></h3>
+              <h3>Fits <span>{editorFitCount}{detail && detail.fitCount !== editorFitCount ? ` / ${detail.fitCount}` : ''}</span></h3>
               <div className="doctrine-member-grid">
                 {editorFits.map(fit => (
                   <div className="doctrine-member" key={fit.id}>

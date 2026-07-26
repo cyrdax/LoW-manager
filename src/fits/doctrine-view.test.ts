@@ -34,6 +34,9 @@ test('frontend exposes doctrine api helpers and doctrine view controls', () => {
   assert.match(doctrinesView, /Refresh Fits/);
   assert.match(doctrinesView, /doctrine-refresh-summary/);
   assert.match(doctrinesView, /result\.updated\.length/);
+  assert.match(doctrinesView, /activeGoogleDocTabId/);
+  assert.match(doctrinesView, /visibleDoctrineFits/);
+  assert.match(doctrinesView, /doctrine-doc-tabs/);
   assert.match(doctrinesView, /Add fit/);
   assert.match(doctrinesView, /Remove/);
 });

@@ -67,6 +67,27 @@ test('doctrine store creates updates deletes and preserves saved fits', () => {
   assert.equal(linkCount.count, 0);
 });
 
+test('doctrine store tracks Google Doc tabs and replaces one tab membership at a time', () => {
+  const { fits, doctrines } = stores();
+  const dread = fits.create({ rawEft: naglfar, fitName: 'Dread DPS' });
+  const carrier = fits.create({ rawEft: archon, fitName: 'Carrier Support' });
+  const replacement = fits.create({ rawEft: naglfar.replace('Dread DPS', 'Dread Replacement'), fitName: 'Dread Replacement' });
+  const doctrine = doctrines.create({ name: 'Tabbed Doctrine' });
+
+  doctrines.addFit(doctrine.id, dread.id, { tabId: 't.dreads', tabTitle: 'Dreads' });
+  doctrines.addFit(doctrine.id, carrier.id, { tabId: 't.carriers', tabTitle: 'Carriers' });
+  const replaced = doctrines.replaceTabFits(doctrine.id, { id: 't.dreads', title: 'Dreads', sortOrder: 2 }, [replacement.id])!;
+
+  assert.deepEqual(replaced.tabs.map(tab => [tab.id, tab.title, tab.fitCount]), [
+    ['t.carriers', 'Carriers', 1],
+    ['t.dreads', 'Dreads', 1],
+  ]);
+  assert.deepEqual(replaced.fits.map(fit => [fit.fitName, fit.googleDocTabId, fit.googleDocTabTitle]), [
+    ['Carrier Support', 't.carriers', 'Carriers'],
+    ['Dread Replacement', 't.dreads', 'Dreads'],
+  ]);
+});
+
 test('deleting a saved fit cascades out of doctrine membership', () => {
   const { fits, doctrines } = stores();
   const fit = fits.create({ rawEft: archon, fitName: 'Carrier Support' });

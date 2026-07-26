@@ -6,8 +6,12 @@ import {
 } from '../auth/pilot-access.ts';
 import { type AsyncDoctrineStore, type DoctrineDetail, type DoctrineStore } from '../fits/doctrines.ts';
 import {
+  extractGoogleDocTabs,
+  googleDocApiUrl,
   googleDocTextExportUrl,
+  syncDoctrineFitsFromTabs,
   syncDoctrineFitsFromText,
+  type GoogleDocTabText,
 } from '../fits/google-doc-sync.ts';
 import { type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
 
@@ -18,6 +22,7 @@ export interface DoctrineRouteDeps {
   fitStore?: FitStore | AsyncFitStore;
   currentUser?: CurrentUserResolver;
   fetchGoogleDocText?: (exportUrl: string) => Promise<string>;
+  fetchGoogleDocTabs?: (apiUrl: string) => Promise<GoogleDocTabText[]>;
 }
 
 export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRouteDeps = {}) {
@@ -25,6 +30,7 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
   const fitStore = deps.fitStore ?? missingFitStore();
   const currentUser = routeCurrentUser(deps);
   const fetchGoogleDocText = deps.fetchGoogleDocText ?? defaultFetchGoogleDocText;
+  const fetchGoogleDocTabs = deps.fetchGoogleDocTabs ?? defaultFetchGoogleDocTabs;
 
   app.get('/api/doctrines', async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
@@ -106,7 +112,8 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
-    const fitId = cleanPositiveNumber((req.body as { fitId?: number } | undefined)?.fitId);
+    const body = req.body as { fitId?: number; tabId?: string; tabTitle?: string; tabSortOrder?: number } | undefined;
+    const fitId = cleanPositiveNumber(body?.fitId);
     if (!fitId) return reply.code(400).send({ error: 'fitId is required' });
     const fit = await fitStore.get(fitId);
     if (!fit) return reply.code(404).send({ error: 'saved fit not found' });
@@ -115,7 +122,7 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
       return reply.code(400).send({ error: 'public doctrines can only include public fits' });
     }
     try {
-      const doctrine = await store.addFit(id, fitId);
+      const doctrine = await store.addFit(id, fitId, { id: body?.tabId, title: body?.tabTitle, sortOrder: body?.tabSortOrder });
       if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
       return doctrine;
     } catch (err) {
@@ -124,7 +131,7 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     }
   });
 
-  app.delete('/api/doctrines/:id/fits/:fitId', async (req, reply) => {
+  app.delete<{ Querystring: { tabId?: string } }>('/api/doctrines/:id/fits/:fitId', async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
     const id = parseId(req.params);
@@ -134,7 +141,7 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
-    const doctrine = await store.removeFit(id, fitId);
+    const doctrine = await store.removeFit(id, fitId, req.query.tabId);
     if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
     return doctrine;
   });
@@ -148,18 +155,32 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(doctrine, user)) return reply.code(403).send({ error: 'not allowed' });
     if (!doctrine.googleDocUrl.trim()) return reply.code(400).send({ error: 'doctrine has no google doc url' });
+    const apiUrl = googleDocApiUrl(doctrine.googleDocUrl, process.env.GOOGLE_DOCS_API_KEY ?? process.env.GOOGLE_API_KEY);
     const exportUrl = googleDocTextExportUrl(doctrine.googleDocUrl);
-    if (!exportUrl) return reply.code(400).send({ error: 'unsupported google doc url' });
+    if (!apiUrl && !exportUrl) return reply.code(400).send({ error: 'unsupported google doc url' });
 
     try {
-      const rawText = await fetchGoogleDocText(exportUrl);
-      const result = await syncDoctrineFitsFromText({
-        doctrine,
-        fitStore,
-        doctrineStore: store,
-        rawText,
-        ownerUserId: user.id,
-      });
+      let result;
+      try {
+        const tabs = apiUrl ? await fetchGoogleDocTabs(apiUrl) : [];
+        result = await syncDoctrineFitsFromTabs({
+          doctrine,
+          fitStore,
+          doctrineStore: store,
+          tabs,
+          ownerUserId: user.id,
+        });
+      } catch (tabErr) {
+        if (!exportUrl) throw tabErr;
+        const rawText = await fetchGoogleDocText(exportUrl);
+        result = await syncDoctrineFitsFromText({
+          doctrine,
+          fitStore,
+          doctrineStore: store,
+          rawText,
+          ownerUserId: user.id,
+        });
+      }
       if (
         result.updated.length === 0
         && result.created.length === 0
@@ -236,6 +257,16 @@ async function defaultFetchGoogleDocText(exportUrl: string): Promise<string> {
   const text = await res.text();
   if (text.length > MAX_GOOGLE_DOC_TEXT_CHARS) throw new Error('Google Doc export is too large.');
   return text;
+}
+
+async function defaultFetchGoogleDocTabs(apiUrl: string): Promise<GoogleDocTabText[]> {
+  const res = await fetch(apiUrl);
+  if (!res.ok) throw new Error(`Google Docs API fetch failed with ${res.status}`);
+  const json = await res.json();
+  const tabs = extractGoogleDocTabs(json);
+  const totalText = tabs.reduce((sum, tab) => sum + tab.text.length, 0);
+  if (totalText > MAX_GOOGLE_DOC_TEXT_CHARS) throw new Error('Google Doc tab export is too large.');
+  return tabs;
 }
 
 function missingDoctrineStore(): never {

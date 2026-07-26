@@ -15,6 +15,15 @@ type SqliteDatabase = Database.Database;
 
 export interface DoctrineFitMember extends SavedFitSummary {
   sortOrder: number;
+  googleDocTabId: string;
+  googleDocTabTitle: string;
+}
+
+export interface DoctrineTab {
+  id: string;
+  title: string;
+  sortOrder: number;
+  fitCount: number;
 }
 
 export interface DoctrineSummary {
@@ -29,6 +38,7 @@ export interface DoctrineSummary {
   updatedAt: number;
   fitCount: number;
   shipNames: string[];
+  tabs: DoctrineTab[];
 }
 
 export interface DoctrineDetail extends DoctrineSummary {
@@ -43,8 +53,9 @@ export interface DoctrineStore {
   publish(id: number): DoctrineDetail | null;
   copyToPrivate(id: number, ownerUserId: string): DoctrineDetail | null;
   delete(id: number): boolean;
-  addFit(doctrineId: number, fitId: number): DoctrineDetail | null;
-  removeFit(doctrineId: number, fitId: number): DoctrineDetail | null;
+  addFit(doctrineId: number, fitId: number, tab?: DoctrineTabInput): DoctrineDetail | null;
+  removeFit(doctrineId: number, fitId: number, tabId?: string): DoctrineDetail | null;
+  replaceTabFits(doctrineId: number, tab: DoctrineTabInput, fitIds: number[]): DoctrineDetail | null;
 }
 
 export interface AsyncDoctrineStore {
@@ -55,8 +66,17 @@ export interface AsyncDoctrineStore {
   publish(id: number): Promise<DoctrineDetail | null>;
   copyToPrivate(id: number, ownerUserId: string): Promise<DoctrineDetail | null>;
   delete(id: number): Promise<boolean>;
-  addFit(doctrineId: number, fitId: number): Promise<DoctrineDetail | null>;
-  removeFit(doctrineId: number, fitId: number): Promise<DoctrineDetail | null>;
+  addFit(doctrineId: number, fitId: number, tab?: DoctrineTabInput): Promise<DoctrineDetail | null>;
+  removeFit(doctrineId: number, fitId: number, tabId?: string): Promise<DoctrineDetail | null>;
+  replaceTabFits(doctrineId: number, tab: DoctrineTabInput, fitIds: number[]): Promise<DoctrineDetail | null>;
+}
+
+export interface DoctrineTabInput {
+  id?: string;
+  title?: string;
+  tabId?: string;
+  tabTitle?: string;
+  sortOrder?: number;
 }
 
 export interface DoctrineListFilters {
@@ -95,6 +115,10 @@ interface PostgresDoctrineOptions {
   fitStore?: AsyncFitStore;
 }
 
+const DEFAULT_DOC_TAB_ID = 'default';
+const DEFAULT_DOC_TAB_TITLE = 'Fits';
+type CleanDoctrineTab = { id: string; title: string; sortOrder: number };
+
 export function migrateDoctrinesDb(database: SqliteDatabase): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS doctrines (
@@ -114,9 +138,20 @@ export function migrateDoctrinesDb(database: SqliteDatabase): void {
       doctrine_id INTEGER NOT NULL,
       fit_id      INTEGER NOT NULL,
       sort_order  INTEGER NOT NULL,
-      PRIMARY KEY (doctrine_id, fit_id),
+      google_doc_tab_id TEXT NOT NULL DEFAULT 'default',
+      google_doc_tab_title TEXT NOT NULL DEFAULT 'Fits',
+      PRIMARY KEY (doctrine_id, google_doc_tab_id, fit_id),
       FOREIGN KEY (doctrine_id) REFERENCES doctrines(id) ON DELETE CASCADE,
       FOREIGN KEY (fit_id) REFERENCES saved_fits(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS doctrine_tabs (
+      doctrine_id INTEGER NOT NULL,
+      tab_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      sort_order INTEGER NOT NULL,
+      PRIMARY KEY (doctrine_id, tab_id),
+      FOREIGN KEY (doctrine_id) REFERENCES doctrines(id) ON DELETE CASCADE
     );
 
     CREATE INDEX IF NOT EXISTS idx_doctrines_updated ON doctrines(updated_at);
@@ -128,9 +163,33 @@ export function migrateDoctrinesDb(database: SqliteDatabase): void {
   if (!columns.some(col => col.name === 'visibility')) database.prepare("ALTER TABLE doctrines ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'").run();
   if (!columns.some(col => col.name === 'source_public_doctrine_id')) database.prepare('ALTER TABLE doctrines ADD COLUMN source_public_doctrine_id INTEGER REFERENCES doctrines(id) ON DELETE SET NULL').run();
   if (!columns.some(col => col.name === 'google_doc_url')) database.prepare("ALTER TABLE doctrines ADD COLUMN google_doc_url TEXT NOT NULL DEFAULT ''").run();
+  const fitColumns = database.prepare('PRAGMA table_info(doctrine_fits)').all() as Array<{ name: string }>;
+  if (!fitColumns.some(col => col.name === 'google_doc_tab_id')) {
+    database.exec(`
+      ALTER TABLE doctrine_fits RENAME TO doctrine_fits_old;
+      CREATE TABLE doctrine_fits (
+        doctrine_id INTEGER NOT NULL,
+        fit_id      INTEGER NOT NULL,
+        sort_order  INTEGER NOT NULL,
+        google_doc_tab_id TEXT NOT NULL DEFAULT 'default',
+        google_doc_tab_title TEXT NOT NULL DEFAULT 'Fits',
+        PRIMARY KEY (doctrine_id, google_doc_tab_id, fit_id),
+        FOREIGN KEY (doctrine_id) REFERENCES doctrines(id) ON DELETE CASCADE,
+        FOREIGN KEY (fit_id) REFERENCES saved_fits(id) ON DELETE CASCADE
+      );
+      INSERT INTO doctrine_fits (doctrine_id, fit_id, sort_order, google_doc_tab_id, google_doc_tab_title)
+      SELECT doctrine_id, fit_id, sort_order, 'default', 'Fits' FROM doctrine_fits_old;
+      DROP TABLE doctrine_fits_old;
+    `);
+  }
+  database.exec(`
+    INSERT OR IGNORE INTO doctrine_tabs (doctrine_id, tab_id, title, sort_order)
+    SELECT DISTINCT doctrine_id, google_doc_tab_id, google_doc_tab_title, 0 FROM doctrine_fits;
+  `);
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_doctrines_owner_visibility ON doctrines(owner_user_id, visibility, updated_at);
     CREATE INDEX IF NOT EXISTS idx_doctrines_public ON doctrines(updated_at) WHERE visibility = 'public';
+    CREATE INDEX IF NOT EXISTS idx_doctrine_tabs_doctrine ON doctrine_tabs(doctrine_id, sort_order);
   `);
 }
 
@@ -152,10 +211,25 @@ export function createDoctrineStore(database: SqliteDatabase, options: { now?: (
     WHERE id = @id
   `);
   const touchDoctrine = database.prepare('UPDATE doctrines SET updated_at = ? WHERE id = ?');
-  const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS nextOrder FROM doctrine_fits WHERE doctrine_id = ?');
+  const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS nextOrder FROM doctrine_fits WHERE doctrine_id = ? AND google_doc_tab_id = ?');
+  const upsertTab = database.prepare(`
+    INSERT INTO doctrine_tabs (doctrine_id, tab_id, title, sort_order)
+    VALUES (@doctrineId, @tabId, @title, @sortOrder)
+    ON CONFLICT(doctrine_id, tab_id) DO UPDATE SET
+      title = excluded.title,
+      sort_order = excluded.sort_order
+  `);
   const insertFit = database.prepare(`
-    INSERT OR IGNORE INTO doctrine_fits (doctrine_id, fit_id, sort_order)
-    VALUES (@doctrineId, @fitId, @sortOrder)
+    INSERT INTO doctrine_fits (doctrine_id, fit_id, sort_order, google_doc_tab_id, google_doc_tab_title)
+    VALUES (@doctrineId, @fitId, @sortOrder, @tabId, @tabTitle)
+    ON CONFLICT(doctrine_id, google_doc_tab_id, fit_id) DO NOTHING
+  `);
+  const upsertFit = database.prepare(`
+    INSERT INTO doctrine_fits (doctrine_id, fit_id, sort_order, google_doc_tab_id, google_doc_tab_title)
+    VALUES (@doctrineId, @fitId, @sortOrder, @tabId, @tabTitle)
+    ON CONFLICT(doctrine_id, google_doc_tab_id, fit_id) DO UPDATE SET
+      sort_order = excluded.sort_order,
+      google_doc_tab_title = excluded.google_doc_tab_title
   `);
 
   return {
@@ -243,7 +317,11 @@ export function createDoctrineStore(database: SqliteDatabase, options: { now?: (
       });
       for (const fit of source.fits) {
         const copiedFit = fitStore.copyToPrivate(fit.id, ownerUserId);
-        if (copiedFit) this.addFit(copiedDoctrine.id, copiedFit.id);
+        if (copiedFit) this.addFit(copiedDoctrine.id, copiedFit.id, {
+          id: fit.googleDocTabId,
+          title: fit.googleDocTabTitle,
+          sortOrder: source.tabs.find(tab => tab.id === fit.googleDocTabId)?.sortOrder,
+        });
       }
       return readDetail(database, fitStore, copiedDoctrine.id);
     },
@@ -252,7 +330,7 @@ export function createDoctrineStore(database: SqliteDatabase, options: { now?: (
       return database.prepare('DELETE FROM doctrines WHERE id = ?').run(id).changes > 0;
     },
 
-    addFit(doctrineId: number, fitId: number): DoctrineDetail | null {
+    addFit(doctrineId: number, fitId: number, tabInput?: DoctrineTabInput): DoctrineDetail | null {
       const doctrine = getRow.get(doctrineId) as DoctrineRow | undefined;
       if (!doctrine) return null;
       const fit = fitStore.get(fitId);
@@ -260,16 +338,42 @@ export function createDoctrineStore(database: SqliteDatabase, options: { now?: (
       if (doctrine.visibility === 'public' && fit.visibility !== 'public') {
         throw new Error('Public doctrine member fits must be public.');
       }
-      const sortOrder = (nextOrder.get(doctrineId) as { nextOrder: number }).nextOrder;
-      const result = insertFit.run({ doctrineId, fitId, sortOrder });
+      const tab = cleanDoctrineTab(tabInput);
+      upsertTab.run({ doctrineId, tabId: tab.id, title: tab.title, sortOrder: tab.sortOrder });
+      const sortOrder = (nextOrder.get(doctrineId, tab.id) as { nextOrder: number }).nextOrder;
+      const result = insertFit.run({ doctrineId, fitId, sortOrder, tabId: tab.id, tabTitle: tab.title });
       if (result.changes > 0) touchDoctrine.run(now(), doctrineId);
       return readDetail(database, fitStore, doctrineId);
     },
 
-    removeFit(doctrineId: number, fitId: number): DoctrineDetail | null {
+    removeFit(doctrineId: number, fitId: number, tabId?: string): DoctrineDetail | null {
       if (!getRow.get(doctrineId)) return null;
-      const result = database.prepare('DELETE FROM doctrine_fits WHERE doctrine_id = ? AND fit_id = ?').run(doctrineId, fitId);
+      const cleanTabId = tabId == null ? null : cleanDoctrineTab({ id: tabId }).id;
+      const result = cleanTabId
+        ? database.prepare('DELETE FROM doctrine_fits WHERE doctrine_id = ? AND google_doc_tab_id = ? AND fit_id = ?').run(doctrineId, cleanTabId, fitId)
+        : database.prepare('DELETE FROM doctrine_fits WHERE doctrine_id = ? AND fit_id = ?').run(doctrineId, fitId);
       if (result.changes > 0) touchDoctrine.run(now(), doctrineId);
+      return readDetail(database, fitStore, doctrineId);
+    },
+
+    replaceTabFits(doctrineId: number, tabInput: DoctrineTabInput, fitIds: number[]): DoctrineDetail | null {
+      const doctrine = getRow.get(doctrineId) as DoctrineRow | undefined;
+      if (!doctrine) return null;
+      const tab = cleanDoctrineTab(tabInput);
+      const transaction = database.transaction(() => {
+        upsertTab.run({ doctrineId, tabId: tab.id, title: tab.title, sortOrder: tab.sortOrder });
+        database.prepare('DELETE FROM doctrine_fits WHERE doctrine_id = ? AND google_doc_tab_id = ?').run(doctrineId, tab.id);
+        fitIds.forEach((fitId, index) => {
+          const fit = fitStore.get(fitId);
+          if (!fit) throw new Error('Saved fit not found.');
+          if (doctrine.visibility === 'public' && fit.visibility !== 'public') {
+            throw new Error('Public doctrine member fits must be public.');
+          }
+          upsertFit.run({ doctrineId, fitId, sortOrder: index + 1, tabId: tab.id, tabTitle: tab.title });
+        });
+        touchDoctrine.run(now(), doctrineId);
+      });
+      transaction();
       return readDetail(database, fitStore, doctrineId);
     },
   };
@@ -315,7 +419,7 @@ export function createPostgresDoctrineStore(
     return (await readPostgresDetail(client, fitStore, Number(result.rows[0].id)))!;
   }
 
-  async function addFitToDoctrine(client: QueryClient, doctrineId: number, fitId: number): Promise<DoctrineDetail | null> {
+  async function addFitToDoctrine(client: QueryClient, doctrineId: number, fitId: number, tabInput?: DoctrineTabInput): Promise<DoctrineDetail | null> {
     const doctrine = await readPostgresDoctrineRow(client, doctrineId);
     if (!doctrine) return null;
     const fit = await fitStore.get(fitId);
@@ -323,17 +427,19 @@ export function createPostgresDoctrineStore(
     if (doctrine.visibility === 'public' && fit.visibility !== 'public') {
       throw new Error('Public doctrine member fits must be public.');
     }
+    const tab = cleanDoctrineTab(tabInput);
+    await upsertPostgresDoctrineTab(client, doctrineId, tab);
     const orderResult = await client.query<{ next_order: string | number }>(
-      'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM doctrine_fits WHERE doctrine_id = $1',
-      [doctrineId],
+      'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM doctrine_fits WHERE doctrine_id = $1 AND google_doc_tab_id = $2',
+      [doctrineId, tab.id],
     );
     const insert = await client.query(
       `
-        INSERT INTO doctrine_fits (doctrine_id, fit_id, sort_order)
-        VALUES ($1, $2, $3)
-        ON CONFLICT DO NOTHING
+        INSERT INTO doctrine_fits (doctrine_id, fit_id, sort_order, google_doc_tab_id, google_doc_tab_title)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (doctrine_id, google_doc_tab_id, fit_id) DO NOTHING
       `,
-      [doctrineId, fitId, Number(orderResult.rows[0].next_order)],
+      [doctrineId, fitId, Number(orderResult.rows[0].next_order), tab.id, tab.title],
     );
     if ((insert.rowCount ?? 0) > 0) {
       await client.query('UPDATE doctrines SET updated_at = $1 WHERE id = $2', [now(), doctrineId]);
@@ -429,7 +535,11 @@ export function createPostgresDoctrineStore(
         });
         for (const fit of sourceDoctrine.fits) {
           const copiedFit = await fitStore.copyToPrivate(fit.id, ownerUserId);
-          if (copiedFit) await addFitToDoctrine(client, copiedDoctrine.id, copiedFit.id);
+          if (copiedFit) await addFitToDoctrine(client, copiedDoctrine.id, copiedFit.id, {
+            id: fit.googleDocTabId,
+            title: fit.googleDocTabTitle,
+            sortOrder: sourceDoctrine.tabs.find(tab => tab.id === fit.googleDocTabId)?.sortOrder,
+          });
         }
         return readPostgresDetail(client, fitStore, copiedDoctrine.id);
       });
@@ -440,21 +550,50 @@ export function createPostgresDoctrineStore(
       return (result.rowCount ?? 0) > 0;
     },
 
-    async addFit(doctrineId, fitId) {
-      return withTransaction(source, client => addFitToDoctrine(client, doctrineId, fitId));
+    async addFit(doctrineId, fitId, tab) {
+      return withTransaction(source, client => addFitToDoctrine(client, doctrineId, fitId, tab));
     },
 
-    async removeFit(doctrineId, fitId) {
+    async removeFit(doctrineId, fitId, tabId) {
       const doctrine = await readPostgresDoctrineRow(source, doctrineId);
       if (!doctrine) return null;
-      const result = await source.query(
-        'DELETE FROM doctrine_fits WHERE doctrine_id = $1 AND fit_id = $2',
-        [doctrineId, fitId],
-      );
+      const cleanTabId = tabId == null ? null : cleanDoctrineTab({ id: tabId }).id;
+      const result = cleanTabId
+        ? await source.query('DELETE FROM doctrine_fits WHERE doctrine_id = $1 AND google_doc_tab_id = $2 AND fit_id = $3', [doctrineId, cleanTabId, fitId])
+        : await source.query('DELETE FROM doctrine_fits WHERE doctrine_id = $1 AND fit_id = $2', [doctrineId, fitId]);
       if ((result.rowCount ?? 0) > 0) {
         await source.query('UPDATE doctrines SET updated_at = $1 WHERE id = $2', [now(), doctrineId]);
       }
       return readPostgresDetail(source, fitStore, doctrineId);
+    },
+
+    async replaceTabFits(doctrineId, tabInput, fitIds) {
+      return withTransaction(source, async client => {
+        const doctrine = await readPostgresDoctrineRow(client, doctrineId);
+        if (!doctrine) return null;
+        const tab = cleanDoctrineTab(tabInput);
+        await upsertPostgresDoctrineTab(client, doctrineId, tab);
+        await client.query('DELETE FROM doctrine_fits WHERE doctrine_id = $1 AND google_doc_tab_id = $2', [doctrineId, tab.id]);
+        for (let index = 0; index < fitIds.length; index += 1) {
+          const fit = await fitStore.get(fitIds[index]);
+          if (!fit) throw new Error('Saved fit not found.');
+          if (doctrine.visibility === 'public' && fit.visibility !== 'public') {
+            throw new Error('Public doctrine member fits must be public.');
+          }
+          await client.query(
+            `
+              INSERT INTO doctrine_fits (doctrine_id, fit_id, sort_order, google_doc_tab_id, google_doc_tab_title)
+              VALUES ($1, $2, $3, $4, $5)
+              ON CONFLICT (doctrine_id, google_doc_tab_id, fit_id) DO UPDATE SET
+                sort_order = excluded.sort_order,
+                google_doc_tab_title = excluded.google_doc_tab_title
+            `,
+            [doctrineId, fitIds[index], index + 1, tab.id, tab.title],
+          );
+        }
+        await client.query('UPDATE doctrines SET updated_at = $1 WHERE id = $2', [now(), doctrineId]);
+        return readPostgresDetail(client, fitStore, doctrineId);
+      });
     },
   };
 }
@@ -462,7 +601,13 @@ export function createPostgresDoctrineStore(
 function readDetail(database: SqliteDatabase, fitStore: FitStore, id: number): DoctrineDetail | null {
   const row = database.prepare('SELECT * FROM doctrines WHERE id = ?').get(id) as DoctrineRow | undefined;
   if (!row) return null;
-  const links = database.prepare('SELECT fit_id, sort_order FROM doctrine_fits WHERE doctrine_id = ? ORDER BY sort_order, fit_id').all(id) as Array<{ fit_id: number; sort_order: number }>;
+  const links = database.prepare(`
+    SELECT f.fit_id, f.sort_order, f.google_doc_tab_id, f.google_doc_tab_title
+    FROM doctrine_fits f
+    LEFT JOIN doctrine_tabs t ON t.doctrine_id = f.doctrine_id AND t.tab_id = f.google_doc_tab_id
+    WHERE f.doctrine_id = ?
+    ORDER BY COALESCE(t.sort_order, 0), f.sort_order, f.fit_id
+  `).all(id) as Array<{ fit_id: number; sort_order: number; google_doc_tab_id: string; google_doc_tab_title: string }>;
   const fits = links
     .map(link => {
       const fit = fitStore.get(link.fit_id);
@@ -485,9 +630,12 @@ function readDetail(database: SqliteDatabase, fitStore: FitStore, id: number): D
           unassignable: fit.warnings.filter(w => w.code === 'unassignable').length,
         },
         sortOrder: link.sort_order,
+        googleDocTabId: link.google_doc_tab_id ?? DEFAULT_DOC_TAB_ID,
+        googleDocTabTitle: link.google_doc_tab_title ?? DEFAULT_DOC_TAB_TITLE,
       } satisfies DoctrineFitMember;
     })
     .filter((fit): fit is DoctrineFitMember => fit != null);
+  const tabs = readSqliteTabs(database, id, fits);
 
   return {
     id: row.id,
@@ -501,6 +649,7 @@ function readDetail(database: SqliteDatabase, fitStore: FitStore, id: number): D
     updatedAt: row.updated_at,
     fitCount: fits.length,
     shipNames: [...new Set(fits.map(fit => fit.shipName))],
+    tabs,
     fits,
   };
 }
@@ -510,6 +659,66 @@ async function readPostgresDoctrineRow(client: QueryClient, id: number): Promise
   return result.rows[0] ? mapPostgresDoctrineRow(result.rows[0]) : null;
 }
 
+function readSqliteTabs(database: SqliteDatabase, doctrineId: number, fits: DoctrineFitMember[]): DoctrineTab[] {
+  const rows = database.prepare(`
+    SELECT tab_id, title, sort_order
+    FROM doctrine_tabs
+    WHERE doctrine_id = ?
+    ORDER BY sort_order, tab_id
+  `).all(doctrineId) as Array<{ tab_id: string; title: string; sort_order: number }>;
+  const counts = tabCounts(fits);
+  const seeded = rows.length > 0
+    ? rows
+    : [{ tab_id: DEFAULT_DOC_TAB_ID, title: DEFAULT_DOC_TAB_TITLE, sort_order: 0 }];
+  return seeded.map(row => ({
+    id: row.tab_id,
+    title: row.title,
+    sortOrder: row.sort_order,
+    fitCount: counts.get(row.tab_id) ?? 0,
+  }));
+}
+
+function tabCounts(fits: DoctrineFitMember[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const fit of fits) counts.set(fit.googleDocTabId, (counts.get(fit.googleDocTabId) ?? 0) + 1);
+  return counts;
+}
+
+async function upsertPostgresDoctrineTab(client: QueryClient, doctrineId: number, tab: CleanDoctrineTab): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO doctrine_tabs (doctrine_id, tab_id, title, sort_order)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (doctrine_id, tab_id) DO UPDATE SET
+        title = excluded.title,
+        sort_order = excluded.sort_order
+    `,
+    [doctrineId, tab.id, tab.title, tab.sortOrder],
+  );
+}
+
+async function readPostgresTabs(client: QueryClient, doctrineId: number, fits: DoctrineFitMember[]): Promise<DoctrineTab[]> {
+  const rows = await client.query<{ tab_id: string; title: string; sort_order: string | number }>(
+    `
+      SELECT tab_id, title, sort_order
+      FROM doctrine_tabs
+      WHERE doctrine_id = $1
+      ORDER BY sort_order, tab_id
+    `,
+    [doctrineId],
+  );
+  const counts = tabCounts(fits);
+  const seeded = rows.rows.length > 0
+    ? rows.rows
+    : [{ tab_id: DEFAULT_DOC_TAB_ID, title: DEFAULT_DOC_TAB_TITLE, sort_order: 0 }];
+  return seeded.map(row => ({
+    id: row.tab_id,
+    title: row.title,
+    sortOrder: Number(row.sort_order),
+    fitCount: counts.get(row.tab_id) ?? 0,
+  }));
+}
+
 async function readPostgresDetail(
   client: QueryClient,
   fitStore: AsyncFitStore,
@@ -517,8 +726,19 @@ async function readPostgresDetail(
 ): Promise<DoctrineDetail | null> {
   const row = await readPostgresDoctrineRow(client, id);
   if (!row) return null;
-  const links = await client.query<{ fit_id: string | number; sort_order: string | number }>(
-    'SELECT fit_id, sort_order FROM doctrine_fits WHERE doctrine_id = $1 ORDER BY sort_order, fit_id',
+  const links = await client.query<{
+    fit_id: string | number;
+    sort_order: string | number;
+    google_doc_tab_id?: string | null;
+    google_doc_tab_title?: string | null;
+  }>(
+    `
+      SELECT f.fit_id, f.sort_order, f.google_doc_tab_id, f.google_doc_tab_title
+      FROM doctrine_fits f
+      LEFT JOIN doctrine_tabs t ON t.doctrine_id = f.doctrine_id AND t.tab_id = f.google_doc_tab_id
+      WHERE f.doctrine_id = $1
+      ORDER BY COALESCE(t.sort_order, 0), f.sort_order, f.fit_id
+    `,
     [id],
   );
   const fits = (await Promise.all(links.rows.map(async link => {
@@ -542,8 +762,11 @@ async function readPostgresDetail(
         unassignable: fit.warnings.filter(w => w.code === 'unassignable').length,
       },
       sortOrder: Number(link.sort_order),
+      googleDocTabId: link.google_doc_tab_id ?? DEFAULT_DOC_TAB_ID,
+      googleDocTabTitle: link.google_doc_tab_title ?? DEFAULT_DOC_TAB_TITLE,
     } satisfies DoctrineFitMember;
   }))).filter((fit): fit is DoctrineFitMember => fit != null);
+  const tabs = await readPostgresTabs(client, id, fits);
 
   return {
     id: row.id,
@@ -557,6 +780,7 @@ async function readPostgresDetail(
     updatedAt: row.updated_at,
     fitCount: fits.length,
     shipNames: [...new Set(fits.map(fit => fit.shipName))],
+    tabs,
     fits,
   };
 }
@@ -593,6 +817,13 @@ function matchesDoctrine(detail: DoctrineDetail, query: string): boolean {
 
 function cleanName(value: string | undefined): string {
   return value?.trim() ?? '';
+}
+
+function cleanDoctrineTab(input: DoctrineTabInput | undefined): CleanDoctrineTab {
+  const raw = input as (DoctrineTabInput & { tabId?: string; tabTitle?: string }) | undefined;
+  const id = raw?.id?.trim() || raw?.tabId?.trim() || DEFAULT_DOC_TAB_ID;
+  const title = raw?.title?.trim() || raw?.tabTitle?.trim() || DEFAULT_DOC_TAB_TITLE;
+  return { id, title, sortOrder: Number.isFinite(raw?.sortOrder) ? Number(raw?.sortOrder) : 0 };
 }
 
 function cleanGoogleDocUrl(value: string | undefined): string {
