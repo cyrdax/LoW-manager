@@ -5,18 +5,26 @@ import {
   type CurrentUserResolver,
 } from '../auth/pilot-access.ts';
 import { type AsyncDoctrineStore, type DoctrineDetail, type DoctrineStore } from '../fits/doctrines.ts';
+import {
+  googleDocTextExportUrl,
+  syncDoctrineFitsFromText,
+} from '../fits/google-doc-sync.ts';
 import { type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
+
+const MAX_GOOGLE_DOC_TEXT_CHARS = 512 * 1024;
 
 export interface DoctrineRouteDeps {
   store?: DoctrineStore | AsyncDoctrineStore;
   fitStore?: FitStore | AsyncFitStore;
   currentUser?: CurrentUserResolver;
+  fetchGoogleDocText?: (exportUrl: string) => Promise<string>;
 }
 
 export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRouteDeps = {}) {
   const store = deps.store ?? missingDoctrineStore();
   const fitStore = deps.fitStore ?? missingFitStore();
   const currentUser = routeCurrentUser(deps);
+  const fetchGoogleDocText = deps.fetchGoogleDocText ?? defaultFetchGoogleDocText;
 
   app.get('/api/doctrines', async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
@@ -131,6 +139,41 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     return doctrine;
   });
 
+  app.post('/api/doctrines/:id/refresh-fits', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+    const id = parseId(req.params);
+    if (!id) return reply.code(400).send({ error: 'valid doctrine id is required' });
+    const doctrine = await store.get(id);
+    if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
+    if (!canEditDoctrine(doctrine, user)) return reply.code(403).send({ error: 'not allowed' });
+    if (!doctrine.googleDocUrl.trim()) return reply.code(400).send({ error: 'doctrine has no google doc url' });
+    const exportUrl = googleDocTextExportUrl(doctrine.googleDocUrl);
+    if (!exportUrl) return reply.code(400).send({ error: 'unsupported google doc url' });
+
+    try {
+      const rawText = await fetchGoogleDocText(exportUrl);
+      const result = await syncDoctrineFitsFromText({
+        doctrine,
+        fitStore,
+        doctrineStore: store,
+        rawText,
+        ownerUserId: user.id,
+      });
+      if (
+        result.updated.length === 0
+        && result.created.length === 0
+        && result.ambiguous.length === 0
+        && result.failed.length === 0
+      ) {
+        return reply.code(400).send({ error: result.skipped[0]?.reason ?? 'No EFT fit blocks found.' });
+      }
+      return result;
+    } catch (err) {
+      return reply.code(400).send({ error: errorMessage(err, 'failed to refresh doctrine fits') });
+    }
+  });
+
   app.post('/api/doctrines/:id/publish', async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
@@ -185,6 +228,14 @@ function canEditDoctrine(doctrine: DoctrineDetail, user: { id: string; role: 'us
 
 function canViewFit(fit: SavedFitDetail, user: { id: string; role: 'user' | 'admin' }): boolean {
   return fit.visibility === 'public' || user.role === 'admin' || fit.ownerUserId === user.id;
+}
+
+async function defaultFetchGoogleDocText(exportUrl: string): Promise<string> {
+  const res = await fetch(exportUrl);
+  if (!res.ok) throw new Error(`Google Doc fetch failed with ${res.status}`);
+  const text = await res.text();
+  if (text.length > MAX_GOOGLE_DOC_TEXT_CHARS) throw new Error('Google Doc export is too large.');
+  return text;
 }
 
 function missingDoctrineStore(): never {

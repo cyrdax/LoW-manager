@@ -8,10 +8,12 @@ import {
   fetchDoctrines,
   fetchFits,
   publishDoctrine,
+  refreshDoctrineFits,
   removeDoctrineFit,
   updateDoctrine,
   type CurrentUser,
   type DoctrineDetail,
+  type DoctrineFitRefreshResult,
   type DoctrineSummary,
   type LibraryVisibility,
   type SavedFitSummary,
@@ -53,6 +55,8 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   const [googleDocUrl, setGoogleDocUrl] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshingFits, setRefreshingFits] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<DoctrineFitRefreshResult | null>(null);
   const [fitQuery, setFitQuery] = useState('');
   const [savedFits, setSavedFits] = useState<SavedFitSummary[]>([]);
 
@@ -115,6 +119,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setGoogleDocUrl(detail?.googleDocUrl ?? '');
     setEditing(false);
     setStatus(null);
+    setRefreshResult(null);
   }, [detail?.id]);
 
   const availableFits = useMemo(() => {
@@ -131,6 +136,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   const canSaveDoctrine = draftMode || (editing && canStartEditing);
   const canPublishDoctrine = !!detail && canStartEditing && detail.visibility === 'private';
   const canCopyDoctrine = !!detail && detail.visibility === 'public';
+  const canRefreshFits = !!detail && canStartEditing && !!detail.googleDocUrl.trim();
   const showEditor = draftMode || !!detail;
   const editorVisibility = draftMode ? visibility : detail?.visibility ?? visibility;
   const editorFits = draftMode ? [] : detail?.fits ?? [];
@@ -147,6 +153,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setGoogleDocUrl('');
     setFitQuery('');
     setStatus(null);
+    setRefreshResult(null);
     setQuery('');
     onModeRoute('doctrines');
   }
@@ -179,6 +186,22 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     onOpenDoctrineRoute(res.id);
     setStatus('Copied to private library.');
     await reloadList('', 'private');
+  }
+
+  async function refreshFitsFromGoogleDoc() {
+    if (!detail || !canRefreshFits || refreshingFits) return;
+    setRefreshingFits(true);
+    setStatus(null);
+    setRefreshResult(null);
+    const res = await refreshDoctrineFits(detail.id);
+    setRefreshingFits(false);
+    if ('error' in res) { setStatus(res.error); return; }
+    setDetail(res.doctrine);
+    setSelectedId(res.doctrine.id);
+    setRefreshResult(res);
+    const changed = res.updated.length + res.created.length;
+    setStatus(`Refresh complete: ${res.updated.length} updated, ${res.created.length} created${changed === 0 ? ', no changes' : ''}.`);
+    await reloadList(query, res.doctrine.visibility);
   }
 
   async function saveDoctrine() {
@@ -228,6 +251,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setGoogleDocUrl(detail?.googleDocUrl ?? '');
     setEditing(false);
     setStatus(null);
+    setRefreshResult(null);
   }
 
   async function addFit(fitId: number) {
@@ -303,12 +327,15 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
                 {canStartEditing && !isEditing && <button onClick={() => setEditing(true)} disabled={busy}>Edit</button>}
                 {canSaveDoctrine && <button onClick={saveDoctrine} disabled={busy}>Save</button>}
                 {editing && <button onClick={cancelEditing} disabled={busy}>Cancel</button>}
+                {canStartEditing && !draftMode && <button onClick={refreshFitsFromGoogleDoc} disabled={!canRefreshFits || busy || refreshingFits}>{refreshingFits ? 'Refreshing...' : 'Refresh Fits'}</button>}
                 {canPublishDoctrine && <button onClick={publishCurrentDoctrine} disabled={busy}>Publish</button>}
                 {canCopyDoctrine && <button onClick={copyCurrentDoctrineToPrivate} disabled={busy}>Copy private</button>}
                 {isEditing && canSaveDoctrine && <button className="danger" onClick={removeDoctrine}>{draftMode ? 'Discard' : 'Delete'}</button>}
-                {status && <small className={['Saved.', 'Published.', 'Copied to private library.'].includes(status) ? 'fits-status ok' : 'fits-status err'}>{status}</small>}
+                {status && <small className={statusClassName(status)}>{status}</small>}
               </div>
             </div>
+
+            {refreshResult && <DoctrineRefreshSummary result={refreshResult} />}
 
             {draftMode && (
               <section className="doctrine-add">
@@ -357,5 +384,38 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
         )}
       </section>
     </div>
+  );
+}
+
+function statusClassName(status: string): string {
+  return /^Saved\.|^Published\.|^Copied to private library\.|^Refresh complete:/.test(status)
+    ? 'fits-status ok'
+    : 'fits-status err';
+}
+
+function DoctrineRefreshSummary({ result }: { result: DoctrineFitRefreshResult }) {
+  const issueCount = result.ambiguous.length + result.failed.length + result.skipped.length;
+  return (
+    <section className="doctrine-refresh-summary">
+      <strong>Google Doc fit refresh</strong>
+      <div>
+        <span>{result.updated.length} updated</span>
+        <span>{result.created.length} created</span>
+        <span>{issueCount} needs review</span>
+      </div>
+      {(result.created.length > 0 || result.updated.length > 0) && (
+        <ul>
+          {result.updated.slice(0, 4).map(fit => <li key={`updated-${fit.fitId}`}>Updated {fit.shipName} - {fit.fitName}</li>)}
+          {result.created.slice(0, 4).map(fit => <li key={`created-${fit.fitId}`}>Created {fit.shipName} - {fit.fitName}</li>)}
+        </ul>
+      )}
+      {issueCount > 0 && (
+        <ul>
+          {result.ambiguous.map(row => <li key={`ambiguous-${row.fitName}`}>Ambiguous: {row.fitName} matched {row.matchedFitIds.length} saved fits</li>)}
+          {result.failed.map(row => <li key={`failed-${row.fitName}`}>Failed: {row.fitName} - {row.error}</li>)}
+          {result.skipped.map((row, i) => <li key={`skipped-${row.fitName}-${i}`}>Skipped: {row.fitName || 'Document'} - {row.reason}</li>)}
+        </ul>
+      )}
+    </section>
   );
 }

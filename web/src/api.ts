@@ -1040,6 +1040,15 @@ export interface DoctrineDetail extends DoctrineSummary {
   fits: DoctrineFitMember[];
 }
 
+export interface DoctrineFitRefreshResult {
+  doctrine: DoctrineDetail;
+  updated: Array<{ fitId: number; fitName: string; shipName: string }>;
+  created: Array<{ fitId: number; fitName: string; shipName: string }>;
+  skipped: Array<{ fitName: string; reason: string }>;
+  ambiguous: Array<{ fitName: string; matchedFitIds: number[] }>;
+  failed: Array<{ fitName: string; error: string }>;
+}
+
 export interface FitQuoteItem {
   inputName: string;
   resolvedName: string | null;
@@ -1223,6 +1232,10 @@ export async function addDoctrineFit(id: number, fitId: number): Promise<Doctrin
 
 export async function removeDoctrineFit(id: number, fitId: number): Promise<DoctrineDetail | { error: string }> {
   return jsonOrError(await fetch(`/api/doctrines/${id}/fits/${fitId}`, { method: 'DELETE' }));
+}
+
+export async function refreshDoctrineFits(id: number): Promise<DoctrineFitRefreshResult | { error: string }> {
+  return jsonOrError(await fetch(`/api/doctrines/${id}/refresh-fits`, { method: 'POST' }));
 }
 
 export async function publishDoctrine(id: number): Promise<DoctrineDetail | { error: string }> {

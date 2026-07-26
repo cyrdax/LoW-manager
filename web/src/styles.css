@@ -2650,6 +2650,36 @@ body {
   border-radius: 6px;
   background: #ffffff;
 }
+.doctrine-refresh-summary {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #11141a;
+  color: var(--text);
+}
+.doctrine-refresh-summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.doctrine-refresh-summary > div span {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+}
+.doctrine-refresh-summary ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .doctrine-add,
 .doctrine-members {
   margin-top: 12px;

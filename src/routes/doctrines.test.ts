@@ -10,6 +10,16 @@ const naglfar = `[Naglfar, Route Dread]
 Republic Fleet Gyrostabilizer
 Siege Module II`;
 
+const updatedNaglfar = `[Naglfar, Route Dread DPS]
+Republic Fleet Gyrostabilizer
+Republic Fleet Gyrostabilizer
+Siege Module II`;
+
+const archon = `[Archon, Route Carrier]
+Drone Damage Amplifier II
+Capital Cap Battery II
+Equite II x12`;
+
 function appWithStores() {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
@@ -215,4 +225,61 @@ test('doctrine routes reject private member fits in public doctrines', async () 
   });
 
   assert.equal(rejected.statusCode, 400);
+});
+
+test('doctrine refresh-fits updates matching fits and creates missing fits from google doc text', async () => {
+  const { fits, store } = appWithStores();
+  const existing = fits.create({ rawEft: naglfar, fitName: 'Route Dread DPS', ownerUserId: 'user-a', visibility: 'private' });
+  const doctrine = store.create({
+    name: 'Google Doc Doctrine',
+    googleDocUrl: 'https://docs.google.com/document/d/doc123/edit',
+    ownerUserId: 'user-a',
+    visibility: 'private',
+  });
+  store.addFit(doctrine.id, existing.id);
+  const fetchedUrls: string[] = [];
+
+  const app = Fastify();
+  registerDoctrineRoutes(app, {
+    store,
+    fitStore: fits,
+    currentUser: async () => userA,
+    fetchGoogleDocText: async url => {
+      fetchedUrls.push(url);
+      return `${updatedNaglfar}\n\n${archon}`;
+    },
+  });
+
+  const res = await app.inject({ method: 'POST', url: `/api/doctrines/${doctrine.id}/refresh-fits` });
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(fetchedUrls, ['https://docs.google.com/document/d/doc123/export?format=txt']);
+  const body = JSON.parse(res.body);
+  assert.deepEqual(body.updated.map((fit: { fitId: number }) => fit.fitId), [existing.id]);
+  assert.equal(body.created.length, 1);
+  assert.equal(body.created[0].fitName, 'Route Carrier');
+  assert.equal(body.doctrine.fitCount, 2);
+  assert.equal(fits.get(existing.id)?.rawEft.includes('Republic Fleet Gyrostabilizer\nRepublic Fleet Gyrostabilizer'), true);
+  assert.equal(fits.get(body.created[0].fitId)?.ownerUserId, 'user-a');
+});
+
+test('doctrine refresh-fits rejects unauthorized users and missing google doc urls', async () => {
+  const { fits, store } = appWithStores();
+  const noDoc = store.create({ name: 'No Source', ownerUserId: 'user-a', visibility: 'private' });
+  const appA = Fastify();
+  registerDoctrineRoutes(appA, { store, fitStore: fits, currentUser: async () => userA });
+  const missing = await appA.inject({ method: 'POST', url: `/api/doctrines/${noDoc.id}/refresh-fits` });
+  assert.equal(missing.statusCode, 400);
+  assert.equal(JSON.parse(missing.body).error, 'doctrine has no google doc url');
+
+  const privateDoctrine = store.create({
+    name: 'Private Source',
+    googleDocUrl: 'https://docs.google.com/document/d/doc123/edit',
+    ownerUserId: 'user-a',
+    visibility: 'private',
+  });
+  const appB = Fastify();
+  registerDoctrineRoutes(appB, { store, fitStore: fits, currentUser: async () => userB });
+  const denied = await appB.inject({ method: 'POST', url: `/api/doctrines/${privateDoctrine.id}/refresh-fits` });
+  assert.equal(denied.statusCode, 403);
 });

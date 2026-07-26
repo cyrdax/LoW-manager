@@ -14,6 +14,8 @@ test('frontend exposes doctrine api helpers and doctrine view controls', () => {
   assert.match(api, /export async function fetchDoctrines/);
   assert.match(api, /export async function addDoctrineFit/);
   assert.match(api, /export async function removeDoctrineFit/);
+  assert.match(api, /export interface DoctrineFitRefreshResult/);
+  assert.match(api, /export async function refreshDoctrineFits/);
 
   assert.match(fitsView, /DoctrinesView/);
   assert.match(switchView, /Fits/);
@@ -28,6 +30,10 @@ test('frontend exposes doctrine api helpers and doctrine view controls', () => {
   assert.match(doctrinesView, /Google Doc URL/);
   assert.match(doctrinesView, /google-doc-frame/);
   assert.match(doctrinesView, /googleDocPreviewUrl/);
+  assert.match(doctrinesView, /refreshFitsFromGoogleDoc/);
+  assert.match(doctrinesView, /Refresh Fits/);
+  assert.match(doctrinesView, /doctrine-refresh-summary/);
+  assert.match(doctrinesView, /result\.updated\.length/);
   assert.match(doctrinesView, /Add fit/);
   assert.match(doctrinesView, /Remove/);
 });
