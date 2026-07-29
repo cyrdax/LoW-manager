@@ -2450,7 +2450,7 @@ body {
 .fits-import-tabs {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 2px;
   padding: 2px;
   background: #11141a;
@@ -2523,6 +2523,120 @@ body {
   border: 1px solid #5a4622;
   border-radius: 5px;
   background: #1d1a12;
+}
+.fits-discord-import {
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.fits-discord-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+.fits-discord-controls select,
+.fits-discord-fit select {
+  min-height: 34px;
+  background: #10151d;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 7px 9px;
+  font: inherit;
+}
+.fits-discord-controls button {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #1f2430;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.fits-discord-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.fits-discord-summary span {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #11141a;
+}
+.fits-discord-review {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+.fits-discord-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #11141a;
+}
+.fits-discord-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.fits-discord-source strong { color: var(--text); }
+.fits-discord-source a { color: var(--accent); }
+.fits-discord-group p {
+  margin: 0;
+  color: var(--dim);
+  font-size: 12px;
+}
+.fits-discord-warning {
+  color: var(--amber);
+  font-size: 12px;
+}
+.fits-discord-fit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid #252b35;
+  border-radius: 5px;
+  background: #0d1118;
+}
+.fits-discord-fit > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.fits-discord-fit strong,
+.fits-discord-fit span,
+.fits-discord-fit small,
+.fits-discord-fit em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fits-discord-fit span,
+.fits-discord-fit small {
+  color: var(--dim);
+}
+.fits-discord-fit em {
+  color: var(--amber);
+  font-size: 12px;
+  font-style: normal;
 }
 .fits-modal-actions {
   flex: 0 0 auto;

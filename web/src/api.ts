@@ -1095,6 +1095,83 @@ export interface PyfaImageImportResult {
   warnings: string[];
 }
 
+export interface DiscordImportChannel {
+  id: string;
+  label: string;
+  type: 'channel' | 'thread';
+  parentId: string | null;
+  parentName: string | null;
+}
+
+export type DiscordImportDefaultAction =
+  | { kind: 'create' }
+  | { kind: 'update'; fitId: number }
+  | { kind: 'skip'; reason: string };
+
+export interface DiscordImportFitCandidate {
+  id: string;
+  rawEft: string;
+  fitName: string;
+  shipName: string;
+  shipTypeId: number | null;
+  sourceType: 'eft-text' | 'pyfa-image';
+  warnings: string[];
+  defaultAction: DiscordImportDefaultAction;
+}
+
+export interface DiscordImportMessageGroup {
+  message: {
+    id: string;
+    authorName: string;
+    timestamp: string;
+    url: string;
+    excerpt: string;
+  };
+  fits: DiscordImportFitCandidate[];
+  warnings: string[];
+}
+
+export interface DiscordImportScanResult {
+  channelId: string;
+  channelLabel: string;
+  scannedMessages: number;
+  summary: {
+    fitsFound: number;
+    imagesFound: number;
+    imagesScanned: number;
+    imagesSkipped: number;
+  };
+  groups: DiscordImportMessageGroup[];
+}
+
+export type DiscordImportApplyAction =
+  | {
+      action: 'create';
+      rawEft: string;
+      fitName: string;
+      source: { channelLabel: string; authorName: string; timestamp: string; messageUrl: string };
+    }
+  | {
+      action: 'update';
+      fitId: number;
+      rawEft: string;
+      fitName: string;
+      source: { channelLabel: string; authorName: string; timestamp: string; messageUrl: string };
+    }
+  | {
+      action: 'skip';
+      rawEft: string;
+      fitName: string;
+      source: { channelLabel: string; authorName: string; timestamp: string; messageUrl: string };
+    };
+
+export interface DiscordImportApplyResult {
+  created: Array<{ fitId: number; fitName: string; shipName: string }>;
+  updated: Array<{ fitId: number; fitName: string; shipName: string }>;
+  skipped: Array<{ fitName: string; reason: string }>;
+  failed: Array<{ fitName: string; error: string }>;
+}
+
 async function jsonOrError<T>(res: Response): Promise<T | { error: string; reauthHint?: string | null }> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -1275,6 +1352,33 @@ export async function previewFit(rawEft: string, shipTypeId?: number): Promise<F
 
 export async function importPyfaImage(input: PyfaImageImportRequest): Promise<PyfaImageImportResult | { error: string }> {
   return jsonOrError(await fetch('/api/fits/import-pyfa-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }));
+}
+
+export async function fetchDiscordImportChannels(): Promise<DiscordImportChannel[] | { error: string }> {
+  return jsonOrError(await fetch('/api/discord/import/channels'));
+}
+
+export async function scanDiscordImport(input: {
+  channelId: string;
+  channelLabel: string;
+  visibility: LibraryVisibility;
+}): Promise<DiscordImportScanResult | { error: string }> {
+  return jsonOrError(await fetch('/api/discord/import/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }));
+}
+
+export async function applyDiscordImport(input: {
+  visibility: LibraryVisibility;
+  actions: DiscordImportApplyAction[];
+}): Promise<DiscordImportApplyResult | { error: string }> {
+  return jsonOrError(await fetch('/api/discord/import/apply', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),

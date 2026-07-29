@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
 import {
+  applyDiscordImport,
   copyFitToPrivate,
   deleteFit,
+  fetchDiscordImportChannels,
   fetchFit,
   fetchDoctrines,
   fetchFits,
@@ -11,12 +13,17 @@ import {
   quoteDraftFit,
   quoteSavedFit,
   saveFit,
+  scanDiscordImport,
   sendDraftFit,
   sendSavedFit,
   updateFit,
   type AssignedFitItem,
   type CharacterStatus,
   type CurrentUser,
+  type DiscordImportApplyAction,
+  type DiscordImportChannel,
+  type DiscordImportFitCandidate,
+  type DiscordImportScanResult,
   type DoctrineSummary,
   type FitDraft,
   type FitHub,
@@ -66,6 +73,9 @@ Siege Module II
 Capital Semiconductor Memory Cell I
 
 Hail XL x4057`;
+
+type ImportMode = 'eft' | 'pyfa-image' | 'discord';
+type DiscordCandidateAction = 'create' | 'update' | 'skip';
 
 type SendStatus =
   | { kind: 'idle' }
@@ -157,12 +167,19 @@ function SavedFitsView({
   const [importText, setImportText] = useState(SAMPLE);
   const [importError, setImportError] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
-  const [importMode, setImportMode] = useState<'eft' | 'pyfa-image'>('eft');
+  const [importMode, setImportMode] = useState<ImportMode>('eft');
   const [pyfaImage, setPyfaImage] = useState<File | null>(null);
   const [pyfaBusy, setPyfaBusy] = useState(false);
   const [pyfaWarnings, setPyfaWarnings] = useState<string[]>([]);
   const [pyfaNotice, setPyfaNotice] = useState<string | null>(null);
   const [pyfaDragging, setPyfaDragging] = useState(false);
+  const [discordChannels, setDiscordChannels] = useState<DiscordImportChannel[]>([]);
+  const [discordChannelId, setDiscordChannelId] = useState('');
+  const [discordLoadingChannels, setDiscordLoadingChannels] = useState(false);
+  const [discordScanning, setDiscordScanning] = useState(false);
+  const [discordApplying, setDiscordApplying] = useState(false);
+  const [discordScanResult, setDiscordScanResult] = useState<DiscordImportScanResult | null>(null);
+  const [discordActions, setDiscordActions] = useState<Record<string, DiscordCandidateAction>>({});
   const [unmatchedOpen, setUnmatchedOpen] = useState(false);
   const [fitName, setFitName] = useState('');
   const [notes, setNotes] = useState('');
@@ -272,6 +289,31 @@ function SavedFitsView({
     return () => { cancelled = true; };
   }, [activeSavedId, activeVisibility]);
 
+  useEffect(() => {
+    if (!importOpen || importMode !== 'discord' || discordLoadingChannels || discordChannels.length > 0) return;
+    let cancelled = false;
+    setDiscordLoadingChannels(true);
+    setImportError(null);
+    fetchDiscordImportChannels()
+      .then(rows => {
+        if (cancelled) return;
+        if ('error' in rows) {
+          setImportError(rows.error);
+          setDiscordChannels([]);
+          return;
+        }
+        setDiscordChannels(rows);
+        setDiscordChannelId(current => current || rows[0]?.id || '');
+      })
+      .catch(err => {
+        if (!cancelled) setImportError(err instanceof Error ? err.message : 'Failed to load Discord channels.');
+      })
+      .finally(() => {
+        if (!cancelled) setDiscordLoadingChannels(false);
+      });
+    return () => { cancelled = true; };
+  }, [importOpen, importMode, discordLoadingChannels, discordChannels.length]);
+
   const filteredFits = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return fits;
@@ -366,6 +408,87 @@ function SavedFitsView({
       setImportError(err instanceof Error ? err.message : 'Failed to preview fit.');
     } finally {
       setImportBusy(false);
+    }
+  };
+
+  const scanDiscordChannel = async () => {
+    if (discordScanning) return;
+    const channel = discordChannels.find(row => row.id === discordChannelId);
+    if (!channel) {
+      setImportError('Choose a Discord channel or thread to scan.');
+      return;
+    }
+    setDiscordScanning(true);
+    setDiscordScanResult(null);
+    setDiscordActions({});
+    setImportError(null);
+    try {
+      const res = await scanDiscordImport({ channelId: channel.id, channelLabel: channel.label, visibility });
+      if ('error' in res) { setImportError(res.error); return; }
+      setDiscordScanResult(res);
+      const nextActions: Record<string, DiscordCandidateAction> = {};
+      for (const group of res.groups) {
+        for (const candidate of group.fits) {
+          nextActions[discordActionKey(candidate)] = candidate.defaultAction.kind;
+        }
+      }
+      setDiscordActions(nextActions);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to scan Discord channel.');
+    } finally {
+      setDiscordScanning(false);
+    }
+  };
+
+  const applyDiscordCandidates = async () => {
+    if (!discordScanResult || discordApplying) return;
+    const actions: DiscordImportApplyAction[] = [];
+    for (const group of discordScanResult.groups) {
+      const source = {
+        channelLabel: discordScanResult.channelLabel,
+        authorName: group.message.authorName,
+        timestamp: group.message.timestamp,
+        messageUrl: group.message.url,
+      };
+      for (const candidate of group.fits) {
+        const key = discordActionKey(candidate);
+        const chosen = discordActions[key] ?? candidate.defaultAction.kind;
+        if (chosen === 'skip') {
+          actions.push({ action: 'skip', rawEft: candidate.rawEft, fitName: candidate.fitName, source });
+        } else if (chosen === 'update' && candidate.defaultAction.kind === 'update') {
+          actions.push({ action: 'update', fitId: candidate.defaultAction.fitId, rawEft: candidate.rawEft, fitName: candidate.fitName, source });
+        } else if (candidate.shipTypeId != null) {
+          actions.push({ action: 'create', rawEft: candidate.rawEft, fitName: candidate.fitName, source });
+        } else {
+          actions.push({ action: 'skip', rawEft: candidate.rawEft, fitName: candidate.fitName, source });
+        }
+      }
+    }
+    if (actions.length === 0) {
+      setImportError('No Discord fits are ready to import.');
+      return;
+    }
+
+    setDiscordApplying(true);
+    setImportError(null);
+    try {
+      const res = await applyDiscordImport({ visibility, actions });
+      if ('error' in res) { setImportError(res.error); return; }
+      const firstChanged = res.created[0]?.fitId ?? res.updated[0]?.fitId ?? null;
+      setImportOpen(false);
+      setDiscordScanResult(null);
+      setDiscordActions({});
+      await reloadList(visibility);
+      if (firstChanged != null) {
+        setDraft(null);
+        setSelectedId(firstChanged);
+        onOpenFitRoute(firstChanged);
+      }
+      setStatus(`Discord import: ${res.created.length} created, ${res.updated.length} updated, ${res.skipped.length} skipped${res.failed.length ? `, ${res.failed.length} failed` : ''}.`);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to import Discord fits.');
+    } finally {
+      setDiscordApplying(false);
     }
   };
 
@@ -562,6 +685,7 @@ function SavedFitsView({
           <div className="fits-import-tabs">
             <button type="button" className={importMode === 'eft' ? 'active' : ''} onClick={() => setImportMode('eft')} disabled={importBusy || pyfaBusy}>Paste EFT</button>
             <button type="button" className={importMode === 'pyfa-image' ? 'active' : ''} onClick={() => setImportMode('pyfa-image')} disabled={importBusy || pyfaBusy}>pyfa Screenshot</button>
+            <button type="button" className={importMode === 'discord' ? 'active' : ''} onClick={() => setImportMode('discord')} disabled={importBusy || pyfaBusy || discordScanning || discordApplying}>Discord</button>
           </div>
 
           {importMode === 'eft' && (
@@ -600,12 +724,87 @@ function SavedFitsView({
             </div>
           )}
 
+          {importMode === 'discord' && (
+            <div className="fits-discord-import">
+              <div className="fits-discord-controls">
+                <select
+                  value={discordChannelId}
+                  onChange={event => { setDiscordChannelId(event.target.value); setDiscordScanResult(null); }}
+                  disabled={discordLoadingChannels || discordScanning || discordApplying}
+                >
+                  {discordChannels.map(channel => (
+                    <option key={channel.id} value={channel.id}>
+                      {channel.label}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" onClick={scanDiscordChannel} disabled={discordLoadingChannels || discordScanning || !discordChannelId}>
+                  {discordScanning ? 'Scanning...' : 'Scan last 100'}
+                </button>
+              </div>
+              {discordLoadingChannels && <div className="fits-import-note">Loading Discord channels...</div>}
+              {discordScanResult && (
+                <>
+                  <div className="fits-discord-summary">
+                    <span>{discordScanResult.scannedMessages} messages scanned</span>
+                    <span>{discordScanResult.summary.fitsFound} fits found</span>
+                    <span>{discordScanResult.summary.imagesScanned} images scanned</span>
+                    {discordScanResult.summary.imagesSkipped > 0 && (
+                      <span>{discordScanResult.summary.imagesSkipped} images skipped</span>
+                    )}
+                  </div>
+                  <div className="fits-discord-review">
+                    {discordScanResult.groups.length === 0 && <div className="fits-empty">No EFT blocks or pyfa screenshots found.</div>}
+                    {discordScanResult.groups.map(group => (
+                      <div className="fits-discord-group" key={group.message.id}>
+                        <div className="fits-discord-source">
+                          <strong>Discord source</strong>
+                          <span>{group.message.authorName}</span>
+                          <a href={group.message.url} target="_blank" rel="noreferrer">{new Date(group.message.timestamp).toLocaleString()}</a>
+                        </div>
+                        {group.message.excerpt && <p>{group.message.excerpt}</p>}
+                        {group.warnings.map(warning => <div className="fits-discord-warning" key={warning}>{warning}</div>)}
+                        {group.fits.map(candidate => {
+                          const key = discordActionKey(candidate);
+                          const action = discordActions[key] ?? candidate.defaultAction.kind;
+                          return (
+                            <div className="fits-discord-fit" key={key}>
+                              <div>
+                                <strong>{candidate.shipName}</strong>
+                                <span>{candidate.fitName}</span>
+                                <small>{candidate.sourceType === 'pyfa-image' ? 'pyfa screenshot' : 'EFT text'}</small>
+                                {candidate.warnings.map(warning => <em key={warning}>{warning}</em>)}
+                              </div>
+                              <select
+                                value={action}
+                                onChange={event => setDiscordActions(current => ({ ...current, [key]: event.target.value as DiscordCandidateAction }))}
+                                disabled={discordApplying || candidate.shipTypeId == null}
+                              >
+                                {candidate.shipTypeId != null && <option value="create">Create</option>}
+                                {candidate.defaultAction.kind === 'update' && <option value="update">Update existing</option>}
+                                <option value="skip">Skip</option>
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {importError && <div className="fits-alert err">{importError}</div>}
           <div className="fits-modal-actions">
-            <button type="button" onClick={() => setImportOpen(false)} disabled={importBusy || pyfaBusy}>Cancel</button>
+            <button type="button" onClick={() => setImportOpen(false)} disabled={importBusy || pyfaBusy || discordScanning || discordApplying}>Cancel</button>
             {importMode === 'pyfa-image' ? (
               <button type="button" className="primary" onClick={extractPyfaImage} disabled={pyfaBusy || !pyfaImage}>
                 {pyfaBusy ? 'Extracting...' : 'Extract'}
+              </button>
+            ) : importMode === 'discord' ? (
+              <button type="button" className="primary" onClick={applyDiscordCandidates} disabled={discordApplying || !discordScanResult || discordScanResult.summary.fitsFound === 0}>
+                {discordApplying ? 'Importing...' : 'Import selected'}
               </button>
             ) : (
               <button type="button" className="primary" onClick={importFit} disabled={importBusy}>
@@ -850,6 +1049,10 @@ function imageExtension(mimeType: PyfaImageImportRequest['mimeType']): string {
   if (mimeType === 'image/jpeg') return 'jpg';
   if (mimeType === 'image/webp') return 'webp';
   return 'png';
+}
+
+function discordActionKey(candidate: DiscordImportFitCandidate): string {
+  return candidate.id;
 }
 
 function readFileBase64(file: File): Promise<string> {

@@ -20,6 +20,7 @@ import { registerMarketRoutes } from './routes/market.ts';
 import { registerIndustryRoutes } from './routes/industry.ts';
 import { registerContractRoutes } from './routes/contracts.ts';
 import { registerDoctrineRoutes } from './routes/doctrines.ts';
+import { registerDiscordImportRoutes } from './routes/discord-import.ts';
 import { registerFitRoutes } from './routes/fits.ts';
 import { registerAssetsRoutes } from './routes/assets.ts';
 import { createPostgresAssetSnapshotStore } from './assets/store.ts';
@@ -61,6 +62,7 @@ registerMarketRoutes(app);
 registerIndustryRoutes(app);
 registerContractRoutes(app);
 registerFitRoutes(app, { store: fitStore });
+registerDiscordImportRoutes(app, { fitStore });
 registerDoctrineRoutes(app, { store: doctrineStore, fitStore });
 registerAssetsRoutes(app, { characters: characterStore, store: assetSnapshotStore });
 
