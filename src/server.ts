@@ -72,6 +72,8 @@ app.get('/api/health', async () => ({ ok: true }));
 const distDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'web', 'dist');
 try {
   await app.register(fastifyStatic, { root: distDir, prefix: '/' });
+  app.get('/terms-of-service', async (_req, reply) => reply.sendFile('terms-of-service.html'));
+  app.get('/privacy-policy', async (_req, reply) => reply.sendFile('privacy-policy.html'));
   app.setNotFoundHandler((req, reply) => {
     const isPasswordResetPage = req.url.startsWith('/auth/password/reset');
     if (
