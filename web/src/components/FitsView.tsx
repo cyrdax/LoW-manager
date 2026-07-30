@@ -694,7 +694,7 @@ function SavedFitsView({
       </section>
 
       {priceBreakdownOpen && quote && (
-        <Modal title="Fit Price Breakdown" onClose={() => setPriceBreakdownOpen(false)}>
+        <Modal title="Fit Price Breakdown" className="fits-price-modal" onClose={() => setPriceBreakdownOpen(false)}>
           <PriceBreakdownModal quote={quote} />
         </Modal>
       )}
@@ -1156,10 +1156,10 @@ function readFileBase64(file: File): Promise<string> {
   });
 }
 
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+function Modal({ title, children, onClose, className = '' }: { title: string; children: React.ReactNode; onClose: () => void; className?: string }) {
   return (
     <div className="fits-modal-backdrop">
-      <div className="fits-modal">
+      <div className={`fits-modal${className ? ` ${className}` : ''}`}>
         <div className="fits-modal-head"><strong>{title}</strong><button onClick={onClose}>x</button></div>
         {children}
       </div>

@@ -193,16 +193,19 @@ test('fit price widget opens an itemized category breakdown modal', () => {
   assert.match(fitsView, /const \[priceBreakdownOpen, setPriceBreakdownOpen\] = useState\(false\)/);
   assert.match(fitsView, /<PricePanel quote=\{quote\} loading=\{quoteLoading\} error=\{quoteError\} onOpen=\{\(\) => setPriceBreakdownOpen\(true\)\} \/>/);
   assert.match(fitsView, /priceBreakdownOpen && quote/);
-  assert.match(fitsView, /<Modal title="Fit Price Breakdown"/);
+  assert.match(fitsView, /<Modal title="Fit Price Breakdown" className="fits-price-modal"/);
   assert.match(fitsView, /function PriceBreakdownModal\(\{ quote \}: \{ quote: FitQuote \}\)/);
   assert.match(fitsView, /PRICE_BUCKETS\.map/);
   assert.match(fitsView, /PriceItemRow/);
   assert.match(fitsView, /quote\.items\.filter\(item => item\.bucket === bucket\.key\)/);
   assert.match(fitsView, /statusLabel\(item\)/);
+  assert.match(fitsView, /function Modal\(\{ title, children, onClose, className = '' \}/);
 
   assert.match(styles, /\.fits-price-clickable/);
   assert.match(styles, /\.fits-price-trigger/);
+  assert.match(styles, /\.fits-price-modal/);
   assert.match(styles, /\.fits-price-breakdown/);
+  assert.match(styles, /\.fits-price-breakdown \{[\s\S]*?flex: 1 1 auto;[\s\S]*?min-height: 0;[\s\S]*?overflow-y: auto;/);
   assert.match(styles, /\.fits-price-breakdown-row/);
 });
 
