@@ -26,7 +26,9 @@ test('public legal pages are available for Discord bot verification', () => {
   assert.match(privacy, /cyrdax@gmail\.com/);
 
   assert.match(server, /app\.get\('\/terms-of-service'/);
-  assert.match(server, /reply\.sendFile\('terms-of-service\.html'\)/);
+  assert.match(server, /sendLegalPage\(reply, 'terms-of-service\.html'\)/);
   assert.match(server, /app\.get\('\/privacy-policy'/);
-  assert.match(server, /reply\.sendFile\('privacy-policy\.html'\)/);
+  assert.match(server, /sendLegalPage\(reply, 'privacy-policy\.html'\)/);
+  assert.ok(server.indexOf("app.get('/terms-of-service'") < server.indexOf('app.register(fastifyStatic'));
+  assert.ok(server.indexOf("app.get('/privacy-policy'") < server.indexOf('app.register(fastifyStatic'));
 });

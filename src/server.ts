@@ -1,9 +1,10 @@
 import 'dotenv/config';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { registerAppAuthRoutes } from './auth/app-auth-routes.ts';
 import { setPilotAccessCharacterStore } from './auth/pilot-access.ts';
 import { registerSsoRoutes } from './auth/sso.ts';
@@ -69,11 +70,25 @@ registerAssetsRoutes(app, { characters: characterStore, store: assetSnapshotStor
 app.get('/api/health', async () => ({ ok: true }));
 
 // In dev, Vite serves the frontend on its own port. In production, serve the built bundle.
-const distDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'web', 'dist');
+const serverDir = dirname(fileURLToPath(import.meta.url));
+const distDir = resolve(serverDir, '..', 'web', 'dist');
+const publicDir = resolve(serverDir, '..', 'web', 'public');
+
+async function sendLegalPage(reply: FastifyReply, filename: string) {
+  try {
+    const html = await readFile(resolve(distDir, filename), 'utf8');
+    return reply.type('text/html; charset=utf-8').send(html);
+  } catch {
+    const html = await readFile(resolve(publicDir, filename), 'utf8');
+    return reply.type('text/html; charset=utf-8').send(html);
+  }
+}
+
+app.get('/terms-of-service', async (_req, reply) => sendLegalPage(reply, 'terms-of-service.html'));
+app.get('/privacy-policy', async (_req, reply) => sendLegalPage(reply, 'privacy-policy.html'));
+
 try {
   await app.register(fastifyStatic, { root: distDir, prefix: '/' });
-  app.get('/terms-of-service', async (_req, reply) => reply.sendFile('terms-of-service.html'));
-  app.get('/privacy-policy', async (_req, reply) => reply.sendFile('privacy-policy.html'));
   app.setNotFoundHandler((req, reply) => {
     const isPasswordResetPage = req.url.startsWith('/auth/password/reset');
     if (
