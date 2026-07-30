@@ -39,13 +39,11 @@ test('doctrine store creates updates deletes and preserves saved fits', () => {
   const doctrine = doctrines.create({
     name: 'Armor Dread Bomb',
     description: 'Dreads with carrier support.',
-    googleDocUrl: 'https://docs.google.com/document/d/abc123/edit',
   });
 
   const withFit = doctrines.addFit(doctrine.id, fit.id)!;
   assert.equal(withFit.fitCount, 1);
   assert.equal(withFit.fits[0].fitName, 'Dread DPS');
-  assert.equal(withFit.googleDocUrl, 'https://docs.google.com/document/d/abc123/edit');
   assert.equal(withFit.fits[0].sortOrder, 1);
 
   const duplicate = doctrines.addFit(doctrine.id, fit.id)!;
@@ -55,11 +53,9 @@ test('doctrine store creates updates deletes and preserves saved fits', () => {
   const updated = doctrines.update(doctrine.id, {
     name: 'Updated Bomb',
     description: 'Updated description.',
-    googleDocUrl: 'https://docs.google.com/document/d/updated456/edit',
   })!;
   assert.equal(updated.name, 'Updated Bomb');
   assert.equal(updated.description, 'Updated description.');
-  assert.equal(updated.googleDocUrl, 'https://docs.google.com/document/d/updated456/edit');
 
   assert.equal(doctrines.delete(doctrine.id), true);
   assert.equal(fits.get(fit.id)?.fitName, 'Dread DPS');
@@ -67,24 +63,19 @@ test('doctrine store creates updates deletes and preserves saved fits', () => {
   assert.equal(linkCount.count, 0);
 });
 
-test('doctrine store tracks Google Doc tabs and replaces one tab membership at a time', () => {
+test('doctrine store tracks plain saved fit memberships', () => {
   const { fits, doctrines } = stores();
   const dread = fits.create({ rawEft: naglfar, fitName: 'Dread DPS' });
   const carrier = fits.create({ rawEft: archon, fitName: 'Carrier Support' });
-  const replacement = fits.create({ rawEft: naglfar.replace('Dread DPS', 'Dread Replacement'), fitName: 'Dread Replacement' });
   const doctrine = doctrines.create({ name: 'Tabbed Doctrine' });
 
-  doctrines.addFit(doctrine.id, dread.id, { tabId: 't.dreads', tabTitle: 'Dreads' });
-  doctrines.addFit(doctrine.id, carrier.id, { tabId: 't.carriers', tabTitle: 'Carriers' });
-  const replaced = doctrines.replaceTabFits(doctrine.id, { id: 't.dreads', title: 'Dreads', sortOrder: 2 }, [replacement.id])!;
+  const withDread = doctrines.addFit(doctrine.id, dread.id)!;
+  const withCarrier = doctrines.addFit(doctrine.id, carrier.id)!;
 
-  assert.deepEqual(replaced.tabs.map(tab => [tab.id, tab.title, tab.fitCount]), [
-    ['t.carriers', 'Carriers', 1],
-    ['t.dreads', 'Dreads', 1],
-  ]);
-  assert.deepEqual(replaced.fits.map(fit => [fit.fitName, fit.googleDocTabId, fit.googleDocTabTitle]), [
-    ['Carrier Support', 't.carriers', 'Carriers'],
-    ['Dread Replacement', 't.dreads', 'Dreads'],
+  assert.equal(withDread.fitCount, 1);
+  assert.deepEqual(withCarrier.fits.map(fit => [fit.fitName, fit.sortOrder]), [
+    ['Dread DPS', 1],
+    ['Carrier Support', 2],
   ]);
 });
 

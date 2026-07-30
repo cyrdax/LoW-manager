@@ -28,6 +28,7 @@ import {
   type FitDraft,
   type FitHub,
   type FitQuote,
+  type FitQuoteItem,
   type FitSectionRole,
   type LibraryVisibility,
   type PyfaImageImportRequest,
@@ -57,6 +58,11 @@ const FITS_VISIBILITY_KEY = 'efd.fits.visibility';
 
 const SLOT_ROLES: FitSectionRole[] = ['high', 'mid', 'low', 'rig', 'subsystem', 'service'];
 const EXTRA_ROLES: FitSectionRole[] = ['droneBay', 'fighterBay', 'extras', 'unmatched'];
+const PRICE_BUCKETS = [
+  { key: 'hull', label: 'Hull' },
+  { key: 'fitted', label: 'Fitted' },
+  { key: 'extras', label: 'Extras' },
+] as const;
 const SAMPLE = `[Naglfar, Simulated Naglfar Fitting]
 Republic Fleet Gyrostabilizer
 Republic Fleet Gyrostabilizer
@@ -166,6 +172,7 @@ function SavedFitsView({
   const [quote, setQuote] = useState<FitQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [priceBreakdownOpen, setPriceBreakdownOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState(SAMPLE);
   const [importError, setImportError] = useState<string | null>(null);
@@ -678,13 +685,19 @@ function SavedFitsView({
                 {EXTRA_ROLES.map(role => <ExtraSection key={role} role={role} fit={active} tooltip={tooltipHandlers} />)}
               </div>
               <div className="fits-side-panels">
-                <PricePanel quote={quote} loading={quoteLoading} error={quoteError} />
+                <PricePanel quote={quote} loading={quoteLoading} error={quoteError} onOpen={() => setPriceBreakdownOpen(true)} />
                 {activeSavedId != null && <FitDoctrinesPanel doctrines={fitDoctrines} loading={fitDoctrinesLoading} onOpen={onOpenDoctrine} />}
               </div>
             </div>
           </>
         )}
       </section>
+
+      {priceBreakdownOpen && quote && (
+        <Modal title="Fit Price Breakdown" onClose={() => setPriceBreakdownOpen(false)}>
+          <PriceBreakdownModal quote={quote} />
+        </Modal>
+      )}
 
       {importOpen && (
         <Modal title="Import Fit" onClose={() => setImportOpen(false)}>
@@ -1006,23 +1019,89 @@ function FitTooltip({ tooltip }: { tooltip: NonNullable<FitTooltipState> }) {
   );
 }
 
-function PricePanel({ quote, loading, error }: { quote: FitQuote | null; loading: boolean; error: string | null }) {
+function PricePanel({ quote, loading, error, onOpen }: { quote: FitQuote | null; loading: boolean; error: string | null; onOpen: () => void }) {
   return (
-    <aside className="fits-price">
-      <h3>Price</h3>
-      {loading && <div className="fits-empty">Pricing...</div>}
-      {error && <div className="fits-alert err">{error}</div>}
-      {quote && (
-        <>
-          <PriceLine label="Hull" value={quote.totals.hull} />
-          <PriceLine label="Fitted" value={quote.totals.fitted} />
-          <PriceLine label="Extras" value={quote.totals.extras} />
-          <PriceLine label="Grand total" value={quote.totals.grand} strong />
-          <div className="fits-price-meta">{quote.systemName} - {quote.counts.ok} priced - {quote.counts.noOrders} no sellers</div>
-        </>
-      )}
+    <aside className={`fits-price${quote ? ' fits-price-clickable' : ''}`}>
+      <button type="button" className="fits-price-trigger" onClick={onOpen} disabled={!quote} aria-label="Open itemized price breakdown">
+        <span className="fits-price-title">Price</span>
+        {loading && <div className="fits-empty">Pricing...</div>}
+        {error && <div className="fits-alert err">{error}</div>}
+        {quote && (
+          <>
+            <PriceLine label="Hull" value={quote.totals.hull} />
+            <PriceLine label="Fitted" value={quote.totals.fitted} />
+            <PriceLine label="Extras" value={quote.totals.extras} />
+            <PriceLine label="Grand total" value={quote.totals.grand} strong />
+            <div className="fits-price-meta">{quote.systemName} - {quote.counts.ok} priced - {quote.counts.noOrders} no sellers</div>
+          </>
+        )}
+      </button>
     </aside>
   );
+}
+
+function PriceBreakdownModal({ quote }: { quote: FitQuote }) {
+  return (
+    <div className="fits-price-breakdown">
+      <div className="fits-price-breakdown-summary">
+        <PriceLine label="Hull" value={quote.totals.hull} />
+        <PriceLine label="Fitted" value={quote.totals.fitted} />
+        <PriceLine label="Extras" value={quote.totals.extras} />
+        <PriceLine label="Grand total" value={quote.totals.grand} strong />
+      </div>
+      <div className="fits-price-meta">
+        {quote.systemName} - {quote.counts.ok} priced - {quote.counts.noOrders} no sellers
+        {quote.counts.partial > 0 ? ` - ${quote.counts.partial} partial` : ''}
+        {quote.counts.unknown > 0 ? ` - ${quote.counts.unknown} unknown` : ''}
+      </div>
+      {PRICE_BUCKETS.map(bucket => {
+        const items = quote.items.filter(item => item.bucket === bucket.key);
+        return (
+          <section className="fits-price-breakdown-section" key={bucket.key}>
+            <h3>{bucket.label}<span>{formatIsk(quote.totals[bucket.key])} ISK</span></h3>
+            {items.length > 0 ? (
+              <div className="fits-price-breakdown-table">
+                <div className="fits-price-breakdown-head">
+                  <span>Item</span>
+                  <span>Qty</span>
+                  <span>Unit</span>
+                  <span>Total</span>
+                  <span>Status</span>
+                </div>
+                {items.map(item => <PriceItemRow key={`${bucket.key}-${item.typeId ?? item.inputName}-${item.requestedQty}`} item={item} />)}
+              </div>
+            ) : (
+              <div className="fits-empty">No items in this category.</div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function PriceItemRow({ item }: { item: FitQuoteItem }) {
+  const name = item.resolvedName ?? item.inputName;
+  const status = statusLabel(item);
+  return (
+    <div className={`fits-price-breakdown-row ${item.status}`}>
+      <span className="fits-price-breakdown-item">
+        <span className="fits-price-breakdown-icon">{item.typeId ? <img src={iconUrl(item.typeId)} alt="" /> : '?'}</span>
+        <b title={name}>{name}</b>
+      </span>
+      <span>{item.requestedQty.toLocaleString()}</span>
+      <span>{item.avgPrice == null ? '-' : `${formatIsk(item.avgPrice)} ISK`}</span>
+      <span>{formatIsk(item.totalCost)} ISK</span>
+      <small>{status}</small>
+    </div>
+  );
+}
+
+function statusLabel(item: FitQuoteItem): string {
+  if (item.status === 'ok') return 'Priced';
+  if (item.status === 'partial') return `Partial (${item.shortfall.toLocaleString()} short)`;
+  if (item.status === 'no-orders') return 'No sellers';
+  return 'Unknown item';
 }
 
 function FitDoctrinesPanel({ doctrines, loading, onOpen }: { doctrines: DoctrineSummary[]; loading: boolean; onOpen: (doctrine: DoctrineSummary) => void }) {

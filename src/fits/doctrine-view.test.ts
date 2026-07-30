@@ -14,8 +14,8 @@ test('frontend exposes doctrine api helpers and doctrine view controls', () => {
   assert.match(api, /export async function fetchDoctrines/);
   assert.match(api, /export async function addDoctrineFit/);
   assert.match(api, /export async function removeDoctrineFit/);
-  assert.match(api, /export interface DoctrineFitRefreshResult/);
-  assert.match(api, /export async function refreshDoctrineFits/);
+  assert.doesNotMatch(api, /DoctrineFitRefreshResult/);
+  assert.doesNotMatch(api, /refreshDoctrineFits/);
 
   assert.match(fitsView, /DoctrinesView/);
   assert.match(switchView, /Fits/);
@@ -27,32 +27,22 @@ test('frontend exposes doctrine api helpers and doctrine view controls', () => {
   assert.match(doctrinesView, />Edit<\/button>/);
   assert.match(doctrinesView, /doctrine-head \$\{isEditing \? 'editing' : 'viewing'\}/);
   assert.match(doctrinesView, /doctrine-description-view/);
-  assert.match(doctrinesView, /Google Doc URL/);
-  assert.match(doctrinesView, /google-doc-frame/);
-  assert.match(doctrinesView, /googleDocPreviewUrl/);
-  assert.match(doctrinesView, /refreshFitsFromGoogleDoc/);
-  assert.match(doctrinesView, /Refresh Fits/);
-  assert.match(doctrinesView, /doctrine-refresh-summary/);
-  assert.match(doctrinesView, /result\.updated\.length/);
-  assert.match(doctrinesView, /activeGoogleDocTabId/);
-  assert.match(doctrinesView, /visibleDoctrineFits/);
-  assert.match(doctrinesView, /doctrine-doc-tabs/);
-  assert.match(doctrinesView, /doctrine-doc-tabs-head/);
-  assert.match(doctrinesView, /Active Google Doc tab/);
-  assert.match(doctrinesView, /<strong>\{activeGoogleDocTab\.title\}<\/strong>/);
-  assert.match(doctrinesView, /aria-pressed=\{tab\.id === activeGoogleDocTab\.id\}/);
+  assert.doesNotMatch(doctrinesView, /Google Doc URL/);
+  assert.doesNotMatch(doctrinesView, /googleDoc/);
+  assert.doesNotMatch(doctrinesView, /Refresh Fits/);
+  assert.doesNotMatch(doctrinesView, /doctrine-refresh-summary/);
+  assert.doesNotMatch(doctrinesView, /doctrine-doc-tabs/);
+  assert.doesNotMatch(doctrinesView, /doctrine-tab-source/);
   assert.match(doctrinesView, /Add fit/);
   assert.match(doctrinesView, /Remove/);
 });
 
-test('doctrine google doc tabs clearly identify the active tab', () => {
+test('doctrine view no longer exposes google doc import styling', () => {
   const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
 
-  assert.match(styles, /\.doctrine-doc-tabs-head/);
-  assert.match(styles, /\.doctrine-doc-tabs button\[aria-pressed="true"\]/);
-  assert.match(styles, /\.doctrine-doc-tabs button\[aria-pressed="true"\]::before/);
-  assert.match(styles, /content: 'Active';/);
-  assert.match(styles, /box-shadow: 0 0 0 2px/);
+  assert.doesNotMatch(styles, /\.doctrine-doc-tabs/);
+  assert.doesNotMatch(styles, /\.doctrine-tab-source/);
+  assert.doesNotMatch(styles, /\.google-doc-frame/);
 });
 
 test('doctrine view description spans the full detail container', () => {
@@ -60,7 +50,6 @@ test('doctrine view description spans the full detail container', () => {
 
   assert.match(styles, /\.doctrine-head\.viewing \.doctrine-fields \{\n  display: contents;\n\}/);
   assert.match(styles, /\.doctrine-head\.viewing \.doctrine-view-summary \{\n  grid-column: 1 \/ -1;\n\}/);
-  assert.match(styles, /\.google-doc-frame \{[\s\S]*?width: 100%;/);
 });
 
 test('frontend exposes public and private fit library controls', () => {
@@ -73,7 +62,6 @@ test('frontend exposes public and private fit library controls', () => {
   assert.match(api, /visibility: LibraryVisibility/);
   assert.match(api, /sourcePublicFitId: number \| null/);
   assert.match(api, /sourcePublicDoctrineId: number \| null/);
-  assert.match(api, /googleDocUrl: string;/);
   assert.match(api, /export async function fetchFits\(visibility: LibraryVisibility = 'private'\)/);
   assert.match(api, /export async function publishFit/);
   assert.match(api, /export async function copyFitToPrivate/);
@@ -115,7 +103,7 @@ test('new doctrine starts as an unnamed draft instead of saved placeholder text'
   assert.doesNotMatch(doctrinesView, /createDoctrine\(\{ name: 'New Doctrine'/);
   assert.match(doctrinesView, /placeholder="New doctrine"/);
   assert.match(doctrinesView, /if \(!trimmedName\)/);
-  assert.match(doctrinesView, /await createDoctrine\(\{ name: trimmedName, description, googleDocUrl, visibility: effectiveVisibility \}\)/);
+  assert.match(doctrinesView, /await createDoctrine\(\{ name: trimmedName, description, visibility: effectiveVisibility \}\)/);
 });
 
 test('clicking a doctrine member opens that saved fit in the fit view', () => {
@@ -196,6 +184,26 @@ test('fit header places cost refresh and send controls below the ship identity r
   assert.match(styles, /\.fits-fit-cost/);
   assert.match(styles, /\.fits-cost-row \{[\s\S]*?grid-template-columns: minmax\(240px, 1fr\) auto;/);
   assert.match(styles, /grid-template-columns: minmax\(240px, 1fr\) 92px;/);
+});
+
+test('fit price widget opens an itemized category breakdown modal', () => {
+  const fitsView = readFileSync(resolve('web/src/components/FitsView.tsx'), 'utf8');
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
+
+  assert.match(fitsView, /const \[priceBreakdownOpen, setPriceBreakdownOpen\] = useState\(false\)/);
+  assert.match(fitsView, /<PricePanel quote=\{quote\} loading=\{quoteLoading\} error=\{quoteError\} onOpen=\{\(\) => setPriceBreakdownOpen\(true\)\} \/>/);
+  assert.match(fitsView, /priceBreakdownOpen && quote/);
+  assert.match(fitsView, /<Modal title="Fit Price Breakdown"/);
+  assert.match(fitsView, /function PriceBreakdownModal\(\{ quote \}: \{ quote: FitQuote \}\)/);
+  assert.match(fitsView, /PRICE_BUCKETS\.map/);
+  assert.match(fitsView, /PriceItemRow/);
+  assert.match(fitsView, /quote\.items\.filter\(item => item\.bucket === bucket\.key\)/);
+  assert.match(fitsView, /statusLabel\(item\)/);
+
+  assert.match(styles, /\.fits-price-clickable/);
+  assert.match(styles, /\.fits-price-trigger/);
+  assert.match(styles, /\.fits-price-breakdown/);
+  assert.match(styles, /\.fits-price-breakdown-row/);
 });
 
 test('fit header keeps cost and send controls on their own lower row without shrinking the selector row', () => {

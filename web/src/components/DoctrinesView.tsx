@@ -8,12 +8,10 @@ import {
   fetchDoctrines,
   fetchFits,
   publishDoctrine,
-  refreshDoctrineFits,
   removeDoctrineFit,
   updateDoctrine,
   type CurrentUser,
   type DoctrineDetail,
-  type DoctrineFitRefreshResult,
   type DoctrineSummary,
   type LibraryVisibility,
   type SavedFitSummary,
@@ -37,11 +35,6 @@ function warningCount(fit: SavedFitSummary): number {
   return fit.warningCounts.unmatched + fit.warningCounts.overSlot + fit.warningCounts.unassignable;
 }
 
-function googleDocPreviewUrl(url: string): string | null {
-  const match = /^https:\/\/docs\.google\.com\/document\/d\/([A-Za-z0-9_-]+)/.exec(url.trim());
-  return match ? `https://docs.google.com/document/d/${match[1]}/preview` : null;
-}
-
 export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFit, routeDoctrineId, onOpenDoctrineRoute, onModeRoute }: Props) {
   const anonymous = !currentUser;
   const effectiveVisibility = anonymous ? 'public' : visibility;
@@ -54,14 +47,10 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [googleDocUrl, setGoogleDocUrl] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [refreshingFits, setRefreshingFits] = useState(false);
-  const [refreshResult, setRefreshResult] = useState<DoctrineFitRefreshResult | null>(null);
   const [fitQuery, setFitQuery] = useState('');
   const [savedFits, setSavedFits] = useState<SavedFitSummary[]>([]);
-  const [activeGoogleDocTabId, setActiveGoogleDocTabId] = useState('default');
 
   async function reloadList(q = query, scope = effectiveVisibility) {
     const rows = await fetchDoctrines(q, scope);
@@ -123,42 +112,28 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   useEffect(() => {
     setName(detail?.name ?? '');
     setDescription(detail?.description ?? '');
-    setGoogleDocUrl(detail?.googleDocUrl ?? '');
     setEditing(false);
     setStatus(null);
-    setRefreshResult(null);
-    setActiveGoogleDocTabId(detail?.tabs[0]?.id ?? 'default');
   }, [detail?.id]);
-
-  useEffect(() => {
-    const tabs = detail?.tabs ?? [];
-    if (tabs.length === 0) return;
-    if (!tabs.some(tab => tab.id === activeGoogleDocTabId)) setActiveGoogleDocTabId(tabs[0].id);
-  }, [detail?.tabs, activeGoogleDocTabId]);
 
   const availableFits = useMemo(() => {
     const q = fitQuery.trim().toLowerCase();
-    const used = new Set(!draftMode ? detail?.fits.filter(fit => fit.googleDocTabId === activeGoogleDocTabId).map(fit => fit.id) ?? [] : []);
+    const used = new Set(!draftMode ? detail?.fits.map(fit => fit.id) ?? [] : []);
     return savedFits
       .filter(fit => !used.has(fit.id))
       .filter(fit => !q || `${fit.shipName} ${fit.fitName}`.toLowerCase().includes(q))
       .slice(0, 12);
-  }, [savedFits, fitQuery, detail?.fits, draftMode, activeGoogleDocTabId]);
+  }, [savedFits, fitQuery, detail?.fits, draftMode]);
 
   const canStartEditing = !!detail && !!currentUser && (currentUser.role === 'admin' || detail.ownerUserId === currentUser.id);
   const isEditing = draftMode || editing;
   const canSaveDoctrine = draftMode || (editing && canStartEditing);
   const canPublishDoctrine = !!detail && canStartEditing && detail.visibility === 'private';
   const canCopyDoctrine = !!detail && detail.visibility === 'public';
-  const canRefreshFits = !!detail && canStartEditing && !!detail.googleDocUrl.trim();
   const showEditor = draftMode || !!detail;
   const editorVisibility = draftMode ? visibility : detail?.visibility ?? visibility;
-  const googleDocTabs = draftMode ? [] : detail?.tabs ?? [];
-  const activeGoogleDocTab = googleDocTabs.find(tab => tab.id === activeGoogleDocTabId) ?? googleDocTabs[0] ?? { id: 'default', title: 'Fits', sortOrder: 0, fitCount: 0 };
-  const visibleDoctrineFits = draftMode ? [] : detail?.fits.filter(fit => fit.googleDocTabId === activeGoogleDocTab.id) ?? [];
-  const editorFits = visibleDoctrineFits;
-  const editorFitCount = visibleDoctrineFits.length;
-  const docPreviewUrl = googleDocPreviewUrl(detail?.googleDocUrl ?? googleDocUrl);
+  const editorFits = draftMode ? [] : detail?.fits ?? [];
+  const editorFitCount = editorFits.length;
 
   function createNewDoctrine() {
     draftModeRef.current = true;
@@ -167,11 +142,8 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setDetail(null);
     setName('');
     setDescription('');
-    setGoogleDocUrl('');
     setFitQuery('');
     setStatus(null);
-    setRefreshResult(null);
-    setActiveGoogleDocTabId('default');
     setQuery('');
     onModeRoute('doctrines');
   }
@@ -206,23 +178,6 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     await reloadList('', 'private');
   }
 
-  async function refreshFitsFromGoogleDoc() {
-    if (!detail || !canRefreshFits || refreshingFits) return;
-    setRefreshingFits(true);
-    setStatus(null);
-    setRefreshResult(null);
-    const res = await refreshDoctrineFits(detail.id);
-    setRefreshingFits(false);
-    if ('error' in res) { setStatus(res.error); return; }
-    setDetail(res.doctrine);
-    setSelectedId(res.doctrine.id);
-    setActiveGoogleDocTabId(current => res.doctrine.tabs.some(tab => tab.id === current) ? current : res.doctrine.tabs[0]?.id ?? 'default');
-    setRefreshResult(res);
-    const changed = res.updated.length + res.created.length;
-    setStatus(`Refresh complete: ${res.updated.length} updated, ${res.created.length} created${changed === 0 ? ', no changes' : ''}.`);
-    await reloadList(query, res.doctrine.visibility);
-  }
-
   async function saveDoctrine() {
     if (!canSaveDoctrine) return;
     const trimmedName = name.trim();
@@ -230,9 +185,9 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setBusy(true);
     setStatus(null);
     const res = draftMode
-      ? await createDoctrine({ name: trimmedName, description, googleDocUrl, visibility: effectiveVisibility })
+      ? await createDoctrine({ name: trimmedName, description, visibility: effectiveVisibility })
       : detail
-        ? await updateDoctrine(detail.id, { name: trimmedName, description, googleDocUrl })
+        ? await updateDoctrine(detail.id, { name: trimmedName, description })
         : { error: 'No doctrine selected.' };
     setBusy(false);
     if ('error' in res) { setStatus(res.error); return; }
@@ -250,7 +205,6 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
       leaveDraftMode();
       setName('');
       setDescription('');
-      setGoogleDocUrl('');
       setStatus(null);
       return;
     }
@@ -267,15 +221,13 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   function cancelEditing() {
     setName(detail?.name ?? '');
     setDescription(detail?.description ?? '');
-    setGoogleDocUrl(detail?.googleDocUrl ?? '');
     setEditing(false);
     setStatus(null);
-    setRefreshResult(null);
   }
 
   async function addFit(fitId: number) {
     if (!detail) return;
-    const res = await addDoctrineFit(detail.id, fitId, activeGoogleDocTab);
+    const res = await addDoctrineFit(detail.id, fitId);
     if ('error' in res) { setStatus(res.error); return; }
     setDetail(res);
     setFitQuery('');
@@ -284,7 +236,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
 
   async function removeFit(fitId: number) {
     if (!detail) return;
-    const res = await removeDoctrineFit(detail.id, fitId, activeGoogleDocTab.id);
+    const res = await removeDoctrineFit(detail.id, fitId);
     if ('error' in res) { setStatus(res.error); return; }
     setDetail(res);
     await reloadList();
@@ -324,20 +276,14 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
                   <>
                     <input value={name} onChange={e => setName(e.target.value)} placeholder="New doctrine" />
                     <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Description of how this doctrine works" />
-                    <label className="doctrine-field-label">
-                      <span>Google Doc URL</span>
-                      <input value={googleDocUrl} onChange={e => setGoogleDocUrl(e.target.value)} placeholder="https://docs.google.com/document/d/..." />
-                    </label>
                   </>
                 ) : (
                   <div className="doctrine-view-summary">
                     <h2>{detail?.name}</h2>
                     <div className="doctrine-description-view">
-                      {docPreviewUrl
-                        ? <iframe className="google-doc-frame" src={docPreviewUrl} title={`${detail?.name ?? 'Doctrine'} description`} />
-                        : detail?.description
-                          ? <p>{detail.description}</p>
-                          : <p>No description provided.</p>}
+                      {detail?.description
+                        ? <p>{detail.description}</p>
+                        : <p>No description provided.</p>}
                     </div>
                   </div>
                 )}
@@ -346,37 +292,12 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
                 {canStartEditing && !isEditing && <button onClick={() => setEditing(true)} disabled={busy}>Edit</button>}
                 {canSaveDoctrine && <button onClick={saveDoctrine} disabled={busy}>Save</button>}
                 {editing && <button onClick={cancelEditing} disabled={busy}>Cancel</button>}
-                {canStartEditing && !draftMode && <button onClick={refreshFitsFromGoogleDoc} disabled={!canRefreshFits || busy || refreshingFits}>{refreshingFits ? 'Refreshing...' : 'Refresh Fits'}</button>}
                 {canPublishDoctrine && <button onClick={publishCurrentDoctrine} disabled={busy}>Publish</button>}
                 {canCopyDoctrine && <button onClick={copyCurrentDoctrineToPrivate} disabled={busy}>Copy private</button>}
                 {isEditing && canSaveDoctrine && <button className="danger" onClick={removeDoctrine}>{draftMode ? 'Discard' : 'Delete'}</button>}
                 {status && <small className={statusClassName(status)}>{status}</small>}
               </div>
             </div>
-
-            {refreshResult && <DoctrineRefreshSummary result={refreshResult} />}
-
-            {!draftMode && googleDocTabs.length > 0 && (
-              <section className="doctrine-doc-tabs-wrap">
-                <div className="doctrine-doc-tabs-head">
-                  <span>Active Google Doc tab</span>
-                  <strong>{activeGoogleDocTab.title}</strong>
-                </div>
-                <div className="doctrine-doc-tabs" aria-label="Google Doc tabs">
-                  {googleDocTabs.map(tab => (
-                    <button
-                      key={tab.id}
-                      className={tab.id === activeGoogleDocTab.id ? 'active' : ''}
-                      aria-pressed={tab.id === activeGoogleDocTab.id}
-                      onClick={() => setActiveGoogleDocTabId(tab.id)}
-                    >
-                      <span>{tab.title}</span>
-                      <small>{tab.fitCount}</small>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
 
             {draftMode && (
               <section className="doctrine-add">
@@ -429,34 +350,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
 }
 
 function statusClassName(status: string): string {
-  return /^Saved\.|^Published\.|^Copied to private library\.|^Refresh complete:/.test(status)
+  return /^Saved\.|^Published\.|^Copied to private library\./.test(status)
     ? 'fits-status ok'
     : 'fits-status err';
-}
-
-function DoctrineRefreshSummary({ result }: { result: DoctrineFitRefreshResult }) {
-  const issueCount = result.ambiguous.length + result.failed.length + result.skipped.length;
-  return (
-    <section className="doctrine-refresh-summary">
-      <strong>Google Doc fit refresh</strong>
-      <div>
-        <span>{result.updated.length} updated</span>
-        <span>{result.created.length} created</span>
-        <span>{issueCount} needs review</span>
-      </div>
-      {(result.created.length > 0 || result.updated.length > 0) && (
-        <ul>
-          {result.updated.slice(0, 4).map(fit => <li key={`updated-${fit.fitId}`}>Updated {fit.shipName} - {fit.fitName}</li>)}
-          {result.created.slice(0, 4).map(fit => <li key={`created-${fit.fitId}`}>Created {fit.shipName} - {fit.fitName}</li>)}
-        </ul>
-      )}
-      {issueCount > 0 && (
-        <ul>
-          {result.ambiguous.map(row => <li key={`ambiguous-${row.fitName}`}>Ambiguous: {row.fitName} matched {row.matchedFitIds.length} saved fits</li>)}
-          {result.failed.map(row => <li key={`failed-${row.fitName}`}>Failed: {row.fitName} - {row.error}</li>)}
-          {result.skipped.map((row, i) => <li key={`skipped-${row.fitName}-${i}`}>Skipped: {row.fitName || 'Document'} - {row.reason}</li>)}
-        </ul>
-      )}
-    </section>
-  );
 }

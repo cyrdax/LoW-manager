@@ -95,7 +95,7 @@ Each scan still targets one channel or thread ID.
 
 ## Fit Detection
 
-Text extraction should reuse the existing Google Doc/EFT block extraction behavior where practical:
+Text extraction should reuse the shared EFT block extraction behavior where practical:
 
 - Match full EFT headers like `[Paladin, Fabricator]`.
 - Include following EFT item lines and blank section separators.

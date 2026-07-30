@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 import {
   cookieSecretFromEnv,
+  googleDocsApiKeyFromEnv,
   isSensitiveFallbackPath,
   secureCookiesFromEnv,
   serverListenOptionsFromEnv,
@@ -57,4 +58,10 @@ test('static fallback blocks dotfiles and common scanner paths', () => {
   assert.equal(isSensitiveFallbackPath('/api/auth/me'), false);
   assert.equal(isSensitiveFallbackPath('/auth/password/reset?token=abc'), false);
   assert.equal(isSensitiveFallbackPath('/fits'), false);
+});
+
+test('google docs api key env support remains available for future import flows', () => {
+  assert.equal(googleDocsApiKeyFromEnv({ GOOGLE_DOCS_API_KEY: ' docs-key ', GOOGLE_API_KEY: 'fallback-key' }), 'docs-key');
+  assert.equal(googleDocsApiKeyFromEnv({ GOOGLE_API_KEY: ' fallback-key ' }), 'fallback-key');
+  assert.equal(googleDocsApiKeyFromEnv({}), null);
 });

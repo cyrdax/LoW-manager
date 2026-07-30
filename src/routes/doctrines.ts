@@ -5,32 +5,18 @@ import {
   type CurrentUserResolver,
 } from '../auth/pilot-access.ts';
 import { type AsyncDoctrineStore, type DoctrineDetail, type DoctrineStore } from '../fits/doctrines.ts';
-import {
-  extractGoogleDocTabs,
-  googleDocApiUrl,
-  googleDocTextExportUrl,
-  syncDoctrineFitsFromTabs,
-  syncDoctrineFitsFromText,
-  type GoogleDocTabText,
-} from '../fits/google-doc-sync.ts';
 import { type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
-
-const MAX_GOOGLE_DOC_TEXT_CHARS = 512 * 1024;
 
 export interface DoctrineRouteDeps {
   store?: DoctrineStore | AsyncDoctrineStore;
   fitStore?: FitStore | AsyncFitStore;
   currentUser?: CurrentUserResolver;
-  fetchGoogleDocText?: (exportUrl: string) => Promise<string>;
-  fetchGoogleDocTabs?: (apiUrl: string) => Promise<GoogleDocTabText[]>;
 }
 
 export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRouteDeps = {}) {
   const store = deps.store ?? missingDoctrineStore();
   const fitStore = deps.fitStore ?? missingFitStore();
   const currentUser = routeCurrentUser(deps);
-  const fetchGoogleDocText = deps.fetchGoogleDocText ?? defaultFetchGoogleDocText;
-  const fetchGoogleDocTabs = deps.fetchGoogleDocTabs ?? defaultFetchGoogleDocTabs;
 
   app.get('/api/doctrines', async (req, reply) => {
     const query = req.query as { q?: string; visibility?: string; fitId?: string };
@@ -46,13 +32,12 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
   app.post('/api/doctrines', async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
-    const body = req.body as { name?: string; description?: string; googleDocUrl?: string; visibility?: string } | undefined;
+    const body = req.body as { name?: string; description?: string; visibility?: string } | undefined;
     if (!body?.name?.trim()) return reply.code(400).send({ error: 'name is required' });
     try {
       return await store.create({
         name: body.name,
         description: body.description,
-        googleDocUrl: body.googleDocUrl,
         ownerUserId: user.id,
         visibility: parseVisibility(body.visibility),
       });
@@ -81,10 +66,10 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
-    const body = req.body as { name?: string; description?: string; googleDocUrl?: string } | undefined;
+    const body = req.body as { name?: string; description?: string } | undefined;
     if (body?.name != null && !body.name.trim()) return reply.code(400).send({ error: 'name is required' });
     try {
-      const doctrine = await store.update(id, { name: body?.name, description: body?.description, googleDocUrl: body?.googleDocUrl });
+      const doctrine = await store.update(id, { name: body?.name, description: body?.description });
       if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
       return doctrine;
     } catch (err) {
@@ -112,7 +97,7 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
-    const body = req.body as { fitId?: number; tabId?: string; tabTitle?: string; tabSortOrder?: number } | undefined;
+    const body = req.body as { fitId?: number } | undefined;
     const fitId = cleanPositiveNumber(body?.fitId);
     if (!fitId) return reply.code(400).send({ error: 'fitId is required' });
     const fit = await fitStore.get(fitId);
@@ -122,7 +107,7 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
       return reply.code(400).send({ error: 'public doctrines can only include public fits' });
     }
     try {
-      const doctrine = await store.addFit(id, fitId, { id: body?.tabId, title: body?.tabTitle, sortOrder: body?.tabSortOrder });
+      const doctrine = await store.addFit(id, fitId);
       if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
       return doctrine;
     } catch (err) {
@@ -131,7 +116,7 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     }
   });
 
-  app.delete<{ Querystring: { tabId?: string } }>('/api/doctrines/:id/fits/:fitId', async (req, reply) => {
+  app.delete('/api/doctrines/:id/fits/:fitId', async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
     const id = parseId(req.params);
@@ -141,58 +126,9 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
     const existing = await store.get(id);
     if (!existing) return reply.code(404).send({ error: 'doctrine not found' });
     if (!canEditDoctrine(existing, user)) return reply.code(403).send({ error: 'not allowed' });
-    const doctrine = await store.removeFit(id, fitId, req.query.tabId);
+    const doctrine = await store.removeFit(id, fitId);
     if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
     return doctrine;
-  });
-
-  app.post('/api/doctrines/:id/refresh-fits', async (req, reply) => {
-    const user = await requireUser(req, reply, currentUser);
-    if (!user) return reply;
-    const id = parseId(req.params);
-    if (!id) return reply.code(400).send({ error: 'valid doctrine id is required' });
-    const doctrine = await store.get(id);
-    if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
-    if (!canEditDoctrine(doctrine, user)) return reply.code(403).send({ error: 'not allowed' });
-    if (!doctrine.googleDocUrl.trim()) return reply.code(400).send({ error: 'doctrine has no google doc url' });
-    const apiUrl = googleDocApiUrl(doctrine.googleDocUrl, process.env.GOOGLE_DOCS_API_KEY ?? process.env.GOOGLE_API_KEY);
-    const exportUrl = googleDocTextExportUrl(doctrine.googleDocUrl);
-    if (!apiUrl && !exportUrl) return reply.code(400).send({ error: 'unsupported google doc url' });
-
-    try {
-      let result;
-      try {
-        const tabs = apiUrl ? await fetchGoogleDocTabs(apiUrl) : [];
-        result = await syncDoctrineFitsFromTabs({
-          doctrine,
-          fitStore,
-          doctrineStore: store,
-          tabs,
-          ownerUserId: user.id,
-        });
-      } catch (tabErr) {
-        if (!exportUrl) throw tabErr;
-        const rawText = await fetchGoogleDocText(exportUrl);
-        result = await syncDoctrineFitsFromText({
-          doctrine,
-          fitStore,
-          doctrineStore: store,
-          rawText,
-          ownerUserId: user.id,
-        });
-      }
-      if (
-        result.updated.length === 0
-        && result.created.length === 0
-        && result.ambiguous.length === 0
-        && result.failed.length === 0
-      ) {
-        return reply.code(400).send({ error: result.skipped[0]?.reason ?? 'No EFT fit blocks found.' });
-      }
-      return result;
-    } catch (err) {
-      return reply.code(400).send({ error: errorMessage(err, 'failed to refresh doctrine fits') });
-    }
   });
 
   app.post('/api/doctrines/:id/publish', async (req, reply) => {
@@ -249,24 +185,6 @@ function canEditDoctrine(doctrine: DoctrineDetail, user: { id: string; role: 'us
 
 function canViewFit(fit: SavedFitDetail, user: { id: string; role: 'user' | 'admin' }): boolean {
   return fit.visibility === 'public' || user.role === 'admin' || fit.ownerUserId === user.id;
-}
-
-async function defaultFetchGoogleDocText(exportUrl: string): Promise<string> {
-  const res = await fetch(exportUrl);
-  if (!res.ok) throw new Error(`Google Doc fetch failed with ${res.status}`);
-  const text = await res.text();
-  if (text.length > MAX_GOOGLE_DOC_TEXT_CHARS) throw new Error('Google Doc export is too large.');
-  return text;
-}
-
-async function defaultFetchGoogleDocTabs(apiUrl: string): Promise<GoogleDocTabText[]> {
-  const res = await fetch(apiUrl);
-  if (!res.ok) throw new Error(`Google Docs API fetch failed with ${res.status}`);
-  const json = await res.json();
-  const tabs = extractGoogleDocTabs(json);
-  const totalText = tabs.reduce((sum, tab) => sum + tab.text.length, 0);
-  if (totalText > MAX_GOOGLE_DOC_TEXT_CHARS) throw new Error('Google Doc tab export is too large.');
-  return tabs;
 }
 
 function missingDoctrineStore(): never {

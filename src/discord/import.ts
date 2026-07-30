@@ -1,5 +1,5 @@
 import { buildFitDraft } from '../fits/assignment.ts';
-import { extractEftBlocksFromText } from '../fits/google-doc-sync.ts';
+import { extractEftBlocksFromText } from '../fits/eft-blocks.ts';
 import {
   renderPyfaExtractionToEft,
   type PyfaScreenshotExtractor,

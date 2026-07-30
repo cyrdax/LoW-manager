@@ -44,13 +44,11 @@ test('doctrine CRUD routes create list get update and delete', async () => {
     payload: {
       name: 'Armor Bomb',
       description: 'Dread comp',
-      googleDocUrl: 'https://docs.google.com/document/d/abc123/edit',
     },
   });
   assert.equal(created.statusCode, 200);
   const doctrine = JSON.parse(created.body);
   assert.equal(doctrine.name, 'Armor Bomb');
-  assert.equal(doctrine.googleDocUrl, 'https://docs.google.com/document/d/abc123/edit');
 
   const list = await app.inject({ method: 'GET', url: '/api/doctrines?q=dread' });
   assert.equal(JSON.parse(list.body)[0].id, doctrine.id);
@@ -64,12 +62,10 @@ test('doctrine CRUD routes create list get update and delete', async () => {
     payload: {
       name: 'Updated Bomb',
       description: 'Updated',
-      googleDocUrl: 'https://docs.google.com/document/d/updated456/edit',
     },
   });
   const updatedBody = JSON.parse(updated.body);
   assert.equal(updatedBody.name, 'Updated Bomb');
-  assert.equal(updatedBody.googleDocUrl, 'https://docs.google.com/document/d/updated456/edit');
 
   const deleted = await app.inject({ method: 'DELETE', url: `/api/doctrines/${doctrine.id}` });
   assert.equal(deleted.statusCode, 200);
@@ -252,69 +248,11 @@ test('doctrine routes reject private member fits in public doctrines', async () 
   assert.equal(rejected.statusCode, 400);
 });
 
-test('doctrine refresh-fits updates all google doc tabs and removes missing tab fits', async () => {
-  const { fits, store } = appWithStores();
-  const existing = fits.create({ rawEft: naglfar, fitName: 'Route Dread DPS', ownerUserId: 'user-a', visibility: 'private' });
-  const removed = fits.create({ rawEft: archon, fitName: 'Removed Carrier', ownerUserId: 'user-a', visibility: 'private' });
-  const doctrine = store.create({
-    name: 'Google Doc Doctrine',
-    googleDocUrl: 'https://docs.google.com/document/d/doc123/edit',
-    ownerUserId: 'user-a',
-    visibility: 'private',
-  });
-  store.addFit(doctrine.id, existing.id, { tabId: 't.dreads', tabTitle: 'Dreads' });
-  store.addFit(doctrine.id, removed.id, { tabId: 't.carriers', tabTitle: 'Carriers' });
-  const fetchedUrls: string[] = [];
-
-  const app = Fastify();
-  registerDoctrineRoutes(app, {
-    store,
-    fitStore: fits,
-    currentUser: async () => userA,
-    fetchGoogleDocTabs: async url => {
-      fetchedUrls.push(url);
-      return [
-        { id: 't.dreads', title: 'Dreads', sortOrder: 1, text: updatedNaglfar },
-        { id: 't.carriers', title: 'Carriers', sortOrder: 2, text: archon },
-      ];
-    },
-  });
+test('doctrine routes no longer expose google doc fit refresh', async () => {
+  const { app, store } = appWithStores();
+  const doctrine = store.create({ name: 'Plain Doctrine', ownerUserId: 'user-a', visibility: 'private' });
 
   const res = await app.inject({ method: 'POST', url: `/api/doctrines/${doctrine.id}/refresh-fits` });
 
-  assert.equal(res.statusCode, 200);
-  assert.deepEqual(fetchedUrls, ['https://docs.googleapis.com/v1/documents/doc123?includeTabsContent=true']);
-  const body = JSON.parse(res.body);
-  assert.deepEqual(body.updated.map((fit: { fitId: number }) => fit.fitId), [existing.id]);
-  assert.equal(body.created.length, 1);
-  assert.equal(body.created[0].fitName, 'Route Carrier');
-  assert.equal(body.doctrine.fitCount, 2);
-  assert.deepEqual(body.doctrine.tabs.map((tab: { id: string; fitCount: number }) => [tab.id, tab.fitCount]), [['t.dreads', 1], ['t.carriers', 1]]);
-  assert.deepEqual(body.doctrine.fits.map((fit: { fitName: string; googleDocTabId: string }) => [fit.fitName, fit.googleDocTabId]), [
-    ['Route Dread DPS', 't.dreads'],
-    ['Route Carrier', 't.carriers'],
-  ]);
-  assert.equal(fits.get(existing.id)?.rawEft.includes('Republic Fleet Gyrostabilizer\nRepublic Fleet Gyrostabilizer'), true);
-  assert.equal(fits.get(body.created[0].fitId)?.ownerUserId, 'user-a');
-});
-
-test('doctrine refresh-fits rejects unauthorized users and missing google doc urls', async () => {
-  const { fits, store } = appWithStores();
-  const noDoc = store.create({ name: 'No Source', ownerUserId: 'user-a', visibility: 'private' });
-  const appA = Fastify();
-  registerDoctrineRoutes(appA, { store, fitStore: fits, currentUser: async () => userA });
-  const missing = await appA.inject({ method: 'POST', url: `/api/doctrines/${noDoc.id}/refresh-fits` });
-  assert.equal(missing.statusCode, 400);
-  assert.equal(JSON.parse(missing.body).error, 'doctrine has no google doc url');
-
-  const privateDoctrine = store.create({
-    name: 'Private Source',
-    googleDocUrl: 'https://docs.google.com/document/d/doc123/edit',
-    ownerUserId: 'user-a',
-    visibility: 'private',
-  });
-  const appB = Fastify();
-  registerDoctrineRoutes(appB, { store, fitStore: fits, currentUser: async () => userB });
-  const denied = await appB.inject({ method: 'POST', url: `/api/doctrines/${privateDoctrine.id}/refresh-fits` });
-  assert.equal(denied.statusCode, 403);
+  assert.equal(res.statusCode, 404);
 });

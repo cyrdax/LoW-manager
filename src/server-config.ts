@@ -55,6 +55,10 @@ export function isSensitiveFallbackPath(url: string): boolean {
     || normalized.endsWith('/config.php');
 }
 
+export function googleDocsApiKeyFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
+  return env.GOOGLE_DOCS_API_KEY?.trim() || env.GOOGLE_API_KEY?.trim() || null;
+}
+
 function serverPortFromEnv(env: NodeJS.ProcessEnv): number {
   const raw = env.PORT ?? String(DEFAULT_PORT);
   const port = Number(raw);
