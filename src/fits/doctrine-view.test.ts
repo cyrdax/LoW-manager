@@ -204,9 +204,13 @@ test('fit price widget opens an itemized category breakdown modal', () => {
   assert.match(styles, /\.fits-price-clickable/);
   assert.match(styles, /\.fits-price-trigger/);
   assert.match(styles, /\.fits-price-modal/);
+  assert.match(styles, /width: min\(1320px, calc\(100vw - 24px\)\);/);
   assert.match(styles, /\.fits-price-breakdown/);
   assert.match(styles, /\.fits-price-breakdown \{[\s\S]*?flex: 1 1 auto;[\s\S]*?min-height: 0;[\s\S]*?overflow-y: auto;/);
   assert.match(styles, /\.fits-price-breakdown-row/);
+  const rowBlock = styles.match(/\.fits-price-breakdown-head,\n\.fits-price-breakdown-row \{[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.doesNotMatch(rowBlock, /min-width: 980px;/);
+  assert.match(styles, /grid-template-columns: minmax\(220px, 1fr\) 56px minmax\(90px, 0\.55fr\) minmax\(100px, 0\.6fr\) minmax\(96px, 0\.55fr\);/);
 });
 
 test('fit header keeps cost and send controls on their own lower row without shrinking the selector row', () => {

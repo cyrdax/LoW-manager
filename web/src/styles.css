@@ -2435,11 +2435,14 @@ body {
 }
 .fits-price-breakdown {
   flex: 1 1 auto;
+  align-self: stretch;
   display: grid;
   gap: 12px;
   min-height: 0;
+  max-height: calc(92vh - 92px);
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   padding-right: 2px;
 }
 .fits-price-breakdown-summary {
@@ -2480,15 +2483,14 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .fits-price-breakdown-table {
-  overflow-x: auto;
+  overflow: hidden;
 }
 .fits-price-breakdown-head,
 .fits-price-breakdown-row {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) 84px 150px 150px 170px;
+  grid-template-columns: minmax(220px, 1fr) 56px minmax(90px, 0.55fr) minmax(100px, 0.6fr) minmax(96px, 0.55fr);
   gap: 10px;
   align-items: center;
-  min-width: 980px;
   padding: 7px 10px;
   border-bottom: 1px solid #20252d;
   font-variant-numeric: tabular-nums;
@@ -2508,6 +2510,8 @@ body {
 }
 .fits-price-breakdown-row small {
   color: var(--dim);
+  overflow: visible;
+  white-space: nowrap;
 }
 .fits-price-breakdown-row.partial small,
 .fits-price-breakdown-row.no-orders small,
@@ -2574,8 +2578,9 @@ body {
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
 }
 .fits-price-modal {
-  width: min(1180px, calc(100vw - 40px));
-  max-height: min(860px, 92vh);
+  box-sizing: border-box;
+  width: min(1320px, calc(100vw - 24px));
+  max-height: min(900px, 94vh);
 }
 .fits-modal-head { justify-content: space-between; }
 .fits-modal-head button {
