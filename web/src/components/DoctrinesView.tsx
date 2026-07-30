@@ -20,7 +20,7 @@ import {
 } from '../api.ts';
 
 interface Props {
-  currentUser: CurrentUser;
+  currentUser?: CurrentUser | null;
   visibility: LibraryVisibility;
   setVisibility: (visibility: LibraryVisibility) => void;
   onOpenFit: (fit: SavedFitSummary) => void;
@@ -43,6 +43,8 @@ function googleDocPreviewUrl(url: string): string | null {
 }
 
 export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFit, routeDoctrineId, onOpenDoctrineRoute, onModeRoute }: Props) {
+  const anonymous = !currentUser;
+  const effectiveVisibility = anonymous ? 'public' : visibility;
   const [query, setQuery] = useState('');
   const [doctrines, setDoctrines] = useState<DoctrineSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -61,7 +63,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   const [savedFits, setSavedFits] = useState<SavedFitSummary[]>([]);
   const [activeGoogleDocTabId, setActiveGoogleDocTabId] = useState('default');
 
-  async function reloadList(q = query, scope = visibility) {
+  async function reloadList(q = query, scope = effectiveVisibility) {
     const rows = await fetchDoctrines(q, scope);
     setDoctrines(rows);
     setSelectedId(current => {
@@ -78,19 +80,23 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
   }
 
   useEffect(() => {
+    if (anonymous && visibility !== 'public') setVisibility('public');
+  }, [anonymous, visibility, setVisibility]);
+
+  useEffect(() => {
     leaveDraftMode();
     setDetail(null);
     setSelectedId(routeDoctrineId);
-    reloadList(query, visibility);
-  }, [visibility]);
+    reloadList(query, effectiveVisibility);
+  }, [effectiveVisibility]);
   useEffect(() => {
-    const t = window.setTimeout(() => reloadList(query, visibility), 150);
+    const t = window.setTimeout(() => reloadList(query, effectiveVisibility), 150);
     return () => window.clearTimeout(t);
-  }, [query, visibility]);
+  }, [query, effectiveVisibility]);
 
   useEffect(() => {
-    fetchFits(visibility).then(setSavedFits).catch(() => setSavedFits([]));
-  }, [visibility]);
+    fetchFits(effectiveVisibility).then(setSavedFits).catch(() => setSavedFits([]));
+  }, [effectiveVisibility]);
 
   useEffect(() => {
     if (selectedId == null) { setDetail(null); return; }
@@ -100,11 +106,11 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
       if ('error' in res) setDetail(null);
       else {
         setDetail(res);
-        if (routeDoctrineId === res.id && res.visibility !== visibility) setVisibility(res.visibility);
+        if (!anonymous && routeDoctrineId === res.id && res.visibility !== visibility) setVisibility(res.visibility);
       }
     });
     return () => { cancelled = true; };
-  }, [selectedId, routeDoctrineId, visibility]);
+  }, [selectedId, routeDoctrineId, visibility, anonymous]);
 
   useEffect(() => {
     if (routeDoctrineId == null) return;
@@ -139,7 +145,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
       .slice(0, 12);
   }, [savedFits, fitQuery, detail?.fits, draftMode, activeGoogleDocTabId]);
 
-  const canStartEditing = !!detail && (currentUser.role === 'admin' || detail.ownerUserId === currentUser.id);
+  const canStartEditing = !!detail && !!currentUser && (currentUser.role === 'admin' || detail.ownerUserId === currentUser.id);
   const isEditing = draftMode || editing;
   const canSaveDoctrine = draftMode || (editing && canStartEditing);
   const canPublishDoctrine = !!detail && canStartEditing && detail.visibility === 'private';
@@ -224,7 +230,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
     setBusy(true);
     setStatus(null);
     const res = draftMode
-      ? await createDoctrine({ name: trimmedName, description, googleDocUrl, visibility })
+      ? await createDoctrine({ name: trimmedName, description, googleDocUrl, visibility: effectiveVisibility })
       : detail
         ? await updateDoctrine(detail.id, { name: trimmedName, description, googleDocUrl })
         : { error: 'No doctrine selected.' };
@@ -289,7 +295,7 @@ export function DoctrinesView({ currentUser, visibility, setVisibility, onOpenFi
       <aside className="fits-library doctrine-library">
         <div className="fits-lib-head">
           <strong>Doctrines</strong>
-          <button className="fl-refresh" onClick={createNewDoctrine} disabled={busy}>Create doctrine</button>
+          {currentUser && <button className="fl-refresh" onClick={createNewDoctrine} disabled={busy}>Create doctrine</button>}
         </div>
         <input className="fits-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search doctrines" />
         <div className="fits-list">

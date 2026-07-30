@@ -186,19 +186,20 @@ export function App() {
     return <div className="auth-page"><div className="auth-panel"><div className="empty">Loading...</div></div></div>;
   }
 
-  if (!currentUser) {
+  const publicFitsRoute = route.view === 'fits';
+  if (!currentUser && !publicFitsRoute) {
     return <AuthGate onAuthenticated={setCurrentUser} />;
   }
 
   return (
     <div className="layout">
       <ControlPanel
-        chars={list}
+        chars={currentUser ? list : []}
         selection={selection}
         onRefresh={refresh}
         view={view}
         setView={navigateToView}
-        currentUser={currentUser}
+        currentUser={currentUser ?? undefined}
         onLogout={onLogout}
         onSetMainCharacter={onSetMainCharacter}
       />
@@ -252,7 +253,7 @@ export function App() {
       {view === 'contracts' && <ContractsView />}
       {view === 'fits' && (
         <FitsView
-          chars={list}
+          chars={currentUser ? list : []}
           currentUser={currentUser}
           route={route}
           routeFitId={route.view === 'fits' && route.fitId != null ? route.fitId : null}

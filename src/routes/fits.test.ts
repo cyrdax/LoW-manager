@@ -245,6 +245,28 @@ test('fit routes scope private libraries and let public fits be copied privately
   assert.equal(copiedBody.sourcePublicFitId, publicFit.id);
 });
 
+test('fit routes allow anonymous users to list and view public fits only', async () => {
+  const store = testStore();
+  const publicFit = store.create({ rawEft: naglfar, fitName: 'Public A', ownerUserId: 'user-a', visibility: 'public' });
+  const privateFit = store.create({ rawEft: naglfar, fitName: 'Private A', ownerUserId: 'user-a', visibility: 'private' });
+  const app = Fastify();
+  registerFitRoutes(app, { store, currentUser: async () => null });
+
+  const publicList = await app.inject({ method: 'GET', url: '/api/fits?visibility=public' });
+  assert.equal(publicList.statusCode, 200);
+  assert.deepEqual(JSON.parse(publicList.body).map((fit: { id: number }) => fit.id), [publicFit.id]);
+
+  const publicDetail = await app.inject({ method: 'GET', url: `/api/fits/${publicFit.id}` });
+  assert.equal(publicDetail.statusCode, 200);
+  assert.equal(JSON.parse(publicDetail.body).fitName, 'Public A');
+
+  const privateList = await app.inject({ method: 'GET', url: '/api/fits?visibility=private' });
+  assert.equal(privateList.statusCode, 401);
+
+  const privateDetail = await app.inject({ method: 'GET', url: `/api/fits/${privateFit.id}` });
+  assert.equal(privateDetail.statusCode, 401);
+});
+
 test('fit routes publish owner fits and allow admins to edit public fits', async () => {
   const store = testStore();
   const saved = store.create({ rawEft: naglfar, fitName: 'Private A', ownerUserId: 'user-a', visibility: 'private' });

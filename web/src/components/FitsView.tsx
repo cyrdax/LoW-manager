@@ -41,7 +41,7 @@ import type { AppRoute } from '../app-routes.ts';
 
 interface Props {
   chars: CharacterStatus[];
-  currentUser: CurrentUser;
+  currentUser?: CurrentUser | null;
   route: AppRoute;
   routeFitId: number | null;
   routeDoctrineId: number | null;
@@ -103,11 +103,14 @@ function iconUrl(typeId: number): string {
 }
 
 export function FitsView({ chars, currentUser, route, routeFitId, routeDoctrineId, onOpenFitRoute, onOpenDoctrineRoute, onModeRoute }: Props) {
+  const anonymous = !currentUser;
   const routeMode = route.view === 'fits' ? route.mode : undefined;
   const [mode, setMode] = useState<FitMode>(() => routeMode ?? ((localStorage.getItem(FITS_MODE_KEY) as FitMode) || 'fits'));
   const [visibility, setVisibility] = useState<LibraryVisibility>(() => (localStorage.getItem(FITS_VISIBILITY_KEY) as LibraryVisibility) || 'private');
+  const effectiveVisibility = anonymous ? 'public' : visibility;
   useEffect(() => { localStorage.setItem(FITS_MODE_KEY, mode); }, [mode]);
   useEffect(() => { localStorage.setItem(FITS_VISIBILITY_KEY, visibility); }, [visibility]);
+  useEffect(() => { if (anonymous && visibility !== 'public') setVisibility('public'); }, [anonymous, visibility]);
   useEffect(() => {
     if (routeFitId != null) setMode('fits');
     else if (routeDoctrineId != null) setMode('doctrines');
@@ -120,13 +123,13 @@ export function FitsView({ chars, currentUser, route, routeFitId, routeDoctrineI
   }
 
   function openDoctrineFit(fit: SavedFitSummary) {
-    setVisibility(fit.visibility);
+    if (!anonymous) setVisibility(fit.visibility);
     setMode('fits');
     onOpenFitRoute(fit.id);
   }
 
   function openFitDoctrine(doctrine: DoctrineSummary) {
-    setVisibility(doctrine.visibility);
+    if (!anonymous) setVisibility(doctrine.visibility);
     setMode('doctrines');
     onOpenDoctrineRoute(doctrine.id);
   }
@@ -135,11 +138,11 @@ export function FitsView({ chars, currentUser, route, routeFitId, routeDoctrineI
     <main className="rows-wrap fits-page">
       <div className="fits-topbar">
         <FitModeSwitch mode={mode} onMode={chooseMode} />
-        <LibraryScopeSwitch value={visibility} onChange={setVisibility} />
+        {currentUser ? <LibraryScopeSwitch value={visibility} onChange={setVisibility} /> : <div className="fits-public-viewer">Public viewer</div>}
       </div>
       {mode === 'doctrines'
-        ? <DoctrinesView currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} onOpenFit={openDoctrineFit} routeDoctrineId={routeDoctrineId} onOpenDoctrineRoute={onOpenDoctrineRoute} onModeRoute={onModeRoute} />
-        : <SavedFitsView chars={chars} currentUser={currentUser} visibility={visibility} setVisibility={setVisibility} routeFitId={routeFitId} onOpenFitRoute={onOpenFitRoute} onModeRoute={onModeRoute} onOpenDoctrine={openFitDoctrine} />}
+        ? <DoctrinesView currentUser={currentUser} visibility={effectiveVisibility} setVisibility={setVisibility} onOpenFit={openDoctrineFit} routeDoctrineId={routeDoctrineId} onOpenDoctrineRoute={onOpenDoctrineRoute} onModeRoute={onModeRoute} />
+        : <SavedFitsView chars={chars} currentUser={currentUser} visibility={effectiveVisibility} setVisibility={setVisibility} routeFitId={routeFitId} onOpenFitRoute={onOpenFitRoute} onModeRoute={onModeRoute} onOpenDoctrine={openFitDoctrine} />}
     </main>
   );
 }
@@ -189,6 +192,7 @@ function SavedFitsView({
   const [tooltip, setTooltip] = useState<FitTooltipState>(null);
   const [fitDoctrines, setFitDoctrines] = useState<DoctrineSummary[]>([]);
   const [fitDoctrinesLoading, setFitDoctrinesLoading] = useState(false);
+  const anonymous = !currentUser;
 
   const sortedChars = useMemo(() => [...chars].sort((a, b) => a.name.localeCompare(b.name)), [chars]);
   const [pilotId, setPilotId] = useState<number | null>(() => {
@@ -248,7 +252,7 @@ function SavedFitsView({
   const active = draft ?? detail;
   const activeSavedId = draft ? null : detail?.id ?? null;
   const activeVisibility = draft ? visibility : detail?.visibility ?? visibility;
-  const canEditActive = !detail || currentUser.role === 'admin' || detail.ownerUserId === currentUser.id;
+  const canEditActive = !detail || (!!currentUser && (currentUser.role === 'admin' || detail.ownerUserId === currentUser.id));
   const canPublishActive = activeSavedId != null && canEditActive && detail?.visibility === 'private';
   const canCopyPrivate = activeSavedId != null && detail?.visibility === 'public';
   const unmatchedItems = active?.items.filter(item => item.role === 'unmatched') ?? [];
@@ -271,8 +275,9 @@ function SavedFitsView({
 
   useEffect(() => {
     if (!active) { setQuote(null); return; }
+    if (anonymous && activeSavedId != null) { setQuote(null); setQuoteError(null); return; }
     refreshQuote(active);
-  }, [active?.rawEft, activeSavedId, hub]);
+  }, [active?.rawEft, activeSavedId, hub, anonymous]);
 
   useEffect(() => {
     if (!activeSavedId) {
@@ -590,7 +595,7 @@ function SavedFitsView({
       <aside className="fits-library">
         <div className="fits-lib-head">
           <strong>Fits</strong>
-          <button className="fl-refresh" onClick={() => setImportOpen(true)}>Import</button>
+          {!anonymous && <button className="fl-refresh" onClick={() => setImportOpen(true)}>Import</button>}
         </div>
         <input
           className="fits-search"
@@ -645,9 +650,10 @@ function SavedFitsView({
               quoteLoading={quoteLoading}
               saved={activeSavedId != null}
               visibility={activeVisibility}
-              editable={canEditActive}
-              canPublish={canPublishActive}
-              canCopyPrivate={canCopyPrivate}
+              editable={!anonymous && canEditActive}
+              canPublish={!anonymous && canPublishActive}
+              canCopyPrivate={!anonymous && canCopyPrivate}
+              showSendControls={!anonymous}
               busy={busy}
               chars={sortedChars}
               pilotId={pilotId}
@@ -841,6 +847,7 @@ function FitHeader(props: {
   editable: boolean;
   canPublish: boolean;
   canCopyPrivate: boolean;
+  showSendControls: boolean;
   busy: boolean;
   chars: CharacterStatus[];
   pilotId: number | null;
@@ -892,21 +899,23 @@ function FitHeader(props: {
           {props.sendStatus.kind === 'error' && <small className="fits-status err">{props.sendStatus.message}{props.sendStatus.reauthHint ? ` - ${props.sendStatus.reauthHint}` : ''}</small>}
         </div>
       </div>
-      <div className="fits-ship-controls">
-        <div className="fits-cost-row">
-          <strong className="fits-fit-cost">{fitCost}</strong>
-          <button onClick={props.onRefresh} disabled={props.quoteLoading}>Refresh Price</button>
+      {props.showSendControls && (
+        <div className="fits-ship-controls">
+          <div className="fits-cost-row">
+            <strong className="fits-fit-cost">{fitCost}</strong>
+            <button onClick={props.onRefresh} disabled={props.quoteLoading}>Refresh Price</button>
+          </div>
+          <div className="fits-send-row">
+            <select value={props.pilotId ?? ''} onChange={e => props.onPilot(Number(e.target.value) || null)}>
+              {props.chars.length === 0 && <option value="">No pilots</option>}
+              {props.chars.map(c => <option key={c.characterId} value={c.characterId}>{c.name}{c.needsReauth ? ' (needs re-auth)' : ''}</option>)}
+            </select>
+            <button onClick={props.onSend} disabled={props.pilotId == null || props.sendStatus.kind === 'sending'}>
+              {props.sendStatus.kind === 'sending' ? 'Sending...' : 'Send Fit'}
+            </button>
+          </div>
         </div>
-        <div className="fits-send-row">
-          <select value={props.pilotId ?? ''} onChange={e => props.onPilot(Number(e.target.value) || null)}>
-            {props.chars.length === 0 && <option value="">No pilots</option>}
-            {props.chars.map(c => <option key={c.characterId} value={c.characterId}>{c.name}{c.needsReauth ? ' (needs re-auth)' : ''}</option>)}
-          </select>
-          <button onClick={props.onSend} disabled={props.pilotId == null || props.sendStatus.kind === 'sending'}>
-            {props.sendStatus.kind === 'sending' ? 'Sending...' : 'Send Fit'}
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

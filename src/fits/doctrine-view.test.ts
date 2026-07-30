@@ -86,9 +86,10 @@ test('frontend exposes public and private fit library controls', () => {
   assert.match(fitsView, /LibraryScopeSwitch/);
   assert.match(fitsView, /<main className="rows-wrap fits-page">/);
   assert.match(fitsView, /<div className="fits-topbar">/);
-  assert.match(fitsView, /<LibraryScopeSwitch value=\{visibility\} onChange=\{setVisibility\} \/>/);
-  assert.match(fitsView, /<SavedFitsView[^>]+visibility=\{visibility\}[^>]+setVisibility=\{setVisibility\}/s);
-  assert.match(fitsView, /<DoctrinesView[^>]+visibility=\{visibility\}[^>]+setVisibility=\{setVisibility\}/s);
+  assert.match(fitsView, /currentUser \? <LibraryScopeSwitch value=\{visibility\} onChange=\{setVisibility\} \/>/);
+  assert.match(fitsView, /const effectiveVisibility = anonymous \? 'public' : visibility/);
+  assert.match(fitsView, /<SavedFitsView[^>]+visibility=\{effectiveVisibility\}[^>]+setVisibility=\{setVisibility\}/s);
+  assert.match(fitsView, /<DoctrinesView[^>]+visibility=\{effectiveVisibility\}[^>]+setVisibility=\{setVisibility\}/s);
   assert.doesNotMatch(fitsView, /<main className="rows-wrap fits-view">/);
   assert.match(fitsView, /fetchFits\((scope|visibility)\)/);
   assert.match(fitsView, /publishCurrent/);
@@ -99,7 +100,7 @@ test('frontend exposes public and private fit library controls', () => {
   assert.doesNotMatch(doctrinesView, /DOCTRINE_VISIBILITY_KEY/);
   assert.doesNotMatch(doctrinesView, /LibraryScopeSwitch/);
   assert.doesNotMatch(doctrinesView, /<main className="rows-wrap fits-view">/);
-  assert.match(doctrinesView, /fetchDoctrines\(q, (scope|visibility)\)/);
+  assert.match(doctrinesView, /fetchDoctrines\(q, (scope|effectiveVisibility)\)/);
   assert.match(doctrinesView, /publishCurrentDoctrine/);
   assert.match(doctrinesView, /copyDoctrineToPrivate/);
   assert.match(doctrinesView, /Publish/);
@@ -114,7 +115,7 @@ test('new doctrine starts as an unnamed draft instead of saved placeholder text'
   assert.doesNotMatch(doctrinesView, /createDoctrine\(\{ name: 'New Doctrine'/);
   assert.match(doctrinesView, /placeholder="New doctrine"/);
   assert.match(doctrinesView, /if \(!trimmedName\)/);
-  assert.match(doctrinesView, /await createDoctrine\(\{ name: trimmedName, description, googleDocUrl, visibility \}\)/);
+  assert.match(doctrinesView, /await createDoctrine\(\{ name: trimmedName, description, googleDocUrl, visibility: effectiveVisibility \}\)/);
 });
 
 test('clicking a doctrine member opens that saved fit in the fit view', () => {
@@ -124,7 +125,7 @@ test('clicking a doctrine member opens that saved fit in the fit view', () => {
   assert.match(fitsView, /routeFitId: number \| null/);
   assert.match(fitsView, /onOpenFitRoute: \(id: number\) => void/);
   assert.match(fitsView, /function openDoctrineFit\(fit: SavedFitSummary\)/);
-  assert.match(fitsView, /setVisibility\(fit\.visibility\)/);
+  assert.match(fitsView, /if \(!anonymous\) setVisibility\(fit\.visibility\)/);
   assert.match(fitsView, /setMode\('fits'\)/);
   assert.match(fitsView, /onOpenFitRoute\(fit\.id\)/);
   assert.match(fitsView, /<DoctrinesView[^>]+onOpenFit=\{openDoctrineFit\}/s);
@@ -143,7 +144,7 @@ test('saved fit view lists containing doctrines and opens them in doctrine view'
   assert.match(fitsView, /routeDoctrineId: number \| null/);
   assert.match(fitsView, /onOpenDoctrineRoute: \(id: number\) => void/);
   assert.match(fitsView, /function openFitDoctrine\(doctrine: DoctrineSummary\)/);
-  assert.match(fitsView, /setVisibility\(doctrine\.visibility\)/);
+  assert.match(fitsView, /if \(!anonymous\) setVisibility\(doctrine\.visibility\)/);
   assert.match(fitsView, /setMode\('doctrines'\)/);
   assert.match(fitsView, /onOpenDoctrineRoute\(doctrine\.id\)/);
   assert.match(fitsView, /<DoctrinesView[^>]+routeDoctrineId=\{routeDoctrineId\}/s);

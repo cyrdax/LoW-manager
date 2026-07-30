@@ -33,15 +33,14 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
   const fetchGoogleDocTabs = deps.fetchGoogleDocTabs ?? defaultFetchGoogleDocTabs;
 
   app.get('/api/doctrines', async (req, reply) => {
-    const user = await requireUser(req, reply, currentUser);
-    if (!user) return reply;
     const query = req.query as { q?: string; visibility?: string; fitId?: string };
     const visibility = parseVisibility(query.visibility);
     const fitId = query.fitId == null ? undefined : cleanPositiveNumber(query.fitId);
     if (query.fitId != null && !fitId) return reply.code(400).send({ error: 'valid fit id is required' });
-    return await store.list(visibility === 'public'
-      ? { q: query.q, visibility: 'public', fitId }
-      : { q: query.q, visibility: 'private', ownerUserId: user.id, fitId });
+    if (visibility === 'public') return await store.list({ q: query.q, visibility: 'public', fitId });
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+    return await store.list({ q: query.q, visibility: 'private', ownerUserId: user.id, fitId });
   });
 
   app.post('/api/doctrines', async (req, reply) => {
@@ -63,12 +62,13 @@ export function registerDoctrineRoutes(app: FastifyInstance, deps: DoctrineRoute
   });
 
   app.get('/api/doctrines/:id', async (req, reply) => {
-    const user = await requireUser(req, reply, currentUser);
-    if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid doctrine id is required' });
     const doctrine = await store.get(id);
     if (!doctrine) return reply.code(404).send({ error: 'doctrine not found' });
+    if (doctrine.visibility === 'public') return doctrine;
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
     if (!canViewDoctrine(doctrine, user)) return reply.code(403).send({ error: 'not allowed' });
     return doctrine;
   });

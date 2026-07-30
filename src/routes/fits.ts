@@ -118,12 +118,11 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   });
 
   app.get('/api/fits', async (req, reply) => {
+    const visibility = parseVisibility((req.query as { visibility?: string }).visibility);
+    if (visibility === 'public') return await store.list({ visibility: 'public' });
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
-    const visibility = parseVisibility((req.query as { visibility?: string }).visibility);
-    return visibility === 'public'
-      ? await store.list({ visibility: 'public' })
-      : await store.list({ visibility: 'private', ownerUserId: user.id });
+    return await store.list({ visibility: 'private', ownerUserId: user.id });
   });
 
   app.post('/api/fits', async (req, reply) => {
@@ -180,12 +179,13 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   });
 
   app.get('/api/fits/:id', async (req, reply) => {
-    const user = await requireUser(req, reply, currentUser);
-    if (!user) return reply;
     const id = parseId(req.params);
     if (!id) return reply.code(400).send({ error: 'valid fit id is required' });
     const fit = await store.get(id);
     if (!fit) return reply.code(404).send({ error: 'fit not found' });
+    if (fit.visibility === 'public') return fit;
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
     if (!canViewFit(fit, user)) return reply.code(403).send({ error: 'not allowed' });
     return fit;
   });

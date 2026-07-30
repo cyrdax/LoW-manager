@@ -147,6 +147,31 @@ test('doctrine routes scope private libraries and copy public doctrines privatel
   assert.equal(body.fits[0].ownerUserId, 'user-b');
 });
 
+test('doctrine routes allow anonymous users to list and view public doctrines only', async () => {
+  const { fits, store } = appWithStores();
+  const publicFit = fits.create({ rawEft: naglfar, fitName: 'Public Fit', ownerUserId: 'user-a', visibility: 'public' });
+  const publicDoctrine = store.create({ name: 'Public A', ownerUserId: 'user-a', visibility: 'public' });
+  store.addFit(publicDoctrine.id, publicFit.id);
+  const privateDoctrine = store.create({ name: 'Private A', ownerUserId: 'user-a', visibility: 'private' });
+
+  const app = Fastify();
+  registerDoctrineRoutes(app, { store, fitStore: fits, currentUser: async () => null });
+
+  const publicList = await app.inject({ method: 'GET', url: '/api/doctrines?visibility=public' });
+  assert.equal(publicList.statusCode, 200);
+  assert.deepEqual(JSON.parse(publicList.body).map((doctrine: { id: number }) => doctrine.id), [publicDoctrine.id]);
+
+  const publicDetail = await app.inject({ method: 'GET', url: `/api/doctrines/${publicDoctrine.id}` });
+  assert.equal(publicDetail.statusCode, 200);
+  assert.equal(JSON.parse(publicDetail.body).fits[0].fitName, 'Public Fit');
+
+  const privateList = await app.inject({ method: 'GET', url: '/api/doctrines?visibility=private' });
+  assert.equal(privateList.statusCode, 401);
+
+  const privateDetail = await app.inject({ method: 'GET', url: `/api/doctrines/${privateDoctrine.id}` });
+  assert.equal(privateDetail.statusCode, 401);
+});
+
 test('doctrine routes filter visible doctrines by exact member fit id', async () => {
   const { fits, store } = appWithStores();
   const userAPrivateFit = fits.create({ rawEft: naglfar, fitName: 'Private A', ownerUserId: 'user-a', visibility: 'private' });

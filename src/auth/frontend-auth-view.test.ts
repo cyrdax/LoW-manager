@@ -45,6 +45,32 @@ test('frontend exposes auth api helpers and gates the dashboard behind login', (
   assert.match(server, /\/auth\/password\/reset/);
 });
 
+test('frontend lets anonymous users view public fit and doctrine routes read-only', () => {
+  const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
+  const fitsView = readFileSync(resolve('web/src/components/FitsView.tsx'), 'utf8');
+  const doctrinesView = readFileSync(resolve('web/src/components/DoctrinesView.tsx'), 'utf8');
+
+  assert.match(app, /const publicFitsRoute = route\.view === 'fits'/);
+  assert.match(app, /if \(!currentUser && !publicFitsRoute\)/);
+  assert.match(app, /currentUser=\{currentUser\}/);
+  assert.match(app, /chars=\{currentUser \? list : \[\]\}/);
+
+  assert.match(fitsView, /currentUser\?: CurrentUser \| null/);
+  assert.match(fitsView, /const anonymous = !currentUser/);
+  assert.match(fitsView, /const effectiveVisibility = anonymous \? 'public' : visibility/);
+  assert.match(fitsView, /if \(anonymous && visibility !== 'public'\) setVisibility\('public'\)/);
+  assert.match(fitsView, /currentUser \? <LibraryScopeSwitch/);
+  assert.match(fitsView, /editable=\{!anonymous && canEditActive\}/);
+  assert.match(fitsView, /canCopyPrivate=\{!anonymous && canCopyPrivate\}/);
+  assert.match(fitsView, /showSendControls=\{!anonymous\}/);
+
+  assert.match(doctrinesView, /currentUser\?: CurrentUser \| null/);
+  assert.match(doctrinesView, /const anonymous = !currentUser/);
+  assert.match(doctrinesView, /const effectiveVisibility = anonymous \? 'public' : visibility/);
+  assert.match(doctrinesView, /currentUser && <button className="fl-refresh"/);
+  assert.match(doctrinesView, /const canStartEditing = !!detail && !!currentUser/);
+});
+
 test('sidebar main navigation follows the requested workflow order', () => {
   const controlPanel = readFileSync(resolve('web/src/components/ControlPanel.tsx'), 'utf8');
   const navStart = controlPanel.indexOf('<div className="view-nav');
