@@ -63,6 +63,8 @@ const PRICE_BUCKETS = [
   { key: 'fitted', label: 'Fitted' },
   { key: 'extras', label: 'Extras' },
 ] as const;
+const PRICE_SECTION_ROLES: FitSectionRole[] = ['high', 'mid', 'low', 'rig', 'subsystem', 'service'];
+const EXTRA_PRICE_ROLES: FitSectionRole[] = ['droneBay', 'fighterBay', 'extras', 'unmatched'];
 const SAMPLE = `[Naglfar, Simulated Naglfar Fitting]
 Republic Fleet Gyrostabilizer
 Republic Fleet Gyrostabilizer
@@ -693,9 +695,9 @@ function SavedFitsView({
         )}
       </section>
 
-      {priceBreakdownOpen && quote && (
-        <Modal title="Fit Price Breakdown" className="fits-price-modal" onClose={() => setPriceBreakdownOpen(false)}>
-          <PriceBreakdownModal quote={quote} />
+      {priceBreakdownOpen && quote && active && (
+        <Modal title="Fit Price Breakdown" className="fits-price-modal" bodyClassName="fits-price-modal-body" onClose={() => setPriceBreakdownOpen(false)}>
+          <PriceBreakdownModal quote={quote} fit={active} />
         </Modal>
       )}
 
@@ -1040,7 +1042,22 @@ function PricePanel({ quote, loading, error, onOpen }: { quote: FitQuote | null;
   );
 }
 
-function PriceBreakdownModal({ quote }: { quote: FitQuote }) {
+type PriceBreakdownGroup = {
+  key: string;
+  label: string;
+  total: number;
+  items: PriceBreakdownLine[];
+};
+
+type PriceBreakdownLine = {
+  key: string;
+  name: string;
+  typeId: number | null;
+  requestedQty: number;
+  quoteItem: FitQuoteItem | null;
+};
+
+function PriceBreakdownModal({ quote, fit }: { quote: FitQuote; fit: FitDraft | SavedFitDetail }) {
   return (
     <div className="fits-price-breakdown">
       <div className="fits-price-breakdown-summary">
@@ -1054,12 +1071,11 @@ function PriceBreakdownModal({ quote }: { quote: FitQuote }) {
         {quote.counts.partial > 0 ? ` - ${quote.counts.partial} partial` : ''}
         {quote.counts.unknown > 0 ? ` - ${quote.counts.unknown} unknown` : ''}
       </div>
-      {PRICE_BUCKETS.map(bucket => {
-        const items = quote.items.filter(item => item.bucket === bucket.key);
+      {priceGroupsForFit(fit, quote).map(group => {
         return (
-          <section className="fits-price-breakdown-section" key={bucket.key}>
-            <h3>{bucket.label}<span>{formatIsk(quote.totals[bucket.key])} ISK</span></h3>
-            {items.length > 0 ? (
+          <section className="fits-price-breakdown-section" key={group.key}>
+            <h3>{group.label}<span>{formatIsk(group.total)} ISK</span></h3>
+            {group.items.length > 0 ? (
               <div className="fits-price-breakdown-table">
                 <div className="fits-price-breakdown-head">
                   <span>Item</span>
@@ -1068,7 +1084,7 @@ function PriceBreakdownModal({ quote }: { quote: FitQuote }) {
                   <span>Total</span>
                   <span>Status</span>
                 </div>
-                {items.map(item => <PriceItemRow key={`${bucket.key}-${item.typeId ?? item.inputName}-${item.requestedQty}`} item={item} />)}
+                {group.items.map(item => <PriceItemRow key={item.key} item={item} />)}
               </div>
             ) : (
               <div className="fits-empty">No items in this category.</div>
@@ -1080,27 +1096,102 @@ function PriceBreakdownModal({ quote }: { quote: FitQuote }) {
   );
 }
 
-function PriceItemRow({ item }: { item: FitQuoteItem }) {
-  const name = item.resolvedName ?? item.inputName;
+function priceGroupsForFit(fit: FitDraft | SavedFitDetail, quote: FitQuote): PriceBreakdownGroup[] {
+  const remainingQuoteItems = quote.items.map(item => ({ ...item, used: false }));
+  const groups: PriceBreakdownGroup[] = [];
+  const hullItems = quote.items
+    .filter(item => item.bucket === 'hull')
+    .map((item, index) => quoteLine(item, `hull-${index}`));
+  groups.push({ key: 'hull', label: 'Hull', total: quote.totals.hull, items: hullItems });
+
+  for (const role of PRICE_SECTION_ROLES) {
+    const section = fit.sections[role];
+    if (!section || (section.slotCount === 0 && section.items.length === 0)) continue;
+    const items = section.items.map(item => fitLine(item, findQuoteForFitItem(item, remainingQuoteItems)));
+    groups.push({
+      key: role,
+      label: section.label,
+      total: sumPriceLines(items),
+      items,
+    });
+  }
+
+  const extraItems = EXTRA_PRICE_ROLES.flatMap(role => {
+    const section = fit.sections[role];
+    return section ? section.items : [];
+  }).map(item => fitLine(item, findQuoteForFitItem(item, remainingQuoteItems)));
+
+  if (extraItems.length > 0 || quote.totals.extras > 0) {
+    groups.push({
+      key: 'extras-cargo',
+      label: 'Extras / Cargo',
+      total: sumPriceLines(extraItems),
+      items: extraItems,
+    });
+  }
+
+  return groups;
+}
+
+function quoteLine(item: FitQuoteItem, key: string): PriceBreakdownLine {
+  return {
+    key,
+    name: item.resolvedName ?? item.inputName,
+    typeId: item.typeId,
+    requestedQty: item.requestedQty,
+    quoteItem: item,
+  };
+}
+
+function fitLine(item: AssignedFitItem, quoteItem: FitQuoteItem | null): PriceBreakdownLine {
+  return {
+    key: item.id,
+    name: item.resolvedName ?? item.inputName,
+    typeId: item.typeId,
+    requestedQty: item.quantity,
+    quoteItem,
+  };
+}
+
+function findQuoteForFitItem(
+  item: AssignedFitItem,
+  quoteItems: Array<FitQuoteItem & { used: boolean }>,
+): FitQuoteItem | null {
+  if (item.typeId == null || item.role === 'unmatched') return null;
+  const match = quoteItems.find(quoteItem => !quoteItem.used && quoteItem.typeId === item.typeId && quoteItem.requestedQty === item.quantity)
+    ?? quoteItems.find(quoteItem => !quoteItem.used && quoteItem.typeId === item.typeId);
+  if (!match) return null;
+  match.used = true;
+  return match;
+}
+
+function sumPriceLines(items: PriceBreakdownLine[]): number {
+  return items.reduce((sum, item) => sum + (item.quoteItem?.totalCost ?? 0), 0);
+}
+
+function PriceItemRow({ item }: { item: PriceBreakdownLine }) {
+  const quoteItem = item.quoteItem;
+  const name = item.name;
   const status = statusLabel(item);
   return (
-    <div className={`fits-price-breakdown-row ${item.status}`}>
+    <div className={`fits-price-breakdown-row ${quoteItem?.status ?? 'unknown-item'}`}>
       <span className="fits-price-breakdown-item">
         <span className="fits-price-breakdown-icon">{item.typeId ? <img src={iconUrl(item.typeId)} alt="" /> : '?'}</span>
         <b title={name}>{name}</b>
       </span>
       <span>{item.requestedQty.toLocaleString()}</span>
-      <span>{item.avgPrice == null ? '-' : `${formatIsk(item.avgPrice)} ISK`}</span>
-      <span>{formatIsk(item.totalCost)} ISK</span>
+      <span>{quoteItem?.avgPrice == null ? '-' : `${formatIsk(quoteItem.avgPrice)} ISK`}</span>
+      <span>{formatIsk(quoteItem?.totalCost ?? 0)} ISK</span>
       <small>{status}</small>
     </div>
   );
 }
 
-function statusLabel(item: FitQuoteItem): string {
-  if (item.status === 'ok') return 'Priced';
-  if (item.status === 'partial') return `Partial (${item.shortfall.toLocaleString()} short)`;
-  if (item.status === 'no-orders') return 'No sellers';
+function statusLabel(item: PriceBreakdownLine): string {
+  if (!item.quoteItem) return item.typeId == null ? 'Unknown item' : 'Not priced';
+  if (item.quoteItem.status === 'ok') return 'Priced';
+  if (item.quoteItem.status === 'partial') return `Partial (${item.quoteItem.shortfall.toLocaleString()} short)`;
+  if (item.quoteItem.status === 'no-orders') return 'No sellers';
   return 'Unknown item';
 }
 
@@ -1156,12 +1247,12 @@ function readFileBase64(file: File): Promise<string> {
   });
 }
 
-function Modal({ title, children, onClose, className = '' }: { title: string; children: React.ReactNode; onClose: () => void; className?: string }) {
+function Modal({ title, children, onClose, className = '', bodyClassName = '' }: { title: string; children: React.ReactNode; onClose: () => void; className?: string; bodyClassName?: string }) {
   return (
     <div className="fits-modal-backdrop">
       <div className={`fits-modal${className ? ` ${className}` : ''}`}>
         <div className="fits-modal-head"><strong>{title}</strong><button onClick={onClose}>x</button></div>
-        {children}
+        <div className={`fits-modal-body${bodyClassName ? ` ${bodyClassName}` : ''}`}>{children}</div>
       </div>
     </div>
   );
