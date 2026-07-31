@@ -309,7 +309,7 @@ function SavedFitsView({
       setDiscordChannelsLoaded(false);
       return;
     }
-    if (importMode !== 'discord' || discordLoadingChannels || discordChannelsLoaded) return;
+    if (importMode !== 'discord' || discordChannelsLoaded) return;
     let cancelled = false;
     setDiscordLoadingChannels(true);
     setImportError(null);
@@ -339,7 +339,7 @@ function SavedFitsView({
         if (!cancelled) setDiscordLoadingChannels(false);
       });
     return () => { cancelled = true; };
-  }, [importOpen, importMode, discordLoadingChannels, discordChannelsLoaded]);
+  }, [importOpen, importMode, discordChannelsLoaded]);
 
   const retryDiscordChannels = () => {
     setImportError(null);
