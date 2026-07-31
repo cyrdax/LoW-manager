@@ -12,6 +12,7 @@ export const DISCORD_IMAGE_SCAN_LIMIT = 10;
 
 const DISCORD_API_BASE = 'https://discord.com/api/v10';
 const TEXT_CHANNEL_TYPES = new Set([0, 5, 15, 16]);
+const ARCHIVED_THREAD_PARENT_TYPES = new Set([15, 16]);
 const THREAD_TYPES = new Set([10, 11, 12]);
 const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
@@ -360,7 +361,8 @@ export function createDiscordApiClient(input: { botToken?: string; guildId?: str
 }
 
 async function listArchivedThreads(api: DiscordApiClient, channels: DiscordChannel[]): Promise<DiscordChannel[]> {
-  const nested = await Promise.all(channels.map(async channel => {
+  const threadParentChannels = channels.filter(channel => ARCHIVED_THREAD_PARENT_TYPES.has(channel.type));
+  const nested = await Promise.all(threadParentChannels.map(async channel => {
     try {
       return await api.listPublicArchivedThreads(channel.id);
     } catch {

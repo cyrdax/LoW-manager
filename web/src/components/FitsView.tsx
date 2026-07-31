@@ -188,6 +188,7 @@ function SavedFitsView({
   const [discordChannels, setDiscordChannels] = useState<DiscordImportChannel[]>([]);
   const [discordChannelId, setDiscordChannelId] = useState('');
   const [discordLoadingChannels, setDiscordLoadingChannels] = useState(false);
+  const [discordChannelsLoaded, setDiscordChannelsLoaded] = useState(false);
   const [discordScanning, setDiscordScanning] = useState(false);
   const [discordApplying, setDiscordApplying] = useState(false);
   const [discordScanResult, setDiscordScanResult] = useState<DiscordImportScanResult | null>(null);
@@ -304,7 +305,11 @@ function SavedFitsView({
   }, [activeSavedId, activeVisibility]);
 
   useEffect(() => {
-    if (!importOpen || importMode !== 'discord' || discordLoadingChannels || discordChannels.length > 0) return;
+    if (!importOpen) {
+      setDiscordChannelsLoaded(false);
+      return;
+    }
+    if (importMode !== 'discord' || discordLoadingChannels || discordChannelsLoaded) return;
     let cancelled = false;
     setDiscordLoadingChannels(true);
     setImportError(null);
@@ -314,19 +319,36 @@ function SavedFitsView({
         if ('error' in rows) {
           setImportError(rows.error);
           setDiscordChannels([]);
+          setDiscordChannelId('');
+          setDiscordChannelsLoaded(true);
           return;
         }
         setDiscordChannels(rows);
         setDiscordChannelId(current => current || rows[0]?.id || '');
+        setDiscordChannelsLoaded(true);
       })
       .catch(err => {
-        if (!cancelled) setImportError(err instanceof Error ? err.message : 'Failed to load Discord channels.');
+        if (!cancelled) {
+          setImportError(err instanceof Error ? err.message : 'Failed to load Discord channels.');
+          setDiscordChannels([]);
+          setDiscordChannelId('');
+          setDiscordChannelsLoaded(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setDiscordLoadingChannels(false);
       });
     return () => { cancelled = true; };
-  }, [importOpen, importMode, discordLoadingChannels, discordChannels.length]);
+  }, [importOpen, importMode, discordLoadingChannels, discordChannelsLoaded]);
+
+  const retryDiscordChannels = () => {
+    setImportError(null);
+    setDiscordChannels([]);
+    setDiscordChannelId('');
+    setDiscordScanResult(null);
+    setDiscordActions({});
+    setDiscordChannelsLoaded(false);
+  };
 
   const filteredFits = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -753,6 +775,9 @@ function SavedFitsView({
                   onChange={event => { setDiscordChannelId(event.target.value); setDiscordScanResult(null); }}
                   disabled={discordLoadingChannels || discordScanning || discordApplying}
                 >
+                  <option value="">
+                    {discordLoadingChannels ? 'Loading channels...' : 'Choose a Discord channel or thread'}
+                  </option>
                   {discordChannels.map(channel => (
                     <option key={channel.id} value={channel.id}>
                       {channel.label}
@@ -764,6 +789,14 @@ function SavedFitsView({
                 </button>
               </div>
               {discordLoadingChannels && <div className="fits-import-note">Loading Discord channels...</div>}
+              {!discordLoadingChannels && discordChannels.length > 0 && (
+                <div className="fits-import-note">{discordChannels.length} Discord channels and threads loaded.</div>
+              )}
+              {!discordLoadingChannels && discordChannelsLoaded && discordChannels.length === 0 && (
+                <button type="button" className="fits-discord-retry" onClick={retryDiscordChannels}>
+                  Retry channels
+                </button>
+              )}
               {discordScanResult && (
                 <>
                   <div className="fits-discord-summary">

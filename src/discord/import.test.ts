@@ -74,6 +74,29 @@ test('discord import service lists readable channels and threads alphabetically'
   assert.equal(channels.find(channel => channel.id === '11')?.parentName, 'z-fits');
 });
 
+test('discord import service only loads archived threads for forum-style channels', async () => {
+  const archivedChannelIds: string[] = [];
+  const service = createDiscordImportService({
+    api: api({
+      listGuildChannels: async () => [
+        { id: 'text-1', name: 'general-fits', type: 0 },
+        { id: 'forum-1', name: 'eve-fitting-v2', type: 15 },
+      ],
+      listPublicArchivedThreads: async channelId => {
+        archivedChannelIds.push(channelId);
+        return [{ id: 'thread-1', name: 'Archived Paladin', type: 11, parent_id: channelId }];
+      },
+    }),
+    fitStore: stores(),
+    buildDraft: buildFitDraft,
+  });
+
+  const channels = await service.listChannels();
+
+  assert.deepEqual(archivedChannelIds, ['forum-1']);
+  assert.ok(channels.some(channel => channel.label === 'eve-fitting-v2 / Archived Paladin'));
+});
+
 test('discord import scan reads last 100 messages and extracts text fits', async () => {
   const fitStore = stores();
   let requestedLimit = 0;

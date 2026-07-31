@@ -2874,6 +2874,18 @@ body {
   padding: 7px 12px;
   cursor: pointer;
 }
+.fits-discord-retry {
+  align-self: flex-start;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #1f2430;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+}
 .fits-discord-summary {
   display: flex;
   flex-wrap: wrap;

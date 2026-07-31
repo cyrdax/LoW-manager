@@ -54,6 +54,8 @@ test('fit import modal supports discord channel scan review and import', () => {
   assert.match(fitsView, /'eft' \| 'pyfa-image' \| 'discord'/);
   assert.match(fitsView, />Discord</);
   assert.match(fitsView, /fetchDiscordImportChannels/);
+  assert.match(fitsView, /discordChannelsLoaded/);
+  assert.match(fitsView, /Retry channels/);
   assert.match(fitsView, /scanDiscordImport/);
   assert.match(fitsView, /applyDiscordImport/);
   assert.match(fitsView, /discordChannels\.map/);
