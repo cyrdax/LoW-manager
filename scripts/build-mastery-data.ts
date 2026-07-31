@@ -132,6 +132,8 @@ interface OutCert {
 
 interface OutSkill {
   name: string;
+  groupId: number;
+  groupName: string;
   rank: number;
   primary: number | null;
   secondary: number | null;
@@ -642,6 +644,8 @@ function overlayFuzzworkData(
     if (!type || !attrs) continue;
     skillsOut[String(sid)] = {
       name: type.name,
+      groupId: type.groupId,
+      groupName: groups.get(type.groupId)?.name ?? `Group ${type.groupId}`,
       rank: Math.round(attrs.get(ATTR_SKILL_RANK) ?? 1),
       primary: attrs.has(ATTR_PRIMARY) ? Math.round(attrs.get(ATTR_PRIMARY)!) : null,
       secondary: attrs.has(ATTR_SECONDARY) ? Math.round(attrs.get(ATTR_SECONDARY)!) : null,
@@ -809,6 +813,8 @@ async function main() {
     for (const a of d?.dogmaAttributes ?? []) attrs.set(a.attributeID, a.value);
     skillsOut[String(sid)] = {
       name: t.name?.en ?? `Skill ${sid}`,
+      groupId: t.groupID,
+      groupName: groupNames.get(t.groupID) ?? `Group ${t.groupID}`,
       rank: Math.round(attrs.get(ATTR_SKILL_RANK) ?? 1),
       primary: attrs.has(ATTR_PRIMARY) ? Math.round(attrs.get(ATTR_PRIMARY)!) : null,
       secondary: attrs.has(ATTR_SECONDARY) ? Math.round(attrs.get(ATTR_SECONDARY)!) : null,

@@ -30,6 +30,8 @@ export interface MasteryCert {
 
 export interface MasterySkill {
   name: string;
+  groupId?: number;
+  groupName?: string;
   rank: number;
   primary: number | null;
   secondary: number | null;

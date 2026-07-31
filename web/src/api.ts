@@ -579,6 +579,59 @@ export interface SavedSkillPlan {
   savedAt: number;
 }
 
+export interface CharacterSkill {
+  skillId: number;
+  name: string;
+  groupId: number | null;
+  groupName: string;
+  rank: number;
+  trainedSkillLevel: number;
+  activeSkillLevel: number;
+  skillpointsInSkill: number;
+}
+
+export interface CharacterSkillGroup {
+  groupId: number | null;
+  groupName: string;
+  trainedSkills: number;
+  totalSp: number;
+  skills: CharacterSkill[];
+}
+
+export interface CharacterSkillQueueEntry {
+  skillId: number;
+  name: string;
+  groupId: number | null;
+  groupName: string;
+  rank: number;
+  finishedLevel: number;
+  queuePosition: number;
+  startDate: string | null;
+  finishDate: string | null;
+  trainingStartSp: number | null;
+  levelStartSp: number | null;
+  levelEndSp: number | null;
+}
+
+export interface CharacterSkillsOverview {
+  characterId: number;
+  refreshedAt: number;
+  totals: {
+    totalSp: number;
+    unallocatedSp: number;
+    trainedSkills: number;
+    queueLength: number;
+  };
+  queue: CharacterSkillQueueEntry[];
+  groups: CharacterSkillGroup[];
+}
+
+export async function fetchCharacterSkillsOverview(characterId: number): Promise<CharacterSkillsOverview | { error: string }> {
+  const res = await fetch(`/api/skills/character?characterId=${characterId}`);
+  if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
+  return res.json();
+}
+
 export async function fetchSavedSkillPlans(characterId?: number): Promise<SavedSkillPlan[]> {
   const url = characterId ? `/api/skills/plans?characterId=${characterId}` : '/api/skills/plans';
   const res = await fetch(url);

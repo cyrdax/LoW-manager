@@ -2,7 +2,7 @@ import { createSqliteCharacterStore } from '../characters/store.ts';
 import type { CharacterRow, CharacterStatus } from '../types.ts';
 import { getLocation, getOnline, getShip } from '../esi/location.ts';
 import { getWallet } from '../esi/wallet.ts';
-import { currentlyTraining, getAttributes, getImplants, getSkillQueue, getSkills, queueEndIso, skillLevel, SKILL_INTERPLANETARY_CONSOLIDATION, type SkillsResponse } from '../esi/skills.ts';
+import { currentlyTraining, getAttributes, getImplants, getSkillQueue, getSkills, queueEndIso, skillLevel, SKILL_INTERPLANETARY_CONSOLIDATION, type SkillQueueEntry, type SkillsResponse } from '../esi/skills.ts';
 import { getPlanetDetail, getPlanets, hasIdleExtractor, soonestExpiry, type PlanetPin } from '../esi/planets.ts';
 import type { ColonyInfo } from '../types.ts';
 import type { CharacterAttributes } from '../skills/training-time.ts';
@@ -88,6 +88,11 @@ export function getCharacterSkills(charId: number): SkillsResponse | null {
   return skillsCache.get(charId) ?? null;
 }
 
+const skillQueueCache = new Map<number, SkillQueueEntry[]>();
+export function getCharacterSkillQueue(charId: number): SkillQueueEntry[] | null {
+  return skillQueueCache.get(charId) ?? null;
+}
+
 const attributesCache = new Map<number, CharacterAttributes>();
 export function getCharacterAttributes(charId: number): CharacterAttributes | null {
   return attributesCache.get(charId) ?? null;
@@ -146,6 +151,7 @@ export function forgetCharacter(id: number) {
     if (pinCache.get(key)!.characterId === id) pinCache.delete(key);
   }
   skillsCache.delete(id);
+  skillQueueCache.delete(id);
   attributesCache.delete(id);
   bus.emit('removed', { characterId: id });
 }
@@ -294,6 +300,7 @@ async function tick(id: number) {
     if (now >= s.skills.nextFetchAt) {
       const { data, expires } = await getSkillQueue(id);
       s.skills.nextFetchAt = expires ?? now + FALLBACK_TTL.skills * 1000;
+      skillQueueCache.set(id, data);
       const training = currentlyTraining(data);
       const skillId = training?.skill_id ?? null;
       const level = training?.finished_level ?? null;

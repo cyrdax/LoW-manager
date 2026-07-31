@@ -7,8 +7,9 @@ import {
   type CurrentUserResolver,
   type OwnsCharacter,
 } from '../auth/pilot-access.ts';
+import type { SkillQueueEntry, SkillsResponse } from '../esi/skills.ts';
 import { openInformationWindow, openMarketDetailsWindow } from '../esi/ui.ts';
-import { getCharacterAttributes, getCharacterSkills } from '../polling/scheduler.ts';
+import { getCharacterAttributes, getCharacterSkillQueue, getCharacterSkills } from '../polling/scheduler.ts';
 import { loadMasteryData, type MasteryData, type MasteryItem, type MasteryShip } from '../skills/mastery-data.ts';
 import {
   createSavedSkillPlanStore,
@@ -39,6 +40,122 @@ interface PlannedSkill {
   trainingSeconds: number;
   // Why this skill is in the plan — preferred sources first.
   sources: Array<{ kind: 'ship-prereq' } | { kind: 'mastery'; certId: number; certName: string }>;
+}
+
+interface CharacterSkillRow {
+  skillId: number;
+  name: string;
+  groupId: number | null;
+  groupName: string;
+  rank: number;
+  trainedSkillLevel: number;
+  activeSkillLevel: number;
+  skillpointsInSkill: number;
+}
+
+interface CharacterSkillGroup {
+  groupId: number | null;
+  groupName: string;
+  trainedSkills: number;
+  totalSp: number;
+  skills: CharacterSkillRow[];
+}
+
+interface CharacterSkillQueueRow {
+  skillId: number;
+  name: string;
+  groupId: number | null;
+  groupName: string;
+  rank: number;
+  finishedLevel: number;
+  queuePosition: number;
+  startDate: string | null;
+  finishDate: string | null;
+  trainingStartSp: number | null;
+  levelStartSp: number | null;
+  levelEndSp: number | null;
+}
+
+function resolveSkillMeta(data: MasteryData, skillId: number) {
+  const meta = data.skills[String(skillId)];
+  return {
+    name: meta?.name ?? `Skill ${skillId}`,
+    groupId: meta?.groupId ?? null,
+    groupName: meta?.groupName ?? 'Other Skills',
+    rank: meta?.rank ?? 1,
+  };
+}
+
+export function buildCharacterSkillsOverview(
+  data: MasteryData,
+  charSkills: SkillsResponse,
+  skillQueue: SkillQueueEntry[],
+) {
+  const skillRows: CharacterSkillRow[] = charSkills.skills.map(skill => {
+    const meta = resolveSkillMeta(data, skill.skill_id);
+    return {
+      skillId: skill.skill_id,
+      name: meta.name,
+      groupId: meta.groupId,
+      groupName: meta.groupName,
+      rank: meta.rank,
+      trainedSkillLevel: skill.trained_skill_level,
+      activeSkillLevel: skill.active_skill_level,
+      skillpointsInSkill: skill.skillpoints_in_skill,
+    };
+  });
+
+  skillRows.sort((a, b) => a.name.localeCompare(b.name));
+
+  const groupsByName = new Map<string, CharacterSkillGroup>();
+  for (const skill of skillRows) {
+    const existing = groupsByName.get(skill.groupName);
+    if (existing) {
+      existing.trainedSkills += 1;
+      existing.totalSp += skill.skillpointsInSkill;
+      existing.skills.push(skill);
+      continue;
+    }
+    groupsByName.set(skill.groupName, {
+      groupId: skill.groupId,
+      groupName: skill.groupName,
+      trainedSkills: 1,
+      totalSp: skill.skillpointsInSkill,
+      skills: [skill],
+    });
+  }
+
+  const groups = Array.from(groupsByName.values()).sort((a, b) => a.groupName.localeCompare(b.groupName));
+  const queue: CharacterSkillQueueRow[] = skillQueue
+    .map(entry => {
+      const meta = resolveSkillMeta(data, entry.skill_id);
+      return {
+        skillId: entry.skill_id,
+        name: meta.name,
+        groupId: meta.groupId,
+        groupName: meta.groupName,
+        rank: meta.rank,
+        finishedLevel: entry.finished_level,
+        queuePosition: entry.queue_position,
+        startDate: entry.start_date ?? null,
+        finishDate: entry.finish_date ?? null,
+        trainingStartSp: entry.training_start_sp ?? null,
+        levelStartSp: entry.level_start_sp ?? null,
+        levelEndSp: entry.level_end_sp ?? null,
+      };
+    })
+    .sort((a, b) => a.queuePosition - b.queuePosition || a.name.localeCompare(b.name));
+
+  return {
+    totals: {
+      totalSp: charSkills.total_sp,
+      unallocatedSp: charSkills.unallocated_sp ?? 0,
+      trainedSkills: skillRows.length,
+      queueLength: queue.length,
+    },
+    queue,
+    groups,
+  };
 }
 
 function unionTargets(target: Map<number, { level: number; sources: PlannedSkill['sources'] }>,
@@ -209,6 +326,28 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
   app.get('/api/skills/meta', async () => {
     const data = loadMasteryData();
     return { meta: data._meta };
+  });
+
+  app.get<{ Querystring: { characterId?: string } }>('/api/skills/character', async (req, reply) => {
+    const charId = Number(req.query.characterId);
+    if (!Number.isFinite(charId)) {
+      return reply.code(400).send({ error: 'characterId is required' });
+    }
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+    if (!(await requireOwnedCharacter(user.id, charId, reply, owns))) return reply;
+
+    const charSkills = getCharacterSkills(charId);
+    const skillQueue = getCharacterSkillQueue(charId);
+    if (!charSkills || !skillQueue) {
+      return reply.code(409).send({ error: 'character skills not yet polled — try again in a moment' });
+    }
+
+    return {
+      characterId: charId,
+      ...buildCharacterSkillsOverview(loadMasteryData(), charSkills, skillQueue),
+      refreshedAt: Date.now(),
+    };
   });
 
   app.get<{ Querystring: { q?: string } }>('/api/skills/ships', async (req) => {

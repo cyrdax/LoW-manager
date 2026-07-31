@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   deleteSkillPlan,
+  fetchCharacterSkillsOverview,
   fetchItemPlan,
   fetchSavedSkillPlans,
   fetchSdeStatus,
@@ -9,6 +10,7 @@ import {
   saveSkillPlan,
   searchItems,
   searchShips,
+  type CharacterSkillsOverview,
   type CharacterStatus,
   type ItemHit,
   type ItemPlan,
@@ -42,6 +44,27 @@ function formatDuration(seconds: number): string {
   return `${minutes}m`;
 }
 
+function formatDateTime(value: string | null): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function secondsUntil(value: string | null): number {
+  if (!value) return 0;
+  return Math.max(0, Math.floor((Date.parse(value) - Date.now()) / 1000));
+}
+
+function levelLabel(level: number): string {
+  return MASTERY_NUMERALS[level - 1] ?? String(level);
+}
+
 export function SkillsView({ chars }: Props) {
   const [characterId, setCharacterId] = useState<number | null>(() => {
     const stored = Number(localStorage.getItem('efd.skills.charId'));
@@ -68,6 +91,10 @@ export function SkillsView({ chars }: Props) {
   const [itemPlan, setItemPlan] = useState<ItemPlan | null>(null);
   const [itemError, setItemError] = useState<string | null>(null);
   const [itemPlanning, setItemPlanning] = useState(false);
+  const [mode, setMode] = useState<'overview' | 'plans'>('overview');
+  const [overview, setOverview] = useState<CharacterSkillsOverview | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
   useEffect(() => {
     if (!ship || !characterId) { setPlan(null); setPlanError(null); return; }
@@ -101,6 +128,26 @@ export function SkillsView({ chars }: Props) {
     () => chars.find(c => c.characterId === characterId) ?? null,
     [chars, characterId],
   );
+
+  const reloadOverview = useCallback(async () => {
+    if (characterId == null) {
+      setOverview(null);
+      setOverviewError(null);
+      return;
+    }
+    setOverviewLoading(true);
+    setOverviewError(null);
+    const result = await fetchCharacterSkillsOverview(characterId);
+    setOverviewLoading(false);
+    if ('error' in result) {
+      setOverview(null);
+      setOverviewError(result.error);
+      return;
+    }
+    setOverview(result);
+  }, [characterId]);
+
+  useEffect(() => { reloadOverview(); }, [reloadOverview]);
 
   // Saved plans for the active pilot
   const [savedPlans, setSavedPlans] = useState<SavedSkillPlan[]>([]);
@@ -138,7 +185,7 @@ export function SkillsView({ chars }: Props) {
   return (
     <main className="rows-wrap skills-view">
       <SdeStaleBanner />
-      <div className="skills-controls">
+      <div className={`skills-controls${mode === 'overview' ? ' sk-overview-controls' : ''}`}>
         <div className="sk-control">
           <label>Pilot</label>
           <select
@@ -154,59 +201,233 @@ export function SkillsView({ chars }: Props) {
           </select>
         </div>
 
-        <div className="sk-control sk-ship">
-          <label>Ship</label>
-          <ShipSearch value={ship} onChange={setShip} />
-        </div>
-
         <div className="sk-control">
-          <label>Mastery target</label>
-          <div className="sk-mastery-row">
-            {MASTERY_NUMERALS.map((n, i) => (
-              <button
-                key={n}
-                className={`sk-mastery-btn${masteryLevel === i + 1 ? ' active' : ''}`}
-                onClick={() => setMasteryLevel(i + 1)}
-              >{n}</button>
-            ))}
+          <label>View</label>
+          <div className="sk-mastery-row sk-mode-row">
+            <button
+              className={`sk-mastery-btn${mode === 'overview' ? ' active' : ''}`}
+              onClick={() => setMode('overview')}
+            >Pilot Skills</button>
+            <button
+              className={`sk-mastery-btn${mode === 'plans' ? ' active' : ''}`}
+              onClick={() => setMode('plans')}
+            >Skill Plans</button>
           </div>
         </div>
 
+        {mode === 'plans' && (
+          <>
+            <div className="sk-control sk-ship">
+              <label>Ship</label>
+              <ShipSearch value={ship} onChange={setShip} />
+            </div>
+
+            <div className="sk-control">
+              <label>Mastery target</label>
+              <div className="sk-mastery-row">
+                {MASTERY_NUMERALS.map((n, i) => (
+                  <button
+                    key={n}
+                    className={`sk-mastery-btn${masteryLevel === i + 1 ? ' active' : ''}`}
+                    onClick={() => setMasteryLevel(i + 1)}
+                  >{n}</button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
         <div className="sk-spacer" aria-hidden />
 
-        <div className="sk-control sk-item">
-          <label>Module / item</label>
-          <ItemSearch value={item} onChange={setItem} />
+        {mode === 'overview' ? (
+          <button className="sk-refresh" onClick={reloadOverview} disabled={overviewLoading || characterId == null}>
+            {overviewLoading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        ) : (
+          <div className="sk-control sk-item">
+            <label>Module / item</label>
+            <ItemSearch value={item} onChange={setItem} />
+          </div>
+        )}
+      </div>
+
+      {mode === 'overview' && (
+        <>
+          {!characterId && <div className="empty">Pick a pilot to see their skill queue and trained skills.</div>}
+          {overviewLoading && <div className="empty">Loading pilot skills...</div>}
+          {overviewError && <div className="empty err">{overviewError}</div>}
+          {overview && !overviewLoading && (
+            <CharacterSkillsPanel overview={overview} character={character} />
+          )}
+        </>
+      )}
+
+      {mode === 'plans' && (
+        <>
+          {savedPlans.length > 0 && (
+            <SavedPlansBar
+              plans={savedPlans}
+              activeShipId={ship?.id ?? null}
+              activeMastery={masteryLevel}
+              onLoad={onLoadSaved}
+              onDelete={onDeleteSaved}
+            />
+          )}
+
+          {!ship && !item && <div className="empty">Pick a ship or a module to see what {character?.name ?? 'this pilot'} needs.</div>}
+          {planning && <div className="empty">Computing ship plan...</div>}
+          {planError && <div className="empty err">{planError}</div>}
+
+          {plan && !planning && (
+            <PlanResults
+              plan={plan}
+              character={character}
+              isSaved={isCurrentSaved}
+              onToggleSave={onToggleSave}
+            />
+          )}
+
+          {itemPlanning && <div className="empty">Computing item plan...</div>}
+          {itemError && <div className="empty err">{itemError}</div>}
+          {itemPlan && !itemPlanning && <ItemPlanResults plan={itemPlan} />}
+        </>
+      )}
+    </main>
+  );
+}
+
+function CharacterSkillsPanel({ overview, character }: { overview: CharacterSkillsOverview; character: CharacterStatus | null }) {
+  const [filter, setFilter] = useState('');
+  const q = filter.trim().toLowerCase();
+  const groups = useMemo(() => {
+    if (!q) return overview.groups;
+    return overview.groups
+      .map(group => {
+        const skills = group.skills.filter(skill =>
+          skill.name.toLowerCase().includes(q) || group.groupName.toLowerCase().includes(q),
+        );
+        return {
+          ...group,
+          trainedSkills: skills.length,
+          totalSp: skills.reduce((sum, skill) => sum + skill.skillpointsInSkill, 0),
+          skills,
+        };
+      })
+      .filter(group => group.skills.length > 0);
+  }, [overview.groups, q]);
+
+  const current = overview.queue.find(entry => {
+    if (!entry.startDate || !entry.finishDate) return false;
+    const now = Date.now();
+    return Date.parse(entry.startDate) <= now && now < Date.parse(entry.finishDate);
+  }) ?? overview.queue[0] ?? null;
+
+  return (
+    <div className="sk-overview">
+      <div className="sk-overview-head">
+        <div>
+          <h2>{character?.name ?? `Pilot ${overview.characterId}`}</h2>
+          <p className="dim">Skill queue and trained skills from cached ESI polling.</p>
+        </div>
+        <span className="dim">Updated {formatDateTime(new Date(overview.refreshedAt).toISOString())}</span>
+      </div>
+
+      <div className="sk-summary-cards">
+        <div className="sk-summary-card">
+          <span>Total SP</span>
+          <b>{formatSp(overview.totals.totalSp)}</b>
+        </div>
+        <div className="sk-summary-card">
+          <span>Unallocated</span>
+          <b>{formatSp(overview.totals.unallocatedSp)}</b>
+        </div>
+        <div className="sk-summary-card">
+          <span>Trained Skills</span>
+          <b>{overview.totals.trainedSkills.toLocaleString()}</b>
+        </div>
+        <div className="sk-summary-card">
+          <span>Queue</span>
+          <b>{overview.totals.queueLength.toLocaleString()}</b>
         </div>
       </div>
 
-      {savedPlans.length > 0 && (
-        <SavedPlansBar
-          plans={savedPlans}
-          activeShipId={ship?.id ?? null}
-          activeMastery={masteryLevel}
-          onLoad={onLoadSaved}
-          onDelete={onDeleteSaved}
-        />
-      )}
+      <section className="sk-section">
+        <div className="sk-section-title">
+          <h3>Skill Queue</h3>
+          {current && (
+            <span className="dim">
+              Training {current.name} {levelLabel(current.finishedLevel)} · {formatDuration(secondsUntil(current.finishDate))} left
+            </span>
+          )}
+        </div>
+        {overview.queue.length === 0 ? (
+          <div className="empty sk-empty-inline">No skills are queued.</div>
+        ) : (
+          <div className="sk-queue-table">
+            <div className="sk-queue-row sk-queue-head">
+              <div>#</div>
+              <div>Skill</div>
+              <div>Type</div>
+              <div className="c">Level</div>
+              <div>Finish</div>
+              <div className="r">Remaining</div>
+            </div>
+            {overview.queue.map(entry => (
+              <div key={`${entry.queuePosition}-${entry.skillId}-${entry.finishedLevel}`} className="sk-queue-row">
+                <div className="dim">{entry.queuePosition}</div>
+                <div className="sk-name">{entry.name}</div>
+                <div className="dim">{entry.groupName}</div>
+                <div className="c">{levelLabel(entry.finishedLevel)}</div>
+                <div>{formatDateTime(entry.finishDate)}</div>
+                <div className="r">{formatDuration(secondsUntil(entry.finishDate))}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-      {!ship && !item && <div className="empty">Pick a ship or a module to see what {character?.name ?? 'this pilot'} needs.</div>}
-      {planning && <div className="empty">Computing ship plan…</div>}
-      {planError && <div className="empty err">{planError}</div>}
-
-      {plan && !planning && (
-        <PlanResults
-          plan={plan}
-          character={character}
-          isSaved={isCurrentSaved}
-          onToggleSave={onToggleSave}
-        />
-      )}
-
-      {itemPlanning && <div className="empty">Computing item plan…</div>}
-      {itemError && <div className="empty err">{itemError}</div>}
-      {itemPlan && !itemPlanning && <ItemPlanResults plan={itemPlan} />}
-    </main>
+      <section className="sk-section">
+        <div className="sk-section-title">
+          <h3>All Skills</h3>
+          <input
+            className="ap-input sk-filter"
+            type="search"
+            placeholder="Search skills or groups"
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+          />
+        </div>
+        <div className="sk-groups">
+          {groups.map(group => (
+            <details key={group.groupName} className="sk-group" open>
+              <summary>
+                <span>{group.groupName}</span>
+                <span className="dim">{group.skills.length} skills · {formatSp(group.totalSp)} SP</span>
+              </summary>
+              <div className="sk-skill-list">
+                <div className="sk-skill-row sk-skill-head">
+                  <div>Skill</div>
+                  <div className="r">Rank</div>
+                  <div className="c">Active</div>
+                  <div className="c">Trained</div>
+                  <div className="r">SP</div>
+                </div>
+                {group.skills.map(skill => (
+                  <div key={skill.skillId} className="sk-skill-row">
+                    <div className="sk-name">{skill.name}</div>
+                    <div className="r dim">x{skill.rank}</div>
+                    <div className="c">{levelLabel(skill.activeSkillLevel)}</div>
+                    <div className="c">{levelLabel(skill.trainedSkillLevel)}</div>
+                    <div className="r">{skill.skillpointsInSkill.toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ))}
+          {groups.length === 0 && <div className="empty sk-empty-inline">No skills match that search.</div>}
+        </div>
+      </section>
+    </div>
   );
 }
 
