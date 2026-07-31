@@ -65,22 +65,6 @@ const PRICE_BUCKETS = [
 ] as const;
 const PRICE_SECTION_ROLES: FitSectionRole[] = ['high', 'mid', 'low', 'rig', 'subsystem', 'service'];
 const EXTRA_PRICE_ROLES: FitSectionRole[] = ['droneBay', 'fighterBay', 'extras', 'unmatched'];
-const SAMPLE = `[Naglfar, Simulated Naglfar Fitting]
-Republic Fleet Gyrostabilizer
-Republic Fleet Gyrostabilizer
-Tracking Enhancer II
-Tracking Enhancer II
-Capacitor Power Relay II
-
-Capital Clarity Ward Enduring Shield Booster
-Pithum C-Type Multispectrum Shield Hardener
-
-Quad 800mm Repeating Cannon II
-Siege Module II
-
-Capital Semiconductor Memory Cell I
-
-Hail XL x4057`;
 
 type ImportMode = 'eft' | 'pyfa-image' | 'discord';
 type DiscordCandidateAction = 'create' | 'update' | 'skip';
@@ -176,7 +160,7 @@ function SavedFitsView({
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [priceBreakdownOpen, setPriceBreakdownOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [importText, setImportText] = useState(SAMPLE);
+  const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const [importMode, setImportMode] = useState<ImportMode>('eft');
@@ -303,6 +287,18 @@ function SavedFitsView({
       .finally(() => { if (!cancelled) setFitDoctrinesLoading(false); });
     return () => { cancelled = true; };
   }, [activeSavedId, activeVisibility]);
+
+  useEffect(() => {
+    if (!importOpen) return;
+    setImportText('');
+    setImportError(null);
+    setImportBusy(false);
+    setPyfaImage(null);
+    setPyfaWarnings([]);
+    setPyfaNotice(null);
+    setDiscordScanResult(null);
+    setDiscordActions({});
+  }, [importOpen]);
 
   useEffect(() => {
     if (!importOpen) {
@@ -528,6 +524,28 @@ function SavedFitsView({
     }
   };
 
+  const handleDiscordPrimary = () => {
+    if (!discordScanResult) {
+      void scanDiscordChannel();
+      return;
+    }
+    void applyDiscordCandidates();
+  };
+
+  const discordPrimaryDisabled = discordApplying
+    || discordScanning
+    || discordLoadingChannels
+    || (!discordScanResult ? !discordChannelId : discordScanResult.summary.fitsFound === 0);
+  const discordPrimaryLabel = discordApplying
+    ? 'Importing...'
+    : discordScanning
+      ? 'Scanning...'
+      : !discordScanResult
+        ? 'Scan selected'
+        : discordScanResult.summary.fitsFound === 0
+          ? 'No fits found'
+          : 'Import selected';
+
   async function refreshQuote(fit: FitDraft | SavedFitDetail = active!) {
     if (!fit) return;
     setQuoteLoading(true);
@@ -724,7 +742,7 @@ function SavedFitsView({
       )}
 
       {importOpen && (
-        <Modal title="Import Fit" onClose={() => setImportOpen(false)}>
+        <Modal title="Import Fit" className="fits-import-modal" bodyClassName="fits-import-modal-body" onClose={() => setImportOpen(false)}>
           <div className="fits-import-tabs">
             <button type="button" className={importMode === 'eft' ? 'active' : ''} onClick={() => setImportMode('eft')} disabled={importBusy || pyfaBusy}>Paste EFT</button>
             <button type="button" className={importMode === 'pyfa-image' ? 'active' : ''} onClick={() => setImportMode('pyfa-image')} disabled={importBusy || pyfaBusy}>pyfa Screenshot</button>
@@ -732,7 +750,7 @@ function SavedFitsView({
           </div>
 
           {importMode === 'eft' && (
-            <>
+            <div className="fits-import-pane">
               {pyfaNotice && <div className="fits-import-note">{pyfaNotice}</div>}
               {pyfaWarnings.length > 0 && (
                 <div className="fits-import-warnings">
@@ -745,7 +763,7 @@ function SavedFitsView({
                 onChange={e => { setImportText(e.target.value); setPyfaNotice(null); }}
                 spellCheck={false}
               />
-            </>
+            </div>
           )}
 
           {importMode === 'pyfa-image' && (
@@ -772,7 +790,7 @@ function SavedFitsView({
               <div className="fits-discord-controls">
                 <select
                   value={discordChannelId}
-                  onChange={event => { setDiscordChannelId(event.target.value); setDiscordScanResult(null); }}
+                  onChange={event => { setDiscordChannelId(event.target.value); setDiscordScanResult(null); setDiscordActions({}); }}
                   disabled={discordLoadingChannels || discordScanning || discordApplying}
                 >
                   <option value="">
@@ -857,8 +875,8 @@ function SavedFitsView({
                 {pyfaBusy ? 'Extracting...' : 'Extract'}
               </button>
             ) : importMode === 'discord' ? (
-              <button type="button" className="primary" onClick={applyDiscordCandidates} disabled={discordApplying || !discordScanResult || discordScanResult.summary.fitsFound === 0}>
-                {discordApplying ? 'Importing...' : 'Import selected'}
+              <button type="button" className="primary" onClick={handleDiscordPrimary} disabled={discordPrimaryDisabled}>
+                {discordPrimaryLabel}
               </button>
             ) : (
               <button type="button" className="primary" onClick={importFit} disabled={importBusy}>

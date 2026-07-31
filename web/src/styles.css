@@ -2242,6 +2242,10 @@ body {
   font: inherit;
   cursor: pointer;
 }
+.fits-modal-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .fits-hubs button {
   flex: 1;
   color: var(--dim);
@@ -2738,6 +2742,15 @@ body {
   flex-direction: column;
   gap: 10px;
 }
+.fits-import-modal {
+  width: min(960px, calc(100vw - 24px));
+  height: min(820px, calc(100vh - 40px));
+  max-height: calc(100vh - 40px);
+}
+.fits-import-modal-body {
+  min-height: 0;
+  overflow: hidden;
+}
 .fits-price-modal {
   box-sizing: border-box;
   width: min(1320px, calc(100vw - 24px));
@@ -2759,10 +2772,18 @@ body {
 }
 .fits-import-text {
   flex: 1 1 auto;
-  min-height: 220px;
+  min-height: 0;
   resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
+}
+.fits-import-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
 }
 .fits-import-tabs {
   flex: 0 0 auto;
@@ -2789,7 +2810,8 @@ body {
   font-weight: 700;
 }
 .fits-import-drop {
-  min-height: 260px;
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   place-items: center;
   gap: 10px;
@@ -2842,7 +2864,8 @@ body {
   background: #1d1a12;
 }
 .fits-discord-import {
-  min-height: 260px;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;

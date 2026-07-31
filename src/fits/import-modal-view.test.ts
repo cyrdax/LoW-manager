@@ -13,13 +13,21 @@ test('fit import preview remains clickable and gives feedback while previewing',
   assert.match(fitsView, /setImportBusy\(false\)/);
   assert.match(fitsView, /catch \(err\)/);
   assert.match(fitsView, /setImportError\(err instanceof Error \? err\.message : 'Failed to preview fit\.'\)/);
+  assert.match(fitsView, /const \[importText, setImportText\] = useState\(''\)/);
+  assert.match(fitsView, /if \(!importOpen\) return;\s+setImportText\(''\)/);
+  assert.match(fitsView, /className="fits-import-modal" bodyClassName="fits-import-modal-body"/);
   assert.match(fitsView, /<button type="button" onClick=\{\(\) => setImportOpen\(false\)\} disabled=\{importBusy \|\| pyfaBusy \|\| discordScanning \|\| discordApplying\}>Cancel<\/button>/);
   assert.match(fitsView, /<button type="button" className="primary" onClick=\{importFit\} disabled=\{importBusy\}>/);
   assert.match(fitsView, /importBusy \? 'Previewing\.\.\.' : 'Preview'/);
 
   assert.match(styles, /\.fits-modal \{[\s\S]*?overflow: hidden;/);
+  assert.match(styles, /\.fits-import-modal \{[\s\S]*?height: min\(820px, calc\(100vh - 40px\)\);/);
+  assert.match(styles, /\.fits-import-modal-body \{[\s\S]*?overflow: hidden;/);
+  assert.match(styles, /\.fits-import-pane \{[\s\S]*?flex: 1 1 auto;/);
   assert.match(styles, /\.fits-import-text \{[\s\S]*?flex: 1 1 auto;/);
-  assert.match(styles, /\.fits-import-text \{[\s\S]*?min-height: 220px;/);
+  assert.match(styles, /\.fits-import-text \{[\s\S]*?min-height: 0;/);
+  assert.match(styles, /\.fits-import-drop \{[\s\S]*?flex: 1 1 auto;/);
+  assert.match(styles, /\.fits-discord-import \{[\s\S]*?flex: 1 1 auto;/);
   assert.match(styles, /\.fits-modal-actions \{[\s\S]*?flex: 0 0 auto;/);
 });
 
@@ -61,6 +69,9 @@ test('fit import modal supports discord channel scan review and import', () => {
   assert.match(fitsView, /applyDiscordImport/);
   assert.match(fitsView, /discordChannels\.map/);
   assert.match(fitsView, /discordScanResult\.summary\.imagesSkipped/);
+  assert.match(fitsView, /handleDiscordPrimary/);
+  assert.match(fitsView, /Scan selected/);
+  assert.match(fitsView, /No fits found/);
   assert.match(fitsView, /Import selected/);
   assert.match(fitsView, /discordActionKey/);
   assert.match(fitsView, /Discord source/);
@@ -69,6 +80,7 @@ test('fit import modal supports discord channel scan review and import', () => {
   assert.match(styles, /\.fits-discord-summary/);
   assert.match(styles, /\.fits-discord-group/);
   assert.match(styles, /\.fits-discord-fit/);
+  assert.match(styles, /\.fits-modal-actions button:disabled/);
 });
 
 test('fit import modal accepts pyfa screenshots from paste and clipboard button', () => {
