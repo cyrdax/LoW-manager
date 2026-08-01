@@ -11,6 +11,7 @@ import { buildEsiFittingPayload, createCharacterFitting, type EsiFittingCreatePa
 import { quoteFit, type FitQuote } from '../fits/pricing.ts';
 import {
   createDefaultPyfaScreenshotExtractor,
+  PYFA_IMAGE_IMPORT_REQUEST_BODY_LIMIT_BYTES,
   PYFA_IMAGE_IMPORT_NOT_CONFIGURED,
   renderPyfaExtractionToEft,
   validatePyfaImageInput,
@@ -52,7 +53,7 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
     return shipSearch(q, 20).map(ship => ({ id: ship.typeId, name: ship.name, groupName: ship.groupName }));
   });
 
-  app.post('/api/fits/import-pyfa-image', async (req, reply) => {
+  app.post('/api/fits/import-pyfa-image', { bodyLimit: PYFA_IMAGE_IMPORT_REQUEST_BODY_LIMIT_BYTES }, async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
 

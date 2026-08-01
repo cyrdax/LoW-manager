@@ -419,7 +419,10 @@ function SavedFitsView({
       setPyfaNotice('Generated from screenshot. Review before preview.');
       setImportMode('eft');
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Failed to extract pyfa screenshot.');
+      const message = err instanceof Error ? err.message : 'Failed to extract pyfa screenshot.';
+      setImportError(message === 'Failed to fetch'
+        ? 'Failed to upload pyfa screenshot. Try a smaller crop, or choose the saved image file instead.'
+        : message);
     } finally {
       setPyfaBusy(false);
     }

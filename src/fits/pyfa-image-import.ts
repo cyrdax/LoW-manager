@@ -1,5 +1,6 @@
 export const PYFA_IMAGE_IMPORT_NOT_CONFIGURED = 'pyfa_image_import_not_configured';
 export const DEFAULT_PYFA_IMAGE_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
+export const PYFA_IMAGE_IMPORT_REQUEST_BODY_LIMIT_BYTES = 12 * 1024 * 1024;
 
 const SUPPORTED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
 const SECTION_ORDER: PyfaScreenshotSection['role'][] = ['high', 'mid', 'low', 'rig', 'service', 'subsystem', 'extras'];

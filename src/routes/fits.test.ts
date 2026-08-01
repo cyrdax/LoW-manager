@@ -7,7 +7,11 @@ import { registerFitRoutes } from './fits.ts';
 import type { FitDraft } from '../fits/types.ts';
 import type { FitQuote } from '../fits/pricing.ts';
 import type { EsiFittingCreatePayload } from '../fits/esi.ts';
-import { PYFA_IMAGE_IMPORT_NOT_CONFIGURED, type PyfaScreenshotExtractor } from '../fits/pyfa-image-import.ts';
+import {
+  DEFAULT_PYFA_IMAGE_IMPORT_MAX_BYTES,
+  PYFA_IMAGE_IMPORT_NOT_CONFIGURED,
+  type PyfaScreenshotExtractor,
+} from '../fits/pyfa-image-import.ts';
 
 const naglfar = `[Naglfar, Route Test]
 Republic Fleet Gyrostabilizer
@@ -159,6 +163,67 @@ test('pyfa image import route returns generated EFT text and warnings', async ()
     ].join('\n'),
     warnings: ['Visible additions may be incomplete.'],
   });
+});
+
+test('pyfa image import route accepts clipboard screenshots above the default Fastify body limit', async () => {
+  const app = Fastify();
+  let calls = 0;
+  registerFitRoutes(app, {
+    store: testStore(),
+    currentUser: async () => userA,
+    pyfaScreenshotExtractor: {
+      extract: async () => {
+        calls++;
+        return {
+          shipName: 'Paladin',
+          fitName: 'Clipboard',
+          warnings: [],
+          sections: [{ role: 'high', items: [{ name: 'Mega Pulse Laser II' }] }],
+        };
+      },
+    },
+  });
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/fits/import-pyfa-image',
+    payload: {
+      imageBase64: Buffer.alloc(1_100_000).toString('base64'),
+      mimeType: 'image/png',
+    },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls, 1);
+  assert.match(JSON.parse(res.body).rawEft, /\[Paladin, Clipboard\]/);
+});
+
+test('pyfa image import route still rejects decoded images above the pyfa limit', async () => {
+  const app = Fastify();
+  let calls = 0;
+  registerFitRoutes(app, {
+    store: testStore(),
+    currentUser: async () => userA,
+    pyfaScreenshotExtractor: {
+      extract: async () => {
+        calls++;
+        throw new Error('should not extract oversized images');
+      },
+    },
+  });
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/fits/import-pyfa-image',
+    payload: {
+      imageBase64: Buffer.alloc(DEFAULT_PYFA_IMAGE_IMPORT_MAX_BYTES + 1).toString('base64'),
+      mimeType: 'image/png',
+    },
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.match(JSON.parse(res.body).error, /image is too large/i);
+  assert.equal(calls, 0);
 });
 
 test('pyfa image import route reports provider configuration errors clearly', async () => {
