@@ -121,6 +121,31 @@ test('location-name searches retain category-matching descendants and recompute 
   assert.equal(filtered.locations[0].assets[0].children[0].name, 'Rifter');
 });
 
+test('system-name searches retain matching asset locations', () => {
+  const snapshot = buildAssetTree({
+    characterId: 1,
+    characterName: 'Structure Pilot',
+    status: 'Ready',
+    error: null,
+    lastRefreshedAt: 1,
+    locations: [
+      { locationId: 1024, name: 'Freeport Alpha', systemName: 'Auviken', type: 'structure', status: 'resolved' },
+      { locationId: 2048, name: 'Freeport Beta', systemName: 'Jita', type: 'structure', status: 'resolved' },
+    ],
+    assets: [
+      { itemId: 1, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 1024, locationFlag: 'Hangar', locationType: 'station', unitValue: 1_000, pricingStatus: 'priced' },
+      { itemId: 2, typeId: 34, name: 'Tritanium', groupId: 18, groupName: 'Mineral', categoryId: 4, categoryName: 'Material', quantity: 10, singleton: false, locationId: 2048, locationFlag: 'Hangar', locationType: 'station', unitValue: 5, pricingStatus: 'priced' },
+    ],
+  });
+
+  const [filtered] = filterAssetSnapshots([snapshot], 'auvik', 'all');
+
+  assert.equal(filtered.locations.length, 1);
+  assert.equal(filtered.locations[0].name, 'Freeport Alpha');
+  assert.equal(filtered.locations[0].systemName, 'Auviken');
+  assert.equal(filtered.locations[0].assets[0].name, 'Rifter');
+});
+
 test('asset sort helper sorts pilots locations and nested assets without mutating input', () => {
   const alpha = snapshotWithAssets(1, 'Alpha Pilot', [
     { itemId: 1, typeId: 100, name: 'Zeta Container', groupId: 1, groupName: 'Container', categoryId: 1, categoryName: 'Other', quantity: 1, singleton: true, locationId: 60003760, locationFlag: 'Hangar', locationType: 'station', unitValue: 1, pricingStatus: 'priced' },
@@ -165,6 +190,8 @@ test('assets api helpers and component expose dashboard refresh search and expan
 
   assert.match(view, /Refresh All/);
   assert.match(view, /Search assets/);
+  assert.match(view, /locationMeta/);
+  assert.match(view, /systemName/);
   assert.match(view, /sortAssetSnapshots\(filtered, sort\)/);
   assert.match(view, /ASSET_SORT_COLUMNS\.map/);
   assert.match(view, /aria-sort=\{sort\.column === column/);

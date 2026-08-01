@@ -1,7 +1,12 @@
 import { esiGet, esiGetPublic, esiPostPublic } from './client.ts';
 import { createUniverseCacheStore, type CorporationInfo } from './universe-cache-store.ts';
 
-const privateStructureNames = new Map<string, string>();
+export interface ResolvedStructureInfo {
+  name: string;
+  systemId: number | null;
+}
+
+const privateStructureNames = new Map<string, ResolvedStructureInfo>();
 
 function cache() {
   return createUniverseCacheStore();
@@ -103,11 +108,46 @@ export async function getPlanetPublic(id: number): Promise<PlanetPublic> {
 }
 
 export async function resolveStation(id: number): Promise<string> {
+  return (await getStationInfo(id)).name;
+}
+
+export interface StationInfoPublic {
+  name: string;
+  system_id?: number;
+}
+
+export async function getStationInfo(id: number): Promise<StationInfoPublic> {
   const hit = await cached('station', id);
+  const { data } = await esiGetPublic<StationInfoPublic>(`/universe/stations/${id}/`);
+  if (!hit) await store('station', id, data.name);
+  return data;
+}
+
+interface StructureInfoPrivate {
+  name: string;
+  solar_system_id?: number;
+}
+
+async function resolveStructureInfo(id: number, characterId: number): Promise<ResolvedStructureInfo | null> {
+  const cacheKey = `${characterId}:${id}`;
+  const hit = privateStructureNames.get(cacheKey);
   if (hit) return hit;
-  const { data } = await esiGetPublic<{ name: string }>(`/universe/stations/${id}/`);
-  await store('station', id, data.name);
-  return data.name;
+  try {
+    const { data } = await esiGet<StructureInfoPrivate>(`/universe/structures/${id}/`, characterId);
+    if (data?.name) {
+      const info = { name: data.name, systemId: data.solar_system_id ?? null };
+      privateStructureNames.set(cacheKey, info);
+      return info;
+    }
+    return null;
+  } catch {
+    // 401 (token predates scope), 403 (no docking access), or transient ESI error — fall back.
+    return null;
+  }
+}
+
+export async function resolveStructureLocation(id: number, characterId: number): Promise<ResolvedStructureInfo | null> {
+  return resolveStructureInfo(id, characterId);
 }
 
 // Structures (player-owned citadels) are private: the name only resolves for a character
@@ -117,20 +157,7 @@ export async function resolveStation(id: number): Promise<string> {
 // Returns null when the structure can't be resolved (no scope, no access, or transient error) so
 // the caller can fall back to the system/wormhole label it already has.
 export async function resolveStructure(id: number, characterId: number): Promise<string | null> {
-  const cacheKey = `${characterId}:${id}`;
-  const hit = privateStructureNames.get(cacheKey);
-  if (hit) return hit;
-  try {
-    const { data } = await esiGet<{ name: string }>(`/universe/structures/${id}/`, characterId);
-    if (data?.name) {
-      privateStructureNames.set(cacheKey, data.name);
-      return data.name;
-    }
-    return null;
-  } catch {
-    // 401 (token predates scope), 403 (no docking access), or transient ESI error — fall back.
-    return null;
-  }
+  return (await resolveStructureInfo(id, characterId))?.name ?? null;
 }
 
 export interface CharacterPublic {

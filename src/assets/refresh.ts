@@ -1,7 +1,7 @@
 import type { CharacterRow } from '../types.ts';
 import type { AsyncCharacterStore } from '../characters/store.ts';
 import { getCharacterAssets, type EsiCharacterAsset } from '../esi/assets.ts';
-import { resolveStation, resolveStructure, resolveSystem } from '../esi/universe.ts';
+import { getStationInfo, resolveStructureLocation, resolveSystem } from '../esi/universe.ts';
 import { resolveItemByTypeId } from '../fits/metadata.ts';
 import { quoteResolvedMarketItems } from '../market/pricing.ts';
 import { buildAssetTree } from './tree.ts';
@@ -162,15 +162,31 @@ export async function resolveAssetLocation(
   structureCharacterIds: number[] = [characterId],
 ): Promise<RawAssetLocationInput> {
   if (locationType === 'station') {
-    return { locationId, name: await resolveStation(locationId), type: 'station', status: 'resolved' };
+    const station = await getStationInfo(locationId);
+    return {
+      locationId,
+      name: station.name,
+      systemName: station.system_id ? await safeResolveSystem(station.system_id) : systemNameFromLocationName(station.name),
+      type: 'station',
+      status: 'resolved',
+    };
   }
   if (locationType === 'solar_system') {
-    return { locationId, name: await resolveSystem(locationId), type: 'solar_system', status: 'resolved' };
+    const systemName = await resolveSystem(locationId);
+    return { locationId, name: systemName, systemName, type: 'solar_system', status: 'resolved' };
   }
   if (locationType === 'other') {
     for (const resolverCharacterId of uniqueCharacterIds([characterId, ...structureCharacterIds])) {
-      const name = await resolveStructure(locationId, resolverCharacterId);
-      if (name) return { locationId, name, type: 'structure', status: 'resolved' };
+      const structure = await resolveStructureLocation(locationId, resolverCharacterId);
+      if (structure) {
+        return {
+          locationId,
+          name: structure.name,
+          systemName: structure.systemId ? await safeResolveSystem(structure.systemId) : null,
+          type: 'structure',
+          status: 'resolved',
+        };
+      }
     }
     return { locationId, name: 'Unknown structure', type: 'structure', status: 'unresolved' };
   }
@@ -290,4 +306,19 @@ function addSummary(target: AssetValueSummary, source: AssetValueSummary): void 
 
 function uniqueCharacterIds(characterIds: number[]): number[] {
   return [...new Set(characterIds.filter(id => Number.isSafeInteger(id) && id > 0))];
+}
+
+async function safeResolveSystem(systemId: number): Promise<string | null> {
+  try {
+    return await resolveSystem(systemId);
+  } catch {
+    return null;
+  }
+}
+
+function systemNameFromLocationName(name: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const match = /^(.+?)\s+[IVXLCDM]+(?:\s|-)/.exec(trimmed);
+  return match?.[1] ?? null;
 }

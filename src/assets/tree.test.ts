@@ -4,7 +4,7 @@ import { aggregateAssetSnapshot, buildAssetTree } from './tree.ts';
 import type { RawAssetInput, RawAssetLocationInput } from './types.ts';
 
 const locations: RawAssetLocationInput[] = [
-  { locationId: 60003760, name: 'Jita IV - Moon 4', type: 'station', status: 'resolved' },
+  { locationId: 60003760, name: 'Jita IV - Moon 4', systemName: 'Jita', type: 'station', status: 'resolved' },
 ];
 
 test('buildAssetTree nests contained assets and rolls values up without duplicating stack rows', () => {
@@ -56,6 +56,7 @@ test('buildAssetTree nests contained assets and rolls values up without duplicat
   assert.equal(tree.pilot.totalValue, 1_000_500);
   assert.equal(tree.pilot.stackCount, 2);
   assert.equal(tree.locations[0].totalValue, 1_000_500);
+  assert.equal(tree.locations[0].systemName, 'Jita');
   assert.equal(tree.locations[0].assets[0].children[0].name, 'Tritanium');
   assert.equal(tree.categories.find(c => c.key === 'frigates')?.totalValue, 1_000_000);
   assert.equal(tree.categories.find(c => c.key === 'ships')?.totalValue, 1_000_000);

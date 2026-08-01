@@ -259,12 +259,17 @@ function LocationRow(props: {
 }) {
   const key = `${props.pilotId}:${props.location.locationId}`;
   const open = props.expandedLocations.has(key);
+  const locationMeta = props.location.status === 'unresolved'
+    ? `Unresolved: ${props.location.rawLocationId}`
+    : props.location.systemName && props.location.systemName !== props.location.name
+      ? `${props.location.systemName} · ${props.location.type}`
+      : props.location.type;
   return (
     <div className="asset-location">
       <button className="asset-row asset-location-row" onClick={() => props.setExpandedLocations(current => toggled(current, key))} aria-expanded={open}>
         <span className="asset-disclosure">{open ? '▾' : '▸'}</span>
         <strong>{props.location.name}</strong>
-        <span>{props.location.status === 'unresolved' ? `Unresolved: ${props.location.rawLocationId}` : props.location.type}</span>
+        <span>{locationMeta}</span>
         <span>{formatIsk(props.location.totalValue)}</span>
         <span>{props.location.stackCount} stacks</span>
       </button>

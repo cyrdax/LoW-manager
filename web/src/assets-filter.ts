@@ -37,7 +37,7 @@ function filterSnapshot(snapshot: AssetSnapshot, query: string, category: string
 }
 
 function filterLocation(location: AssetLocationNode, query: string, category: string, ancestorMatches: boolean): AssetLocationNode | null {
-  const locationMatches = ancestorMatches || matches(location.name, query);
+  const locationMatches = ancestorMatches || matches(location.name, query) || matches(location.systemName ?? '', query);
   const assets = location.assets
     .map(asset => filterAsset(asset, query, category, locationMatches))
     .filter((asset): asset is AssetTreeNode => asset != null);
