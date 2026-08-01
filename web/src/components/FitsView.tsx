@@ -458,7 +458,12 @@ function SavedFitsView({
     setDiscordActions({});
     setImportError(null);
     try {
-      const res = await scanDiscordImport({ channelId: channel.id, channelLabel: channel.label, visibility });
+      const res = await scanDiscordImport({
+        channelId: channel.id,
+        channelLabel: channel.label,
+        channelType: channel.type,
+        visibility,
+      });
       if ('error' in res) { setImportError(res.error); return; }
       setDiscordScanResult(res);
       const nextActions: Record<string, DiscordCandidateAction> = {};

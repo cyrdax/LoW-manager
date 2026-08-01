@@ -110,6 +110,7 @@ export interface DiscordImportScanResult {
 export interface DiscordImportScanInput {
   channelId: string;
   channelLabel: string;
+  channelType?: DiscordImportChannel['type'];
   visibility: LibraryVisibility;
   ownerUserId: string;
 }
@@ -201,7 +202,9 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
     },
 
     async scan(input) {
-      await tryJoinThread(deps.api, input.channelId);
+      const joinStatus = input.channelType === 'thread'
+        ? await tryJoinThread(deps.api, input.channelId)
+        : null;
       const messages = await deps.api.fetchMessages(input.channelId, DISCORD_MESSAGE_LIMIT);
       const existing = await visibleFits(deps.fitStore, input.visibility, input.ownerUserId);
       const groups: DiscordImportMessageGroup[] = [];
@@ -211,7 +214,7 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
       let imagesSkipped = 0;
 
       if (messages.length === 0) {
-        scanWarnings.push('Discord returned 0 messages. Make sure the bot has View Channel and Read Message History on this forum/thread, and Message Content Intent is enabled for EFT text imports.');
+        scanWarnings.push(zeroMessageWarning(input.channelType, joinStatus));
       }
 
       for (const message of messages) {
@@ -376,13 +379,35 @@ export function createDiscordApiClient(input: { botToken?: string; guildId?: str
   };
 }
 
-async function tryJoinThread(api: DiscordApiClient, channelId: string): Promise<void> {
+type ThreadJoinStatus = 'joined' | { error: string };
+
+async function tryJoinThread(api: DiscordApiClient, channelId: string): Promise<ThreadJoinStatus> {
+  if (!api.joinThread) return { error: 'Discord thread join is not configured.' };
   try {
-    await api.joinThread?.(channelId);
-  } catch {
-    // Normal text channels cannot be joined like threads, and some archived
-    // threads cannot be joined. Fetching messages still gives the real result.
+    await api.joinThread(channelId);
+    return 'joined';
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+function zeroMessageWarning(channelType: DiscordImportChannel['type'] | undefined, joinStatus: ThreadJoinStatus | null): string {
+  const parts = [
+    'Discord returned 0 messages.',
+    'Confirm the selected entry is the actual forum post/thread containing fits, not only the parent forum channel.',
+    'The bot needs View Channel and Read Message History on that exact thread.',
+  ];
+  if (channelType === 'thread') {
+    if (joinStatus === 'joined') {
+      parts.push('The bot successfully joined the selected thread before scanning.');
+    } else if (joinStatus) {
+      parts.push(`The bot could not join the selected thread before scanning: ${joinStatus.error}. It may need Send Messages in Threads or explicit access to the thread.`);
+    } else {
+      parts.push('The selected entry is a thread, but no thread join was attempted.');
+    }
+  }
+  parts.push('Message Content Intent is still required for EFT text imports once messages are returned.');
+  return parts.join(' ');
 }
 
 async function listArchivedThreads(api: DiscordApiClient, channels: DiscordChannel[]): Promise<DiscordChannel[]> {

@@ -1394,6 +1394,7 @@ export async function fetchDiscordImportChannels(): Promise<DiscordImportChannel
 export async function scanDiscordImport(input: {
   channelId: string;
   channelLabel: string;
+  channelType: DiscordImportChannel['type'];
   visibility: LibraryVisibility;
 }): Promise<DiscordImportScanResult | { error: string }> {
   return jsonOrError(await fetch('/api/discord/import/scan', {

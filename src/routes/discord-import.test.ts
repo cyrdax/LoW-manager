@@ -85,11 +85,11 @@ test('POST /api/discord/import/scan delegates visibility and user context', asyn
   const res = await app.inject({
     method: 'POST',
     url: '/api/discord/import/scan',
-    payload: { channelId: 'chan-1', channelLabel: 'fits', visibility: 'public' },
+    payload: { channelId: 'chan-1', channelLabel: 'fits', channelType: 'thread', visibility: 'public' },
   });
 
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(seen, { channelId: 'chan-1', channelLabel: 'fits', visibility: 'public', ownerUserId: 'user-a' });
+  assert.deepEqual(seen, { channelId: 'chan-1', channelLabel: 'fits', channelType: 'thread', visibility: 'public', ownerUserId: 'user-a' });
   assert.equal(JSON.parse(res.body).summary.fitsFound, 1);
 });
 

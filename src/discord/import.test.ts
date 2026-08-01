@@ -162,6 +162,7 @@ test('discord import scan joins selected threads before fetching messages', asyn
   const result = await service.scan({
     channelId: 'thread-1',
     channelLabel: 'eve-fitting-v2 / Paladins',
+    channelType: 'thread',
     visibility: 'private',
     ownerUserId: 'user-a',
   });
@@ -193,6 +194,30 @@ test('discord import scan warns when Discord returns no messages', async () => {
   assert.equal(result.summary.fitsFound, 0);
   assert.match(result.warnings[0], /Read Message History/);
   assert.match(result.warnings[0], /Message Content Intent/);
+});
+
+test('discord import scan reports thread join failures when Discord returns no messages', async () => {
+  const service = createDiscordImportService({
+    api: api({
+      joinThread: async () => { throw new Error('Discord thread join failed with 403'); },
+      fetchMessages: async () => [],
+    }),
+    fitStore: stores(),
+    buildDraft: buildFitDraft,
+  });
+
+  const result = await service.scan({
+    channelId: 'thread-1',
+    channelLabel: 'eve-fitting-v2 / Empty',
+    channelType: 'thread',
+    visibility: 'private',
+    ownerUserId: 'user-a',
+  });
+
+  assert.equal(result.scannedMessages, 0);
+  assert.match(result.warnings[0], /could not join/i);
+  assert.match(result.warnings[0], /403/);
+  assert.match(result.warnings[0], /Send Messages in Threads/);
 });
 
 test('discord import scan caps pyfa screenshot OCR at 10 images and reports skipped images', async () => {
