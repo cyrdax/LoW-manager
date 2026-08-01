@@ -24,6 +24,7 @@ import {
 interface Props { chars: CharacterStatus[] }
 
 const MASTERY_NUMERALS = ['I', 'II', 'III', 'IV', 'V'];
+type PilotSortMode = 'alpha' | 'queue';
 
 function formatSp(sp: number): string {
   if (sp >= 1e9) return `${(sp / 1e9).toFixed(2)} B`;
@@ -77,14 +78,40 @@ export function formatPilotSkillOptionLabel(character: CharacterStatus, nowMs = 
   return `${character.name}${corp} - ${formatSkillQueueRemainingLabel(character.trainingQueueEnd, nowMs)}`;
 }
 
+function queueSortValue(queueEnd: string | null, nowMs: number): number {
+  if (queueEnd === null) return Number.POSITIVE_INFINITY;
+  if (queueEnd === '') return 0;
+  const parsed = Date.parse(queueEnd);
+  if (!Number.isFinite(parsed)) return Number.POSITIVE_INFINITY;
+  return Math.max(0, parsed - nowMs);
+}
+
+export function sortSkillPilots(chars: CharacterStatus[], mode: PilotSortMode, nowMs = Date.now()): CharacterStatus[] {
+  const byName = (a: CharacterStatus, b: CharacterStatus) =>
+    a.name.localeCompare(b.name) || a.characterId - b.characterId;
+  const sorted = [...chars];
+  if (mode === 'queue') {
+    return sorted.sort((a, b) =>
+      queueSortValue(a.trainingQueueEnd, nowMs) - queueSortValue(b.trainingQueueEnd, nowMs) || byName(a, b),
+    );
+  }
+  return sorted.sort(byName);
+}
+
 export function SkillsView({ chars }: Props) {
   const [characterId, setCharacterId] = useState<number | null>(() => {
     const stored = Number(localStorage.getItem('efd.skills.charId'));
     return Number.isFinite(stored) && stored > 0 ? stored : null;
   });
+  const [pilotSort, setPilotSort] = useState<PilotSortMode>(() =>
+    localStorage.getItem('efd.skills.pilotSort') === 'queue' ? 'queue' : 'alpha',
+  );
   useEffect(() => {
     if (characterId != null) localStorage.setItem('efd.skills.charId', String(characterId));
   }, [characterId]);
+  useEffect(() => {
+    localStorage.setItem('efd.skills.pilotSort', pilotSort);
+  }, [pilotSort]);
 
   // Default to first authed character once chars load (if nothing saved).
   useEffect(() => {
@@ -139,6 +166,10 @@ export function SkillsView({ chars }: Props) {
   const character = useMemo(
     () => chars.find(c => c.characterId === characterId) ?? null,
     [chars, characterId],
+  );
+  const sortedChars = useMemo(
+    () => sortSkillPilots(chars, pilotSort),
+    [chars, pilotSort],
   );
 
   const reloadOverview = useCallback(async () => {
@@ -205,11 +236,22 @@ export function SkillsView({ chars }: Props) {
             onChange={e => setCharacterId(Number(e.target.value) || null)}
           >
             <option value="">Pick a pilot…</option>
-            {chars.map(c => (
+            {sortedChars.map(c => (
               <option key={c.characterId} value={c.characterId}>
                 {formatPilotSkillOptionLabel(c)}
               </option>
             ))}
+          </select>
+        </div>
+
+        <div className="sk-control sk-pilot-sort">
+          <label>Sort pilots</label>
+          <select
+            value={pilotSort}
+            onChange={e => setPilotSort(e.target.value === 'queue' ? 'queue' : 'alpha')}
+          >
+            <option value="alpha">Alphabetical</option>
+            <option value="queue">Shortest queue</option>
           </select>
         </div>
 

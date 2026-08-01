@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   formatPilotSkillOptionLabel,
   formatSkillQueueRemainingLabel,
+  sortSkillPilots,
 } from '../web/src/components/SkillsView.tsx';
 import type { CharacterStatus } from '../web/src/api.ts';
 
@@ -69,4 +70,18 @@ test('skills pilot option label distinguishes empty and unknown queues', () => {
     formatPilotSkillOptionLabel(character({ corporationTicker: null, trainingQueueEnd: '' }), now),
     'Wayne Kerr - queue empty',
   );
+});
+
+test('skills pilot dropdown can sort alphabetically or by shortest queue', () => {
+  const now = Date.parse('2026-08-01T00:00:00Z');
+  const chars = [
+    character({ characterId: 1, name: 'Charlie', trainingQueueEnd: null }),
+    character({ characterId: 2, name: 'Bravo', trainingQueueEnd: '2026-08-04T00:00:00Z' }),
+    character({ characterId: 3, name: 'Alpha', trainingQueueEnd: '' }),
+    character({ characterId: 4, name: 'Delta', trainingQueueEnd: '2026-08-02T00:00:00Z' }),
+  ];
+
+  assert.deepEqual(sortSkillPilots(chars, 'alpha', now).map(c => c.name), ['Alpha', 'Bravo', 'Charlie', 'Delta']);
+  assert.deepEqual(sortSkillPilots(chars, 'queue', now).map(c => c.name), ['Alpha', 'Delta', 'Bravo', 'Charlie']);
+  assert.deepEqual(chars.map(c => c.name), ['Charlie', 'Bravo', 'Alpha', 'Delta']);
 });

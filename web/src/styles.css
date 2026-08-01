@@ -1165,7 +1165,7 @@ body {
 .skills-view { padding: 12px 16px; gap: 12px; }
 .skills-controls {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(220px, 320px) auto 1fr minmax(240px, 360px);
+  grid-template-columns: minmax(220px, 320px) minmax(140px, 180px) minmax(220px, 320px) minmax(180px, 1fr) auto 1fr minmax(240px, 360px);
   gap: 12px;
   align-items: end;
   background: var(--panel);
@@ -1174,7 +1174,7 @@ body {
   padding: 12px 14px;
 }
 .skills-controls.sk-overview-controls {
-  grid-template-columns: minmax(180px, 240px) auto 1fr auto;
+  grid-template-columns: minmax(220px, 320px) minmax(140px, 180px) auto 1fr auto;
 }
 .sk-spacer { min-width: 0; }
 @media (max-width: 1100px) {
