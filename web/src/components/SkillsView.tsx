@@ -56,13 +56,25 @@ function formatDateTime(value: string | null): string {
   });
 }
 
-function secondsUntil(value: string | null): number {
+function secondsUntil(value: string | null, nowMs = Date.now()): number {
   if (!value) return 0;
-  return Math.max(0, Math.floor((Date.parse(value) - Date.now()) / 1000));
+  return Math.max(0, Math.floor((Date.parse(value) - nowMs) / 1000));
 }
 
 function levelLabel(level: number): string {
   return MASTERY_NUMERALS[level - 1] ?? String(level);
+}
+
+export function formatSkillQueueRemainingLabel(queueEnd: string | null, nowMs = Date.now()): string {
+  if (queueEnd === null) return 'queue unknown';
+  if (queueEnd === '') return 'queue empty';
+  const remaining = secondsUntil(queueEnd, nowMs);
+  return remaining > 0 ? `${formatDuration(remaining)} left` : 'queue ended';
+}
+
+export function formatPilotSkillOptionLabel(character: CharacterStatus, nowMs = Date.now()): string {
+  const corp = character.corporationTicker ? ` [${character.corporationTicker}]` : '';
+  return `${character.name}${corp} - ${formatSkillQueueRemainingLabel(character.trainingQueueEnd, nowMs)}`;
 }
 
 export function SkillsView({ chars }: Props) {
@@ -195,7 +207,7 @@ export function SkillsView({ chars }: Props) {
             <option value="">Pick a pilot…</option>
             {chars.map(c => (
               <option key={c.characterId} value={c.characterId}>
-                {c.name}{c.corporationTicker ? ` [${c.corporationTicker}]` : ''}
+                {formatPilotSkillOptionLabel(c)}
               </option>
             ))}
           </select>
