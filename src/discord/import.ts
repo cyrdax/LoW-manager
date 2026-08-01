@@ -45,6 +45,7 @@ export interface DiscordApiClient {
   listGuildChannels(): Promise<DiscordChannel[]>;
   listActiveThreads(): Promise<DiscordChannel[]>;
   listPublicArchivedThreads(channelId: string): Promise<DiscordChannel[]>;
+  joinThread?(channelId: string): Promise<void>;
   fetchMessages(channelId: string, limit: number): Promise<DiscordMessage[]>;
   fetchAttachmentBase64(attachment: DiscordAttachment): Promise<string>;
 }
@@ -96,6 +97,7 @@ export interface DiscordImportScanResult {
   channelId: string;
   channelLabel: string;
   scannedMessages: number;
+  warnings: string[];
   summary: {
     fitsFound: number;
     imagesFound: number;
@@ -199,12 +201,18 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
     },
 
     async scan(input) {
+      await tryJoinThread(deps.api, input.channelId);
       const messages = await deps.api.fetchMessages(input.channelId, DISCORD_MESSAGE_LIMIT);
       const existing = await visibleFits(deps.fitStore, input.visibility, input.ownerUserId);
       const groups: DiscordImportMessageGroup[] = [];
+      const scanWarnings: string[] = [];
       let imagesFound = 0;
       let imagesScanned = 0;
       let imagesSkipped = 0;
+
+      if (messages.length === 0) {
+        scanWarnings.push('Discord returned 0 messages. Make sure the bot has View Channel and Read Message History on this forum/thread, and Message Content Intent is enabled for EFT text imports.');
+      }
 
       for (const message of messages) {
         const source = sourceForMessage(message, input.channelLabel);
@@ -273,6 +281,7 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
         channelId: input.channelId,
         channelLabel: input.channelLabel,
         scannedMessages: messages.length,
+        warnings: scanWarnings,
         summary: {
           fitsFound: groups.reduce((sum, group) => sum + group.fits.length, 0),
           imagesFound,
@@ -350,6 +359,13 @@ export function createDiscordApiClient(input: { botToken?: string; guildId?: str
       const body = await discordFetch<{ threads?: DiscordChannel[] }>(`/channels/${channelId}/threads/archived/public?limit=100`);
       return body.threads ?? [];
     },
+    async joinThread(channelId) {
+      const res = await fetchImpl(`${DISCORD_API_BASE}/channels/${channelId}/thread-members/@me`, {
+        method: 'PUT',
+        headers: { Authorization: `Bot ${token}` },
+      });
+      if (!res.ok) throw new Error(`Discord thread join failed with ${res.status}`);
+    },
     fetchMessages: (channelId, limit) => discordFetch<DiscordMessage[]>(`/channels/${channelId}/messages?limit=${Math.min(DISCORD_MESSAGE_LIMIT, Math.max(1, limit))}`),
     async fetchAttachmentBase64(attachment) {
       const res = await fetchImpl(attachment.url, { headers: { Authorization: `Bot ${token}` } });
@@ -358,6 +374,15 @@ export function createDiscordApiClient(input: { botToken?: string; guildId?: str
       return Buffer.from(arrayBuffer).toString('base64');
     },
   };
+}
+
+async function tryJoinThread(api: DiscordApiClient, channelId: string): Promise<void> {
+  try {
+    await api.joinThread?.(channelId);
+  } catch {
+    // Normal text channels cannot be joined like threads, and some archived
+    // threads cannot be joined. Fetching messages still gives the real result.
+  }
 }
 
 async function listArchivedThreads(api: DiscordApiClient, channels: DiscordChannel[]): Promise<DiscordChannel[]> {

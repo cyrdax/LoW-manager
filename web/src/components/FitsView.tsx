@@ -825,6 +825,9 @@ function SavedFitsView({
                       <span>{discordScanResult.summary.imagesSkipped} images skipped</span>
                     )}
                   </div>
+                  {discordScanResult.warnings.map(warning => (
+                    <div className="fits-discord-warning" key={warning}>{warning}</div>
+                  ))}
                   <div className="fits-discord-review">
                     {discordScanResult.groups.length === 0 && <div className="fits-empty">No EFT blocks or pyfa screenshots found.</div>}
                     {discordScanResult.groups.map(group => (

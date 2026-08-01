@@ -16,6 +16,7 @@ function service(): DiscordImportService {
       channelId: input.channelId,
       channelLabel: input.channelLabel,
       scannedMessages: 1,
+      warnings: [],
       summary: { fitsFound: 1, imagesFound: 0, imagesScanned: 0, imagesSkipped: 0 },
       groups: [{
         message: {

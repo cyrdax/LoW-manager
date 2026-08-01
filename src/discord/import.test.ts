@@ -136,6 +136,65 @@ test('discord import scan reads last 100 messages and extracts text fits', async
   assert.equal(result.groups[0].message.url, 'https://discord.com/channels/guild-1/channel-1/msg-1');
 });
 
+test('discord import scan joins selected threads before fetching messages', async () => {
+  const fitStore = stores();
+  let joined = false;
+  const service = createDiscordImportService({
+    api: api({
+      joinThread: async channelId => {
+        assert.equal(channelId, 'thread-1');
+        joined = true;
+      },
+      fetchMessages: async () => joined ? [{
+        id: 'msg-1',
+        channel_id: 'thread-1',
+        guild_id: 'guild-1',
+        content: paladin,
+        timestamp: '2026-07-29T12:00:00.000Z',
+        author: { id: 'author-1', username: 'Wayne' },
+        attachments: [],
+      }] : [],
+    }),
+    fitStore,
+    buildDraft: buildFitDraft,
+  });
+
+  const result = await service.scan({
+    channelId: 'thread-1',
+    channelLabel: 'eve-fitting-v2 / Paladins',
+    visibility: 'private',
+    ownerUserId: 'user-a',
+  });
+
+  assert.equal(joined, true);
+  assert.equal(result.scannedMessages, 1);
+  assert.equal(result.summary.fitsFound, 1);
+  assert.equal(result.groups[0].fits[0].shipName, 'Paladin');
+});
+
+test('discord import scan warns when Discord returns no messages', async () => {
+  const service = createDiscordImportService({
+    api: api({
+      joinThread: async () => {},
+      fetchMessages: async () => [],
+    }),
+    fitStore: stores(),
+    buildDraft: buildFitDraft,
+  });
+
+  const result = await service.scan({
+    channelId: 'thread-1',
+    channelLabel: 'eve-fitting-v2 / Empty',
+    visibility: 'private',
+    ownerUserId: 'user-a',
+  });
+
+  assert.equal(result.scannedMessages, 0);
+  assert.equal(result.summary.fitsFound, 0);
+  assert.match(result.warnings[0], /Read Message History/);
+  assert.match(result.warnings[0], /Message Content Intent/);
+});
+
 test('discord import scan caps pyfa screenshot OCR at 10 images and reports skipped images', async () => {
   const attachments = Array.from({ length: DISCORD_IMAGE_SCAN_LIMIT + 3 }, (_, index) => ({
     id: `att-${index}`,

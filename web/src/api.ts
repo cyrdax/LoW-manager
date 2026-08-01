@@ -1168,6 +1168,7 @@ export interface DiscordImportScanResult {
   channelId: string;
   channelLabel: string;
   scannedMessages: number;
+  warnings: string[];
   summary: {
     fitsFound: number;
     imagesFound: number;

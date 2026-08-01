@@ -69,6 +69,7 @@ test('fit import modal supports discord channel scan review and import', () => {
   assert.match(fitsView, /applyDiscordImport/);
   assert.match(fitsView, /discordChannels\.map/);
   assert.match(fitsView, /discordScanResult\.summary\.imagesSkipped/);
+  assert.match(fitsView, /discordScanResult\.warnings\.map/);
   assert.match(fitsView, /handleDiscordPrimary/);
   assert.match(fitsView, /Scan selected/);
   assert.match(fitsView, /No fits found/);
