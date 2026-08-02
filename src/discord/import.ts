@@ -112,6 +112,7 @@ export interface DiscordImportScanInput {
   channelId: string;
   channelLabel: string;
   channelType?: DiscordImportChannel['type'];
+  includeImages?: boolean;
   visibility: LibraryVisibility;
   ownerUserId: string;
 }
@@ -209,6 +210,7 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
       const diagnostics: string[] = [
         `Selected target: ${input.channelType ?? 'channel'} "${input.channelLabel}" (${input.channelId})`,
         `Requested message limit: ${DISCORD_MESSAGE_LIMIT}`,
+        `Screenshot scan: ${input.includeImages ? 'enabled' : 'disabled'}`,
       ];
       if (input.channelType === 'thread') diagnostics.push(threadJoinDiagnostic(joinStatus));
       else diagnostics.push('Thread join: not attempted for non-thread target.');
@@ -269,6 +271,10 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
         for (const attachment of message.attachments ?? []) {
           if (!isImageAttachment(attachment)) continue;
           imagesFound++;
+          if (!input.includeImages) {
+            imagesSkipped++;
+            continue;
+          }
           if (imagesScanned >= DISCORD_IMAGE_SCAN_LIMIT) {
             imagesSkipped++;
             continue;
@@ -304,6 +310,9 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
       }
 
       const fitsFound = groups.reduce((sum, group) => sum + group.fits.length, 0);
+      if (!input.includeImages && imagesFound > 0) {
+        scanWarnings.push(`${imagesFound} image${imagesFound === 1 ? '' : 's'} skipped. Enable Scan screenshots to run pyfa image OCR.`);
+      }
       diagnostics.push(`EFT text blocks detected: ${textBlocksFound}`);
       diagnostics.push(`Image scan usage: ${imagesScanned}/${imagesFound} scanned, ${imagesSkipped} skipped`);
       diagnostics.push(`Fit candidates generated: ${fitsFound}`);

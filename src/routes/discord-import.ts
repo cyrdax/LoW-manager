@@ -36,7 +36,7 @@ export function registerDiscordImportRoutes(app: FastifyInstance, deps: DiscordI
   app.post('/api/discord/import/scan', async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
-    const body = req.body as { channelId?: string; channelLabel?: string; channelType?: string; visibility?: string } | undefined;
+    const body = req.body as { channelId?: string; channelLabel?: string; channelType?: string; includeImages?: unknown; visibility?: string } | undefined;
     const channelId = cleanText(body?.channelId);
     const channelLabel = cleanText(body?.channelLabel);
     if (!channelId) return reply.code(400).send({ error: 'channelId is required' });
@@ -46,6 +46,7 @@ export function registerDiscordImportRoutes(app: FastifyInstance, deps: DiscordI
         channelId,
         channelLabel,
         channelType: body?.channelType === 'thread' ? 'thread' : 'channel',
+        includeImages: body?.includeImages === true,
         visibility: parseVisibility(body?.visibility),
         ownerUserId: user.id,
       });

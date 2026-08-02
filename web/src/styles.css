@@ -2897,6 +2897,20 @@ body {
   padding: 7px 12px;
   cursor: pointer;
 }
+.fits-discord-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  color: var(--dim);
+  font-size: 13px;
+  font-weight: 700;
+}
+.fits-discord-checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
 .fits-discord-retry {
   align-self: flex-start;
   min-height: 34px;

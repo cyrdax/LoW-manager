@@ -154,6 +154,7 @@ test('discord import scan reads last 100 messages and extracts text fits', async
   assert.deepEqual(result.diagnostics, [
     'Selected target: channel "fits" (channel-1)',
     `Requested message limit: ${DISCORD_MESSAGE_LIMIT}`,
+    'Screenshot scan: disabled',
     'Thread join: not attempted for non-thread target.',
     'Discord messages returned: 1',
     'Messages with non-empty content: 1/1',
@@ -280,6 +281,53 @@ test('discord import scan warns when messages arrive with hidden content', async
   assert.match(result.diagnostics.join('\n'), /Messages with non-empty content: 0\/1/);
 });
 
+test('discord import scan skips image OCR by default while returning text fits', async () => {
+  let fetched = 0;
+  const service = createDiscordImportService({
+    api: api({
+      fetchMessages: async () => [{
+        id: 'msg-1',
+        channel_id: 'channel-1',
+        guild_id: 'guild-1',
+        content: paladin,
+        timestamp: '2026-07-29T12:00:00.000Z',
+        author: { id: 'author-1', username: 'Wayne' },
+        attachments: [{
+          id: 'att-1',
+          url: 'https://cdn.discordapp.com/1.png',
+          content_type: 'image/png',
+          filename: '1.png',
+        }],
+      }],
+      fetchAttachmentBase64: async () => {
+        fetched++;
+        return 'AAAA';
+      },
+    }),
+    fitStore: stores(),
+    buildDraft: buildFitDraft,
+    pyfaExtractor: {
+      extract: async () => {
+        throw new Error('should not OCR by default');
+      },
+    },
+  });
+
+  const result = await service.scan({
+    channelId: 'channel-1',
+    channelLabel: 'fits',
+    visibility: 'private',
+    ownerUserId: 'user-a',
+  });
+
+  assert.equal(fetched, 0);
+  assert.equal(result.summary.fitsFound, 1);
+  assert.equal(result.summary.imagesFound, 1);
+  assert.equal(result.summary.imagesScanned, 0);
+  assert.equal(result.summary.imagesSkipped, 1);
+  assert.match(result.warnings[0], /Enable Scan screenshots/);
+});
+
 test('discord import scan caps pyfa screenshot OCR at 10 images and reports skipped images', async () => {
   const attachments = Array.from({ length: DISCORD_IMAGE_SCAN_LIMIT + 3 }, (_, index) => ({
     id: `att-${index}`,
@@ -319,6 +367,7 @@ test('discord import scan caps pyfa screenshot OCR at 10 images and reports skip
   const result = await service.scan({
     channelId: 'channel-1',
     channelLabel: 'fits',
+    includeImages: true,
     visibility: 'private',
     ownerUserId: 'user-a',
   });

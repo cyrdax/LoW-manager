@@ -175,6 +175,7 @@ function SavedFitsView({
   const [discordChannelsLoaded, setDiscordChannelsLoaded] = useState(false);
   const [discordScanning, setDiscordScanning] = useState(false);
   const [discordApplying, setDiscordApplying] = useState(false);
+  const [discordIncludeImages, setDiscordIncludeImages] = useState(false);
   const [discordScanResult, setDiscordScanResult] = useState<DiscordImportScanResult | null>(null);
   const [discordActions, setDiscordActions] = useState<Record<string, DiscordCandidateAction>>({});
   const [unmatchedOpen, setUnmatchedOpen] = useState(false);
@@ -462,6 +463,7 @@ function SavedFitsView({
         channelId: channel.id,
         channelLabel: channel.label,
         channelType: channel.type,
+        includeImages: discordIncludeImages,
         visibility,
       });
       if ('error' in res) { setImportError(res.error); return; }
@@ -814,6 +816,15 @@ function SavedFitsView({
                   {discordScanning ? 'Scanning...' : 'Scan last 100'}
                 </button>
               </div>
+              <label className="fits-discord-checkbox">
+                <input
+                  type="checkbox"
+                  checked={discordIncludeImages}
+                  onChange={event => { setDiscordIncludeImages(event.target.checked); setDiscordScanResult(null); setDiscordActions({}); }}
+                  disabled={discordScanning || discordApplying}
+                />
+                Scan screenshots
+              </label>
               {discordLoadingChannels && <div className="fits-import-note">Loading Discord channels...</div>}
               {!discordLoadingChannels && discordChannels.length > 0 && (
                 <div className="fits-import-note">{discordChannels.length} Discord channels and threads loaded.</div>

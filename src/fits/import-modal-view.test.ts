@@ -68,6 +68,8 @@ test('fit import modal supports discord channel scan review and import', () => {
   assert.match(fitsView, /scanDiscordImport/);
   assert.match(fitsView, /applyDiscordImport/);
   assert.match(fitsView, /discordChannels\.map/);
+  assert.match(fitsView, /Scan screenshots/);
+  assert.match(fitsView, /includeImages: discordIncludeImages/);
   assert.match(fitsView, /discordScanResult\.summary\.imagesSkipped/);
   assert.match(fitsView, /discordScanResult\.warnings\.map/);
   assert.match(fitsView, /handleDiscordPrimary/);
@@ -78,6 +80,7 @@ test('fit import modal supports discord channel scan review and import', () => {
   assert.match(fitsView, /Discord source/);
 
   assert.match(styles, /\.fits-discord-import/);
+  assert.match(styles, /\.fits-discord-checkbox/);
   assert.match(styles, /\.fits-discord-summary/);
   assert.match(styles, /\.fits-discord-group/);
   assert.match(styles, /\.fits-discord-fit/);
