@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import { buildFitDraft } from '../fits/assignment.ts';
 import { createFitStore, migrateFitsDb } from '../fits/store.ts';
 import {
+  createDiscordApiClient,
   createDiscordImportService,
   DISCORD_IMAGE_SCAN_LIMIT,
   DISCORD_MESSAGE_LIMIT,
@@ -97,6 +98,22 @@ test('discord import service only loads archived threads for forum-style channel
   assert.ok(channels.some(channel => channel.label === 'eve-fitting-v2 / Archived Paladin'));
 });
 
+test('discord api client includes endpoint and Discord body details in errors', async () => {
+  const client = createDiscordApiClient({
+    botToken: 'bot-token',
+    guildId: 'guild-1',
+    fetchImpl: (async () => new Response(JSON.stringify({
+      code: 50001,
+      message: 'Missing Access',
+    }), { status: 403, headers: { 'Content-Type': 'application/json' } })) as typeof fetch,
+  });
+
+  await assert.rejects(
+    () => client.fetchMessages('thread-1', 100),
+    /Discord API request failed with 403 on GET \/channels\/thread-1\/messages\?limit=100 \(code 50001: Missing Access\)/,
+  );
+});
+
 test('discord import scan reads last 100 messages and extracts text fits', async () => {
   const fitStore = stores();
   let requestedLimit = 0;
@@ -134,6 +151,18 @@ test('discord import scan reads last 100 messages and extracts text fits', async
   assert.equal(result.groups[0].fits[0].shipName, 'Paladin');
   assert.equal(result.groups[0].fits[0].defaultAction.kind, 'create');
   assert.equal(result.groups[0].message.url, 'https://discord.com/channels/guild-1/channel-1/msg-1');
+  assert.deepEqual(result.diagnostics, [
+    'Selected target: channel "fits" (channel-1)',
+    `Requested message limit: ${DISCORD_MESSAGE_LIMIT}`,
+    'Thread join: not attempted for non-thread target.',
+    'Discord messages returned: 1',
+    'Messages with non-empty content: 1/1',
+    'Attachments returned: 0 total, 0 supported images',
+    'Message timestamp range: 2026-07-29T12:00:00.000Z',
+    'EFT text blocks detected: 1',
+    'Image scan usage: 0/0 scanned, 0 skipped',
+    'Fit candidates generated: 1',
+  ]);
 });
 
 test('discord import scan joins selected threads before fetching messages', async () => {
@@ -194,6 +223,7 @@ test('discord import scan warns when Discord returns no messages', async () => {
   assert.equal(result.summary.fitsFound, 0);
   assert.match(result.warnings[0], /Read Message History/);
   assert.match(result.warnings[0], /Message Content Intent/);
+  assert.match(result.diagnostics.join('\n'), /Discord messages returned: 0/);
 });
 
 test('discord import scan reports thread join failures when Discord returns no messages', async () => {
@@ -218,6 +248,36 @@ test('discord import scan reports thread join failures when Discord returns no m
   assert.match(result.warnings[0], /could not join/i);
   assert.match(result.warnings[0], /403/);
   assert.match(result.warnings[0], /Send Messages in Threads/);
+  assert.match(result.diagnostics.join('\n'), /Thread join: failed/);
+});
+
+test('discord import scan warns when messages arrive with hidden content', async () => {
+  const service = createDiscordImportService({
+    api: api({
+      fetchMessages: async () => [{
+        id: 'msg-1',
+        channel_id: 'channel-1',
+        guild_id: 'guild-1',
+        content: '',
+        timestamp: '2026-07-29T12:00:00.000Z',
+        author: { id: 'author-1', username: 'Wayne' },
+        attachments: [],
+      }],
+    }),
+    fitStore: stores(),
+    buildDraft: buildFitDraft,
+  });
+
+  const result = await service.scan({
+    channelId: 'channel-1',
+    channelLabel: 'fits',
+    visibility: 'private',
+    ownerUserId: 'user-a',
+  });
+
+  assert.equal(result.scannedMessages, 1);
+  assert.match(result.warnings[0], /empty text content/i);
+  assert.match(result.diagnostics.join('\n'), /Messages with non-empty content: 0\/1/);
 });
 
 test('discord import scan caps pyfa screenshot OCR at 10 images and reports skipped images', async () => {

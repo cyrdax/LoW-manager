@@ -2957,6 +2957,32 @@ body {
   color: var(--amber);
   font-size: 12px;
 }
+.fits-discord-diagnostics {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #10151d;
+  color: var(--dim);
+  font-size: 12px;
+}
+.fits-discord-diagnostics summary {
+  cursor: pointer;
+  padding: 7px 9px;
+  color: var(--text);
+  font-weight: 700;
+}
+.fits-discord-diagnostics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--border);
+  padding: 8px 9px;
+}
+.fits-discord-diagnostics code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  color: var(--dim);
+}
 .fits-discord-fit {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px;

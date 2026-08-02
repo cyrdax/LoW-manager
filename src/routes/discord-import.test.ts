@@ -17,6 +17,7 @@ function service(): DiscordImportService {
       channelLabel: input.channelLabel,
       scannedMessages: 1,
       warnings: [],
+      diagnostics: ['Selected target: channel "fits" (chan-1)'],
       summary: { fitsFound: 1, imagesFound: 0, imagesScanned: 0, imagesSkipped: 0 },
       groups: [{
         message: {

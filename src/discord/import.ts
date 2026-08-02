@@ -98,6 +98,7 @@ export interface DiscordImportScanResult {
   channelLabel: string;
   scannedMessages: number;
   warnings: string[];
+  diagnostics: string[];
   summary: {
     fitsFound: number;
     imagesFound: number;
@@ -205,6 +206,13 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
       const joinStatus = input.channelType === 'thread'
         ? await tryJoinThread(deps.api, input.channelId)
         : null;
+      const diagnostics: string[] = [
+        `Selected target: ${input.channelType ?? 'channel'} "${input.channelLabel}" (${input.channelId})`,
+        `Requested message limit: ${DISCORD_MESSAGE_LIMIT}`,
+      ];
+      if (input.channelType === 'thread') diagnostics.push(threadJoinDiagnostic(joinStatus));
+      else diagnostics.push('Thread join: not attempted for non-thread target.');
+
       const messages = await deps.api.fetchMessages(input.channelId, DISCORD_MESSAGE_LIMIT);
       const existing = await visibleFits(deps.fitStore, input.visibility, input.ownerUserId);
       const groups: DiscordImportMessageGroup[] = [];
@@ -212,9 +220,23 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
       let imagesFound = 0;
       let imagesScanned = 0;
       let imagesSkipped = 0;
+      let textBlocksFound = 0;
+      const messagesWithContent = messages.filter(message => message.content.trim().length > 0).length;
+      const attachmentCount = messages.reduce((sum, message) => sum + (message.attachments?.length ?? 0), 0);
+      const imageAttachmentCount = messages.reduce(
+        (sum, message) => sum + (message.attachments ?? []).filter(isImageAttachment).length,
+        0,
+      );
+      diagnostics.push(`Discord messages returned: ${messages.length}`);
+      diagnostics.push(`Messages with non-empty content: ${messagesWithContent}/${messages.length}`);
+      diagnostics.push(`Attachments returned: ${attachmentCount} total, ${imageAttachmentCount} supported images`);
+      const timestampRange = messageTimestampRange(messages);
+      if (timestampRange) diagnostics.push(`Message timestamp range: ${timestampRange}`);
 
       if (messages.length === 0) {
         scanWarnings.push(zeroMessageWarning(input.channelType, joinStatus));
+      } else if (messagesWithContent === 0) {
+        scanWarnings.push('Discord returned messages, but every message had empty text content. Message Content Intent may be disabled, or Discord may be hiding content from this bot.');
       }
 
       for (const message of messages) {
@@ -232,6 +254,7 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
         };
 
         const textBlocks = extractEftBlocksFromText(message.content);
+        textBlocksFound += textBlocks.length;
         textBlocks.forEach((block, index) => {
           const candidate = candidateFromRawEft({
             id: `${message.id}:text:${index}`,
@@ -280,13 +303,19 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
         if (group.fits.length > 0 || group.warnings.length > 0) groups.push(group);
       }
 
+      const fitsFound = groups.reduce((sum, group) => sum + group.fits.length, 0);
+      diagnostics.push(`EFT text blocks detected: ${textBlocksFound}`);
+      diagnostics.push(`Image scan usage: ${imagesScanned}/${imagesFound} scanned, ${imagesSkipped} skipped`);
+      diagnostics.push(`Fit candidates generated: ${fitsFound}`);
+
       return {
         channelId: input.channelId,
         channelLabel: input.channelLabel,
         scannedMessages: messages.length,
         warnings: scanWarnings,
+        diagnostics,
         summary: {
-          fitsFound: groups.reduce((sum, group) => sum + group.fits.length, 0),
+          fitsFound,
           imagesFound,
           imagesScanned,
           imagesSkipped,
@@ -348,7 +377,7 @@ export function createDiscordApiClient(input: { botToken?: string; guildId?: str
     const res = await fetchImpl(`${DISCORD_API_BASE}${path}`, {
       headers: { Authorization: `Bot ${token}` },
     });
-    if (!res.ok) throw new Error(`Discord API request failed with ${res.status}`);
+    if (!res.ok) throw new Error(await discordApiError(res, 'GET', path));
     return res.json() as Promise<T>;
   }
 
@@ -367,12 +396,14 @@ export function createDiscordApiClient(input: { botToken?: string; guildId?: str
         method: 'PUT',
         headers: { Authorization: `Bot ${token}` },
       });
-      if (!res.ok) throw new Error(`Discord thread join failed with ${res.status}`);
+      if (!res.ok) {
+        throw new Error(await discordApiError(res, 'PUT', `/channels/${channelId}/thread-members/@me`));
+      }
     },
     fetchMessages: (channelId, limit) => discordFetch<DiscordMessage[]>(`/channels/${channelId}/messages?limit=${Math.min(DISCORD_MESSAGE_LIMIT, Math.max(1, limit))}`),
     async fetchAttachmentBase64(attachment) {
       const res = await fetchImpl(attachment.url, { headers: { Authorization: `Bot ${token}` } });
-      if (!res.ok) throw new Error(`Discord attachment download failed with ${res.status}`);
+      if (!res.ok) throw new Error(await discordApiError(res, 'GET', `attachment ${attachment.filename}`));
       const arrayBuffer = await res.arrayBuffer();
       return Buffer.from(arrayBuffer).toString('base64');
     },
@@ -408,6 +439,42 @@ function zeroMessageWarning(channelType: DiscordImportChannel['type'] | undefine
   }
   parts.push('Message Content Intent is still required for EFT text imports once messages are returned.');
   return parts.join(' ');
+}
+
+function threadJoinDiagnostic(joinStatus: ThreadJoinStatus | null): string {
+  if (joinStatus === 'joined') return 'Thread join: succeeded.';
+  if (joinStatus) return `Thread join: failed (${joinStatus.error}).`;
+  return 'Thread join: not attempted.';
+}
+
+function messageTimestampRange(messages: DiscordMessage[]): string | null {
+  const times = messages
+    .map(message => Date.parse(message.timestamp))
+    .filter(time => Number.isFinite(time))
+    .sort((a, b) => a - b);
+  if (times.length === 0) return null;
+  const first = new Date(times[0]).toISOString();
+  const last = new Date(times[times.length - 1]).toISOString();
+  return first === last ? first : `${first} to ${last}`;
+}
+
+async function discordApiError(res: Response, method: string, target: string): Promise<string> {
+  const bodyText = await res.text().catch(() => '');
+  const details = discordErrorDetails(bodyText);
+  return `Discord API request failed with ${res.status} on ${method} ${target}${details ? ` (${details})` : ''}`;
+}
+
+function discordErrorDetails(bodyText: string): string {
+  const trimmed = bodyText.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = JSON.parse(trimmed) as { code?: unknown; message?: unknown };
+    const code = typeof parsed.code === 'number' || typeof parsed.code === 'string' ? `code ${parsed.code}` : '';
+    const message = typeof parsed.message === 'string' ? parsed.message : '';
+    return [code, message].filter(Boolean).join(': ').slice(0, 240);
+  } catch {
+    return trimmed.slice(0, 240);
+  }
 }
 
 async function listArchivedThreads(api: DiscordApiClient, channels: DiscordChannel[]): Promise<DiscordChannel[]> {

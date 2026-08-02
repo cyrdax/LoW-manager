@@ -16,32 +16,33 @@ export function extractEftBlocksFromText(text: string): ParsedEftBlock[] {
   let current: { shipName: string; fitName: string; startLine: number; lines: string[]; hasFitLine: boolean; afterBlank: boolean } | null = null;
 
   lines.forEach((line, index) => {
-    const header = EFT_HEADER.exec(line);
+    const fitLine = stripCodeFenceMarker(line);
+    const header = EFT_HEADER.exec(fitLine);
     if (header) {
       if (current) blocks.push(finishBlock(current));
       current = {
         shipName: header[1].trim(),
         fitName: header[2].trim(),
         startLine: index + 1,
-        lines: [line.trim()],
+        lines: [fitLine.trim()],
         hasFitLine: false,
         afterBlank: false,
       };
       return;
     }
     if (!current) return;
-    if (!line.trim()) {
-      current.lines.push(line);
+    if (!fitLine.trim()) {
+      current.lines.push(fitLine);
       current.afterBlank = true;
       return;
     }
-    if (current.hasFitLine && current.afterBlank && !looksLikeEftItemLine(line)) {
+    if (current.hasFitLine && current.afterBlank && !looksLikeEftItemLine(fitLine)) {
       blocks.push(finishBlock(current));
       current = null;
       return;
     }
-    current.lines.push(line);
-    current.hasFitLine = current.hasFitLine || looksLikeEftItemLine(line);
+    current.lines.push(fitLine);
+    current.hasFitLine = current.hasFitLine || looksLikeEftItemLine(fitLine);
     current.afterBlank = false;
   });
 
@@ -64,6 +65,12 @@ function trimBlankEdges(lines: string[]): string[] {
   while (start < end && !lines[start].trim()) start += 1;
   while (end > start && !lines[end - 1].trim()) end -= 1;
   return lines.slice(start, end);
+}
+
+function stripCodeFenceMarker(line: string): string {
+  return line
+    .replace(/^\s*```(?:[a-zA-Z0-9_-]+)?\s*/, '')
+    .replace(/\s*```\s*$/, '');
 }
 
 function looksLikeEftItemLine(line: string): boolean {

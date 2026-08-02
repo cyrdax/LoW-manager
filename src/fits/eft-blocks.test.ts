@@ -49,3 +49,30 @@ ${archon}`);
   assert.equal(blocks[0].rawEft.includes('Use it with links'), false);
   assert.equal(blocks[1].fitName, 'Carrier Support');
 });
+
+test('EFT block extraction accepts Discord code fences on the header line', () => {
+  const blocks = extractEftBlocksFromText(`\`\`\`[Archon, Fabricator?]
+Centus X-Type EM Armor Hardener
+Centus X-Type EM Armor Hardener
+
+Omnidirectional Tracking Link II
+Capital Cap Battery II
+
+Integrated Sensor Array
+Fighter Support Unit II
+
+Capital Auxiliary Nano Pump I
+
+Equite II x12
+Templar II x6
+\`\`\`
+
+This is what I'm considering`);
+
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].shipName, 'Archon');
+  assert.equal(blocks[0].fitName, 'Fabricator?');
+  assert.equal(blocks[0].rawEft.startsWith('[Archon, Fabricator?]'), true);
+  assert.equal(blocks[0].rawEft.includes('```'), false);
+  assert.equal(blocks[0].rawEft.includes("This is what I'm considering"), false);
+});

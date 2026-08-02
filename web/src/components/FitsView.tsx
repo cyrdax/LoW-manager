@@ -836,6 +836,14 @@ function SavedFitsView({
                   {discordScanResult.warnings.map(warning => (
                     <div className="fits-discord-warning" key={warning}>{warning}</div>
                   ))}
+                  {discordScanResult.diagnostics.length > 0 && (
+                    <details className="fits-discord-diagnostics" open>
+                      <summary>Diagnostics</summary>
+                      <div>
+                        {discordScanResult.diagnostics.map(line => <code key={line}>{line}</code>)}
+                      </div>
+                    </details>
+                  )}
                   <div className="fits-discord-review">
                     {discordScanResult.groups.length === 0 && <div className="fits-empty">No EFT blocks or pyfa screenshots found.</div>}
                     {discordScanResult.groups.map(group => (
