@@ -8,6 +8,7 @@ import {
   fetchSkillPlan,
   openInClient,
   saveSkillPlan,
+  searchSkillsAcrossPilots,
   searchItems,
   searchShips,
   type CharacterSkillsOverview,
@@ -18,6 +19,7 @@ import {
   type SavedSkillPlan,
   type SdeStatus,
   type ShipHit,
+  type SkillComparison,
   type SkillPlan,
 } from '../api.ts';
 
@@ -134,6 +136,10 @@ export function SkillsView({ chars }: Props) {
   const [overview, setOverview] = useState<CharacterSkillsOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  const [skillSearch, setSkillSearch] = useState('');
+  const [skillComparison, setSkillComparison] = useState<SkillComparison | null>(null);
+  const [skillSearchError, setSkillSearchError] = useState<string | null>(null);
+  const [skillSearchLoading, setSkillSearchLoading] = useState(false);
 
   useEffect(() => {
     if (!ship || !characterId) { setPlan(null); setPlanError(null); return; }
@@ -191,6 +197,40 @@ export function SkillsView({ chars }: Props) {
   }, [characterId]);
 
   useEffect(() => { reloadOverview(); }, [reloadOverview]);
+
+  useEffect(() => {
+    if (mode !== 'overview') return;
+    const q = skillSearch.trim();
+    if (q.length < 2) {
+      setSkillComparison(null);
+      setSkillSearchError(null);
+      setSkillSearchLoading(false);
+      return;
+    }
+
+    const ctl = new AbortController();
+    const timer = setTimeout(async () => {
+      setSkillSearchLoading(true);
+      setSkillSearchError(null);
+      const result = await searchSkillsAcrossPilots(q, ctl.signal).catch(error => {
+        if (ctl.signal.aborted) return null;
+        return { error: error instanceof Error ? error.message : 'skill search failed' };
+      });
+      if (ctl.signal.aborted || result === null) return;
+      setSkillSearchLoading(false);
+      if ('error' in result) {
+        setSkillComparison(null);
+        setSkillSearchError(result.error);
+      } else {
+        setSkillComparison(result);
+      }
+    }, 180);
+
+    return () => {
+      ctl.abort();
+      clearTimeout(timer);
+    };
+  }, [mode, skillSearch]);
 
   // Saved plans for the active pilot
   const [savedPlans, setSavedPlans] = useState<SavedSkillPlan[]>([]);
@@ -294,9 +334,21 @@ export function SkillsView({ chars }: Props) {
         <div className="sk-spacer" aria-hidden />
 
         {mode === 'overview' ? (
-          <button className="sk-refresh" onClick={reloadOverview} disabled={overviewLoading || characterId == null}>
-            {overviewLoading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <>
+            <div className="sk-control sk-all-skill-search">
+              <label>Find skill across pilots</label>
+              <input
+                className="ap-input"
+                type="search"
+                placeholder="Skill name..."
+                value={skillSearch}
+                onChange={e => setSkillSearch(e.target.value)}
+              />
+            </div>
+            <button className="sk-refresh" onClick={reloadOverview} disabled={overviewLoading || characterId == null}>
+              {overviewLoading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </>
         ) : (
           <div className="sk-control sk-item">
             <label>Module / item</label>
@@ -307,6 +359,14 @@ export function SkillsView({ chars }: Props) {
 
       {mode === 'overview' && (
         <>
+          {(skillSearch.trim().length >= 2 || skillComparison || skillSearchError) && (
+            <SkillComparisonPanel
+              query={skillSearch}
+              comparison={skillComparison}
+              loading={skillSearchLoading}
+              error={skillSearchError}
+            />
+          )}
           {!characterId && <div className="empty">Pick a pilot to see their skill queue and trained skills.</div>}
           {overviewLoading && <div className="empty">Loading pilot skills...</div>}
           {overviewError && <div className="empty err">{overviewError}</div>}
@@ -482,6 +542,84 @@ function CharacterSkillsPanel({ overview, character }: { overview: CharacterSkil
         </div>
       </section>
     </div>
+  );
+}
+
+function SkillComparisonPanel({
+  query,
+  comparison,
+  loading,
+  error,
+}: {
+  query: string;
+  comparison: SkillComparison | null;
+  loading: boolean;
+  error: string | null;
+}) {
+  const trimmed = query.trim();
+
+  return (
+    <section className="sk-section sk-compare">
+      <div className="sk-section-title">
+        <div>
+          <h3>Skill Search</h3>
+          <p className="dim">
+            {loading
+              ? `Searching all pilots for "${trimmed}"...`
+              : comparison
+                ? `${comparison.matches.length} match${comparison.matches.length === 1 ? '' : 'es'} across ${comparison.cachedPilotCount}/${comparison.pilotCount} cached pilots`
+                : `Search all pilots for "${trimmed}"`}
+          </p>
+        </div>
+      </div>
+
+      {error && <div className="empty err sk-empty-inline">{error}</div>}
+      {!error && loading && <div className="empty sk-empty-inline">Searching pilot skills...</div>}
+      {!error && !loading && comparison && comparison.matches.length === 0 && (
+        <div className="empty sk-empty-inline">No skills match that search.</div>
+      )}
+
+      {!error && comparison && comparison.matches.length > 0 && (
+        <div className="sk-compare-matches">
+          {comparison.matches.map(match => (
+            <div key={match.skillId} className="sk-compare-match">
+              <div className="sk-compare-match-head">
+                <div>
+                  <b>{match.name}</b>
+                  <span className="dim"> {match.groupName} · rank x{match.rank}</span>
+                </div>
+              </div>
+              <div className="sk-compare-table">
+                <div className="sk-compare-row sk-skill-head">
+                  <div>Pilot</div>
+                  <div className="c">Active</div>
+                  <div className="c">Trained</div>
+                  <div className="r">SP</div>
+                  <div>Status</div>
+                </div>
+                {match.pilots.map(pilot => (
+                  <div key={pilot.characterId} className="sk-compare-row">
+                    <div className="sk-name">{pilot.characterName}</div>
+                    <div className="c">
+                      {pilot.skillsAvailable && pilot.activeSkillLevel != null ? levelLabel(pilot.activeSkillLevel) : '—'}
+                    </div>
+                    <div className="c">
+                      {pilot.skillsAvailable && pilot.trainedSkillLevel != null ? levelLabel(pilot.trainedSkillLevel) : '—'}
+                    </div>
+                    <div className="r">
+                      {pilot.skillpointsInSkill != null ? formatSp(pilot.skillpointsInSkill) : '—'}
+                    </div>
+                    <div className={pilot.skillsAvailable ? 'dim' : 'warn'}>
+                      {pilot.skillsAvailable ? (pilot.trainedSkillLevel ? 'Trained' : 'Not trained') : 'Not polled'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

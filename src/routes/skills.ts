@@ -1,10 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
+  listUsableCharacters as defaultListUsableCharacters,
   requireOwnedCharacter,
   requireUser,
   routeCurrentUser,
   type CurrentUserResolver,
+  type ListUsableCharacters,
   type OwnsCharacter,
 } from '../auth/pilot-access.ts';
 import type { SkillQueueEntry, SkillsResponse } from '../esi/skills.ts';
@@ -17,6 +19,7 @@ import {
   type SavedSkillPlanStore,
 } from '../skills/saved-plans-store.ts';
 import { trainingSecondsForSp, type CharacterAttributes } from '../skills/training-time.ts';
+import type { CharacterRow } from '../types.ts';
 
 // Standard EVE SP requirement per skill level (multiplied by skill rank).
 // Level index 0..5 — index 0 = "untrained", values 1..5 = SP needed for that level.
@@ -74,6 +77,24 @@ interface CharacterSkillQueueRow {
   trainingStartSp: number | null;
   levelStartSp: number | null;
   levelEndSp: number | null;
+}
+
+interface SkillComparisonPilotRow {
+  characterId: number;
+  characterName: string;
+  activeSkillLevel: number | null;
+  trainedSkillLevel: number | null;
+  skillpointsInSkill: number | null;
+  skillsAvailable: boolean;
+}
+
+interface SkillComparisonMatch {
+  skillId: number;
+  name: string;
+  groupId: number | null;
+  groupName: string;
+  rank: number;
+  pilots: SkillComparisonPilotRow[];
 }
 
 function resolveSkillMeta(data: MasteryData, skillId: number) {
@@ -155,6 +176,85 @@ export function buildCharacterSkillsOverview(
     },
     queue,
     groups,
+  };
+}
+
+export function buildSkillComparison(
+  data: MasteryData,
+  query: string,
+  pilots: CharacterRow[],
+  skillsForCharacter: (characterId: number) => SkillsResponse | null,
+) {
+  const q = query.trim().toLowerCase();
+  const sortedPilots = [...pilots].sort((a, b) =>
+    a.character_name.localeCompare(b.character_name) || a.character_id - b.character_id,
+  );
+  const empty = {
+    query: query.trim(),
+    pilotCount: sortedPilots.length,
+    cachedPilotCount: 0,
+    matches: [] as SkillComparisonMatch[],
+  };
+  if (q.length < 2) return empty;
+
+  const prefix: SkillComparisonMatch[] = [];
+  const substr: SkillComparisonMatch[] = [];
+  for (const [id, skill] of Object.entries(data.skills)) {
+    const lname = skill.name.toLowerCase();
+    if (!lname.includes(q)) continue;
+
+    const match: SkillComparisonMatch = {
+      skillId: Number(id),
+      name: skill.name,
+      groupId: skill.groupId ?? null,
+      groupName: skill.groupName ?? 'Other Skills',
+      rank: skill.rank ?? 1,
+      pilots: [],
+    };
+    if (lname.startsWith(q)) prefix.push(match);
+    else substr.push(match);
+  }
+
+  prefix.sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name));
+  substr.sort((a, b) => a.name.localeCompare(b.name));
+  const matches = [...prefix, ...substr].slice(0, 12);
+
+  const skillsByPilot = new Map<number, SkillsResponse | null>();
+  for (const pilot of sortedPilots) {
+    skillsByPilot.set(pilot.character_id, skillsForCharacter(pilot.character_id));
+  }
+  const cachedPilotCount = Array.from(skillsByPilot.values()).filter(Boolean).length;
+
+  for (const match of matches) {
+    match.pilots = sortedPilots.map(pilot => {
+      const charSkills = skillsByPilot.get(pilot.character_id) ?? null;
+      if (!charSkills) {
+        return {
+          characterId: pilot.character_id,
+          characterName: pilot.character_name,
+          activeSkillLevel: null,
+          trainedSkillLevel: null,
+          skillpointsInSkill: null,
+          skillsAvailable: false,
+        };
+      }
+      const trained = charSkills.skills.find(skill => skill.skill_id === match.skillId);
+      return {
+        characterId: pilot.character_id,
+        characterName: pilot.character_name,
+        activeSkillLevel: trained?.active_skill_level ?? 0,
+        trainedSkillLevel: trained?.trained_skill_level ?? 0,
+        skillpointsInSkill: trained?.skillpoints_in_skill ?? 0,
+        skillsAvailable: true,
+      };
+    });
+  }
+
+  return {
+    query: query.trim(),
+    pilotCount: sortedPilots.length,
+    cachedPilotCount,
+    matches,
   };
 }
 
@@ -315,12 +415,14 @@ function buildItemPlan(
 export interface SkillRouteDeps {
   currentUser?: CurrentUserResolver;
   ownsCharacter?: OwnsCharacter;
+  listCharacters?: ListUsableCharacters;
   savedPlans?: SavedSkillPlanStore | AsyncSavedSkillPlanStore;
 }
 
 export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps = {}) {
   const currentUser = routeCurrentUser(deps);
   const owns = deps.ownsCharacter;
+  const listCharacters = deps.listCharacters ?? defaultListUsableCharacters;
   const savedPlans = deps.savedPlans ?? createSavedSkillPlanStore();
 
   app.get('/api/skills/meta', async () => {
@@ -348,6 +450,14 @@ export function registerSkillsRoutes(app: FastifyInstance, deps: SkillRouteDeps 
       ...buildCharacterSkillsOverview(loadMasteryData(), charSkills, skillQueue),
       refreshedAt: Date.now(),
     };
+  });
+
+  app.get<{ Querystring: { q?: string } }>('/api/skills/search', async (req, reply) => {
+    const user = await requireUser(req, reply, currentUser);
+    if (!user) return reply;
+
+    const pilots = await listCharacters(user.id);
+    return buildSkillComparison(loadMasteryData(), req.query.q ?? '', pilots, getCharacterSkills);
   });
 
   app.get<{ Querystring: { q?: string } }>('/api/skills/ships', async (req) => {

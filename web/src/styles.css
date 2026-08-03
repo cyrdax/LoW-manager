@@ -1204,7 +1204,7 @@ body {
   padding: 12px 14px;
 }
 .skills-controls.sk-overview-controls {
-  grid-template-columns: minmax(220px, 320px) minmax(140px, 180px) auto 1fr auto;
+  grid-template-columns: minmax(220px, 320px) minmax(140px, 180px) auto 1fr minmax(260px, 420px) auto;
 }
 .sk-spacer { min-width: 0; }
 @media (max-width: 1100px) {
@@ -1339,6 +1339,50 @@ body {
   border-radius: 6px;
   padding: 6px 10px;
   font: inherit;
+}
+.sk-all-skill-search .ap-input {
+  width: 100%;
+}
+.sk-compare .sk-section-title {
+  align-items: flex-start;
+}
+.sk-compare .sk-section-title p {
+  margin: 3px 0 0;
+}
+.sk-compare-matches {
+  display: flex;
+  flex-direction: column;
+}
+.sk-compare-match {
+  border-top: 1px solid var(--border);
+}
+.sk-compare-match:first-child {
+  border-top: 0;
+}
+.sk-compare-match-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--panel-2);
+}
+.sk-compare-table {
+  display: flex;
+  flex-direction: column;
+  overflow-x: auto;
+}
+.sk-compare-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 90px 90px minmax(100px, 0.5fr) minmax(110px, 0.6fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 14px;
+  border-top: 1px solid #1f242c;
+  font-size: 13px;
+  min-width: 680px;
+}
+.sk-compare-row .warn {
+  color: var(--amber);
 }
 .sk-empty-inline {
   margin: 10px;

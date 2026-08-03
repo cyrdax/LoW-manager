@@ -485,6 +485,40 @@ export async function searchItems(q: string, signal?: AbortSignal): Promise<Item
   return res.json();
 }
 
+export interface SkillComparisonPilot {
+  characterId: number;
+  characterName: string;
+  activeSkillLevel: number | null;
+  trainedSkillLevel: number | null;
+  skillpointsInSkill: number | null;
+  skillsAvailable: boolean;
+}
+
+export interface SkillComparisonMatch {
+  skillId: number;
+  name: string;
+  groupId: number | null;
+  groupName: string;
+  rank: number;
+  pilots: SkillComparisonPilot[];
+}
+
+export interface SkillComparison {
+  query: string;
+  pilotCount: number;
+  cachedPilotCount: number;
+  matches: SkillComparisonMatch[];
+}
+
+export async function searchSkillsAcrossPilots(q: string, signal?: AbortSignal): Promise<SkillComparison | { error: string }> {
+  if (q.trim().length < 2) {
+    return { query: q.trim(), pilotCount: 0, cachedPilotCount: 0, matches: [] };
+  }
+  const res = await fetch(`/api/skills/search?q=${encodeURIComponent(q)}`, { signal });
+  if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
+  return res.json();
+}
+
 export interface PlanSkillSource {
   kind: 'ship-prereq' | 'mastery';
   certId?: number;
