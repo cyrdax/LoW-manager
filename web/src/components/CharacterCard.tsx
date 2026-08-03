@@ -1,4 +1,5 @@
 import type { CharacterStatus } from '../api.ts';
+import { useRef, useState } from 'react';
 
 interface Props {
   c: CharacterStatus;
@@ -42,44 +43,110 @@ function levelRoman(n: number | null): string {
   return ['', 'I', 'II', 'III', 'IV', 'V'][n ?? 0] ?? '';
 }
 
+export interface CharacterRowVisualState {
+  needsReauth: boolean;
+  isBoss: boolean;
+  hasVirtue: boolean;
+  hasWrongImplants: boolean;
+  queueShort: boolean;
+  inBossFleet: boolean;
+  missingFromBossFleet: boolean;
+}
+
+export interface CharacterRowStatusItem {
+  label: string;
+  detail: string;
+}
+
+export function characterRowVisualState(c: CharacterStatus, bossFleetId: number | null, nowMs = Date.now()): CharacterRowVisualState {
+  const inBossFleet = !c.isBoss && bossFleetId != null && c.fleetId === bossFleetId;
+  const missingFromBossFleet = !c.isBoss && bossFleetId != null && c.fleetId !== bossFleetId;
+  const relevantImplants = c.implantNames.filter(n => !/AU-?79/i.test(n));
+  const hasImplants = relevantImplants.length > 0;
+  const hasVirtue = relevantImplants.some(n => /virtue/i.test(n));
+  const hasWrongImplants = hasImplants && !hasVirtue;
+  const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
+  const queueShort = c.trainingQueueEnd === '' || (
+    typeof c.trainingQueueEnd === 'string'
+    && c.trainingQueueEnd.length > 0
+    && Date.parse(c.trainingQueueEnd) - nowMs < TEN_DAYS_MS
+  );
+
+  return {
+    needsReauth: c.needsReauth,
+    isBoss: c.isBoss,
+    hasVirtue,
+    hasWrongImplants,
+    queueShort,
+    inBossFleet,
+    missingFromBossFleet,
+  };
+}
+
+export function characterRowStatusItems(state: CharacterRowVisualState): CharacterRowStatusItem[] {
+  return [
+    state.isBoss ? { label: 'Blue row', detail: 'Fleet boss selected for fleet actions.' } : null,
+    state.hasVirtue ? { label: 'Green row', detail: 'Virtue pod detected.' } : null,
+    state.hasWrongImplants ? { label: 'Brown row', detail: 'Pilot has a non-Virtue implant pod. AU-79 is ignored.' } : null,
+    state.needsReauth ? { label: 'Red border', detail: 'Pilot needs re-auth before private ESI data can refresh.' } : null,
+    state.queueShort ? { label: 'Red outline', detail: 'Skill queue ends in under 10 days or is empty.' } : null,
+    state.inBossFleet ? { label: 'Green check', detail: 'Pilot is in the boss fleet.' } : null,
+    state.missingFromBossFleet ? { label: 'Amber X', detail: 'Pilot is not in the boss fleet.' } : null,
+  ].filter((item): item is CharacterRowStatusItem => item != null);
+}
+
+export function characterRowTooltipText(state: CharacterRowVisualState): string {
+  const items = characterRowStatusItems(state);
+  if (items.length === 0) return 'No special row status.';
+  return items.map(item => `${item.label}: ${item.detail}`).join('\n');
+}
+
 export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, onRemove, onSetBoss }: Props) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dotClass = c.online === null ? 'dot unknown' : c.online ? 'dot online' : 'dot';
   const location = c.locationStationName ?? c.locationSystemName ?? '—';
   const ship = c.shipTypeName ? `${c.shipTypeName}${c.shipName ? ` · ${c.shipName}` : ''}` : '—';
   const training = c.trainingSkillName
     ? `${c.trainingSkillName} ${levelRoman(c.trainingLevel)} · ${timeUntil(c.trainingFinishDate)}`
     : 'Not training';
-  const inBossFleet = !c.isBoss && bossFleetId != null && c.fleetId === bossFleetId;
-  const missingFromBossFleet = !c.isBoss && bossFleetId != null && c.fleetId !== bossFleetId;
   const corpLabel = c.corporationTicker ? `[${c.corporationTicker}]` : '';
   const implantsTitle = c.implantNames.length ? c.implantNames.join('\n') : 'No implants';
-
-  // AU-79 is a cosmetic/special implant that shouldn't count when judging the character's pod.
-  const relevantImplants = c.implantNames.filter(n => !/AU-?79/i.test(n));
-  const hasImplants = relevantImplants.length > 0;
-  const hasVirtue = relevantImplants.some(n => /virtue/i.test(n));
-  const hasWrongImplants = hasImplants && !hasVirtue;
-
-  // Queue runs dry in < 10 days. null → not polled yet (don't flag);
-  // "" → polled and empty queue (flag); ISO → flag if within 10 days.
-  const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
-  const queueShort = c.trainingQueueEnd === '' || (
-    typeof c.trainingQueueEnd === 'string'
-    && c.trainingQueueEnd.length > 0
-    && Date.parse(c.trainingQueueEnd) - Date.now() < TEN_DAYS_MS
-  );
+  const visualState = characterRowVisualState(c, bossFleetId);
+  const statusItems = characterRowStatusItems(visualState);
+  const tooltipId = `pilot-row-status-${c.characterId}`;
 
   const rowClass = [
     'prow',
-    c.needsReauth && 'needs-reauth',
-    c.isBoss && 'is-boss',
-    hasVirtue && 'has-virtue',
-    hasWrongImplants && 'has-wrong-implants',
-    queueShort && 'queue-short',
+    visualState.needsReauth && 'needs-reauth',
+    visualState.isBoss && 'is-boss',
+    visualState.hasVirtue && 'has-virtue',
+    visualState.hasWrongImplants && 'has-wrong-implants',
+    visualState.queueShort && 'queue-short',
   ].filter(Boolean).join(' ');
 
+  const openTooltipSoon = () => {
+    if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+    tooltipTimer.current = setTimeout(() => setTooltipOpen(true), 450);
+  };
+  const closeTooltip = () => {
+    if (tooltipTimer.current) {
+      clearTimeout(tooltipTimer.current);
+      tooltipTimer.current = null;
+    }
+    setTooltipOpen(false);
+  };
+
   return (
-    <div className={rowClass} style={gridStyle}>
+    <div
+      className={rowClass}
+      style={gridStyle}
+      onMouseEnter={openTooltipSoon}
+      onMouseLeave={closeTooltip}
+      onFocus={openTooltipSoon}
+      onBlur={closeTooltip}
+      aria-describedby={tooltipOpen && statusItems.length > 0 ? tooltipId : undefined}
+    >
       <label className="col-select">
         <input
           type="checkbox"
@@ -96,8 +163,8 @@ export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, o
           <span className={dotClass} />
           <span className="character">{c.name || `#${c.characterId}`}</span>
           {c.isBoss && <span className="boss">BOSS</span>}
-          {inBossFleet && <span className="pill ok">✓</span>}
-          {missingFromBossFleet && <span className="pill warn">×</span>}
+          {visualState.inBossFleet && <span className="pill ok">✓</span>}
+          {visualState.missingFromBossFleet && <span className="pill warn">×</span>}
         </div>
         <div className="corp" title={c.corporationName ?? undefined}>{corpLabel} {c.corporationName ?? ''}</div>
       </div>
@@ -149,6 +216,17 @@ export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, o
       </div>
 
       {c.needsReauth && <div className="reauth-line">Needs re-auth</div>}
+      {tooltipOpen && statusItems.length > 0 && (
+        <div className="pilot-row-tooltip" id={tooltipId} role="tooltip">
+          <div className="pilot-row-tooltip-title">Row status</div>
+          {statusItems.map(item => (
+            <div className="pilot-row-tooltip-line" key={item.label}>
+              <strong>{item.label}</strong>
+              <span>{item.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

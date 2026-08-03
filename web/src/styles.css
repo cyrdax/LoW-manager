@@ -382,6 +382,37 @@ body {
   font-size: 10px;
   color: var(--amber);
 }
+.pilot-row-tooltip {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% - 4px);
+  left: 64px;
+  width: min(420px, calc(100vw - 120px));
+  padding: 10px 12px;
+  border: 1px solid #3b4452;
+  border-radius: 6px;
+  background: #0f141c;
+  color: var(--text);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+}
+.pilot-row-tooltip-title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+}
+.pilot-row-tooltip-line {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.pilot-row-tooltip-line + .pilot-row-tooltip-line { margin-top: 4px; }
+.pilot-row-tooltip-line strong { color: var(--accent); }
+.pilot-row-tooltip-line span { color: var(--dim); }
 
 .prow .col-select { display: flex; align-items: center; justify-content: center; }
 .prow .col-select input { width: 16px; height: 16px; cursor: pointer; }
