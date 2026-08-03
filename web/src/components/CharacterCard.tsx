@@ -58,6 +58,23 @@ export interface CharacterRowStatusItem {
   detail: string;
 }
 
+const PILOT_TOOLTIP_WIDTH = 420;
+const PILOT_TOOLTIP_HEIGHT = 160;
+const PILOT_TOOLTIP_OFFSET = 12;
+const PILOT_TOOLTIP_VIEWPORT_PAD = 12;
+
+export function pilotRowTooltipPosition(
+  pointer: { x: number; y: number },
+  viewport: { width: number; height: number },
+): { left: number; top: number } {
+  const maxLeft = Math.max(PILOT_TOOLTIP_VIEWPORT_PAD, viewport.width - PILOT_TOOLTIP_WIDTH - PILOT_TOOLTIP_OFFSET);
+  const maxTop = Math.max(PILOT_TOOLTIP_VIEWPORT_PAD, viewport.height - PILOT_TOOLTIP_HEIGHT - PILOT_TOOLTIP_OFFSET);
+  return {
+    left: Math.max(PILOT_TOOLTIP_VIEWPORT_PAD, Math.min(pointer.x + PILOT_TOOLTIP_OFFSET, maxLeft)),
+    top: Math.max(PILOT_TOOLTIP_VIEWPORT_PAD, Math.min(pointer.y + PILOT_TOOLTIP_OFFSET, maxTop)),
+  };
+}
+
 export function characterRowVisualState(c: CharacterStatus, bossFleetId: number | null, nowMs = Date.now()): CharacterRowVisualState {
   const inBossFleet = !c.isBoss && bossFleetId != null && c.fleetId === bossFleetId;
   const missingFromBossFleet = !c.isBoss && bossFleetId != null && c.fleetId !== bossFleetId;
@@ -103,6 +120,7 @@ export function characterRowTooltipText(state: CharacterRowVisualState): string 
 
 export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, onRemove, onSetBoss }: Props) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState<{ left: number; top: number } | null>(null);
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dotClass = c.online === null ? 'dot unknown' : c.online ? 'dot online' : 'dot';
   const location = c.locationStationName ?? c.locationSystemName ?? '—';
@@ -125,9 +143,23 @@ export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, o
     visualState.queueShort && 'queue-short',
   ].filter(Boolean).join(' ');
 
-  const openTooltipSoon = () => {
+  const positionTooltip = (clientX: number, clientY: number) => {
+    setTooltipPosition(pilotRowTooltipPosition(
+      { x: clientX, y: clientY },
+      { width: window.innerWidth, height: window.innerHeight },
+    ));
+  };
+  const openTooltipSoon = (clientX: number, clientY: number) => {
+    positionTooltip(clientX, clientY);
     if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
     tooltipTimer.current = setTimeout(() => setTooltipOpen(true), 450);
+  };
+  const moveTooltip = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (tooltipOpen) positionTooltip(event.clientX, event.clientY);
+  };
+  const focusTooltip = (event: React.FocusEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    openTooltipSoon(rect.left + 64, rect.top + 18);
   };
   const closeTooltip = () => {
     if (tooltipTimer.current) {
@@ -135,15 +167,17 @@ export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, o
       tooltipTimer.current = null;
     }
     setTooltipOpen(false);
+    setTooltipPosition(null);
   };
 
   return (
     <div
       className={rowClass}
       style={gridStyle}
-      onMouseEnter={openTooltipSoon}
+      onMouseEnter={event => openTooltipSoon(event.clientX, event.clientY)}
+      onMouseMove={moveTooltip}
       onMouseLeave={closeTooltip}
-      onFocus={openTooltipSoon}
+      onFocus={focusTooltip}
       onBlur={closeTooltip}
       aria-describedby={tooltipOpen && statusItems.length > 0 ? tooltipId : undefined}
     >
@@ -216,8 +250,8 @@ export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, o
       </div>
 
       {c.needsReauth && <div className="reauth-line">Needs re-auth</div>}
-      {tooltipOpen && statusItems.length > 0 && (
-        <div className="pilot-row-tooltip" id={tooltipId} role="tooltip">
+      {tooltipOpen && tooltipPosition && statusItems.length > 0 && (
+        <div className="pilot-row-tooltip" id={tooltipId} role="tooltip" style={tooltipPosition}>
           <div className="pilot-row-tooltip-title">Row status</div>
           {statusItems.map(item => (
             <div className="pilot-row-tooltip-line" key={item.label}>

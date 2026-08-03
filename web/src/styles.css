@@ -383,11 +383,10 @@ body {
   color: var(--amber);
 }
 .pilot-row-tooltip {
-  position: absolute;
+  position: fixed;
   z-index: 30;
-  top: calc(100% - 4px);
-  left: 64px;
-  width: min(420px, calc(100vw - 120px));
+  width: 420px;
+  max-width: calc(100vw - 24px);
   padding: 10px 12px;
   border: 1px solid #3b4452;
   border-radius: 6px;

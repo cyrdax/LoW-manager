@@ -4,6 +4,7 @@ import {
   characterRowStatusItems,
   characterRowTooltipText,
   characterRowVisualState,
+  pilotRowTooltipPosition,
 } from '../web/src/components/CharacterCard.tsx';
 import type { CharacterStatus } from '../web/src/api.ts';
 
@@ -86,4 +87,16 @@ test('character row status explains boss fleet membership pills', () => {
   const text = characterRowTooltipText(visual);
 
   assert.match(text, /Amber X: Pilot is not in the boss fleet/i);
+});
+
+test('pilot row tooltip positions near the pointer and clamps to viewport', () => {
+  assert.deepEqual(
+    pilotRowTooltipPosition({ x: 120, y: 140 }, { width: 1000, height: 800 }),
+    { left: 132, top: 152 },
+  );
+
+  assert.deepEqual(
+    pilotRowTooltipPosition({ x: 980, y: 780 }, { width: 1000, height: 800 }),
+    { left: 568, top: 628 },
+  );
 });
