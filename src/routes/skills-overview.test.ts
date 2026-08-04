@@ -100,3 +100,17 @@ test('buildSkillComparison searches matching skills across all owned pilots', ()
     { name: 'Charlie', active: null, trained: null, available: false },
   ]);
 });
+
+test('buildSkillComparison matches partial skill names', () => {
+  const result = buildSkillComparison(masteryData, 'hybrid', [
+    pilot(101, 'Alpha'),
+  ], () => ({
+    total_sp: 1_000_000,
+    skills: [
+      { skill_id: 3301, trained_skill_level: 4, active_skill_level: 4, skillpoints_in_skill: 45_255 },
+    ],
+  }));
+
+  assert.deepEqual(result.matches.map(match => match.name), ['Small Hybrid Turret']);
+  assert.equal(result.matches[0].pilots[0].activeSkillLevel, 4);
+});
