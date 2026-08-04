@@ -16,9 +16,10 @@ test('skills view exposes an explicit cross-pilot skill search action', () => {
   assert.doesNotMatch(skillsView, /setTimeout\(async \(\) =>[\s\S]*searchSkillsAcrossPilots/);
   assert.match(skillsView, /<form className="sk-control sk-all-skill-search" onSubmit=\{runSkillSearch\}>/);
   assert.match(skillsView, /placeholder="Skill name\.\.\."/);
-  assert.match(skillsView, /type="button"[\s\S]*?onClick=\{\(\) => \{ void runSkillSearch\(\); \}\}/);
+  assert.match(skillsView, /type="submit"/);
   assert.match(skillsView, /skillSearchResult\?\.loading \? 'Searching\.\.\.' : 'Search'/);
-  assert.match(skillsView, /skillSearchResult && \(/);
+  assert.match(skillsView, /<div className="sk-search-results-row">[\s\S]*?<SkillComparisonPanel/);
   assert.match(styles, /\.sk-all-skill-search \{[\s\S]*?display: grid;/);
   assert.match(styles, /\.sk-skill-search-row \{[\s\S]*?grid-template-columns: minmax\(180px, 1fr\) auto;/);
+  assert.match(styles, /\.sk-search-results-row \{[\s\S]*?grid-column: 1 \/ -1;/);
 });

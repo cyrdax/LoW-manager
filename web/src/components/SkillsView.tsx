@@ -348,8 +348,7 @@ export function SkillsView({ chars }: Props) {
                 />
                 <button
                   className="sk-refresh sk-search-submit"
-                  type="button"
-                  onClick={() => { void runSkillSearch(); }}
+                  type="submit"
                   disabled={skillSearchInput.trim().length < 2 || skillSearchResult?.loading}
                 >
                   {skillSearchResult?.loading ? 'Searching...' : 'Search'}
@@ -366,18 +365,21 @@ export function SkillsView({ chars }: Props) {
             <ItemSearch value={item} onChange={setItem} />
           </div>
         )}
-      </div>
 
-      {mode === 'overview' && (
-        <>
-          {skillSearchResult && (
+        {mode === 'overview' && skillSearchResult && (
+          <div className="sk-search-results-row">
             <SkillComparisonPanel
               query={skillSearchResult.query}
               comparison={skillSearchResult.comparison}
               loading={skillSearchResult.loading}
               error={skillSearchResult.error}
             />
-          )}
+          </div>
+        )}
+      </div>
+
+      {mode === 'overview' && (
+        <>
           {!characterId && <div className="empty">Pick a pilot to see their skill queue and trained skills.</div>}
           {overviewLoading && <div className="empty">Loading pilot skills...</div>}
           {overviewError && <div className="empty err">{overviewError}</div>}

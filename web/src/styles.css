@@ -1357,6 +1357,13 @@ body {
   align-self: stretch;
   white-space: nowrap;
 }
+.sk-search-results-row {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.sk-search-results-row .sk-compare {
+  background: var(--panel-2);
+}
 .sk-compare .sk-section-title {
   align-items: flex-start;
 }
