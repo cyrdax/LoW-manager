@@ -1343,6 +1343,20 @@ body {
 .sk-all-skill-search .ap-input {
   width: 100%;
 }
+.sk-all-skill-search {
+  display: grid;
+  gap: 4px;
+}
+.sk-skill-search-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.sk-search-submit {
+  align-self: stretch;
+  white-space: nowrap;
+}
 .sk-compare .sk-section-title {
   align-items: flex-start;
 }

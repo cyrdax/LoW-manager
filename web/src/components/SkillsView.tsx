@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   deleteSkillPlan,
   fetchCharacterSkillsOverview,
@@ -136,6 +136,7 @@ export function SkillsView({ chars }: Props) {
   const [overview, setOverview] = useState<CharacterSkillsOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  const [skillSearchInput, setSkillSearchInput] = useState('');
   const [skillSearch, setSkillSearch] = useState('');
   const [skillComparison, setSkillComparison] = useState<SkillComparison | null>(null);
   const [skillSearchError, setSkillSearchError] = useState<string | null>(null);
@@ -197,6 +198,11 @@ export function SkillsView({ chars }: Props) {
   }, [characterId]);
 
   useEffect(() => { reloadOverview(); }, [reloadOverview]);
+
+  const runSkillSearch = useCallback((event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    setSkillSearch(skillSearchInput.trim());
+  }, [skillSearchInput]);
 
   useEffect(() => {
     if (mode !== 'overview') return;
@@ -335,16 +341,25 @@ export function SkillsView({ chars }: Props) {
 
         {mode === 'overview' ? (
           <>
-            <div className="sk-control sk-all-skill-search">
+            <form className="sk-control sk-all-skill-search" onSubmit={runSkillSearch}>
               <label>Find skill across pilots</label>
-              <input
-                className="ap-input"
-                type="search"
-                placeholder="Skill name..."
-                value={skillSearch}
-                onChange={e => setSkillSearch(e.target.value)}
-              />
-            </div>
+              <div className="sk-skill-search-row">
+                <input
+                  className="ap-input"
+                  type="search"
+                  placeholder="Skill name..."
+                  value={skillSearchInput}
+                  onChange={e => setSkillSearchInput(e.target.value)}
+                />
+                <button
+                  className="sk-refresh sk-search-submit"
+                  type="submit"
+                  disabled={skillSearchInput.trim().length < 2 || skillSearchLoading}
+                >
+                  {skillSearchLoading ? 'Searching...' : 'Search'}
+                </button>
+              </div>
+            </form>
             <button className="sk-refresh" onClick={reloadOverview} disabled={overviewLoading || characterId == null}>
               {overviewLoading ? 'Refreshing...' : 'Refresh'}
             </button>
