@@ -27,6 +27,12 @@ interface Props { chars: CharacterStatus[] }
 
 const MASTERY_NUMERALS = ['I', 'II', 'III', 'IV', 'V'];
 type PilotSortMode = 'alpha' | 'queue';
+type SkillSearchResult = {
+  query: string;
+  comparison: SkillComparison | null;
+  error: string | null;
+  loading: boolean;
+};
 
 function formatSp(sp: number): string {
   if (sp >= 1e9) return `${(sp / 1e9).toFixed(2)} B`;
@@ -137,11 +143,7 @@ export function SkillsView({ chars }: Props) {
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [skillSearchInput, setSkillSearchInput] = useState('');
-  const [skillSearch, setSkillSearch] = useState('');
-  const [skillSearchSubmitted, setSkillSearchSubmitted] = useState(false);
-  const [skillComparison, setSkillComparison] = useState<SkillComparison | null>(null);
-  const [skillSearchError, setSkillSearchError] = useState<string | null>(null);
-  const [skillSearchLoading, setSkillSearchLoading] = useState(false);
+  const [skillSearchResult, setSkillSearchResult] = useState<SkillSearchResult | null>(null);
   const skillSearchAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -204,32 +206,26 @@ export function SkillsView({ chars }: Props) {
   const runSkillSearch = useCallback(async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     const q = skillSearchInput.trim();
-    setSkillSearch(q);
-    setSkillSearchSubmitted(q.length >= 2);
-    setSkillComparison(null);
-    setSkillSearchError(null);
     skillSearchAbort.current?.abort();
 
     if (q.length < 2) {
-      setSkillSearchLoading(false);
+      setSkillSearchResult(null);
       return;
     }
 
     const ctl = new AbortController();
     skillSearchAbort.current = ctl;
-    setSkillSearchLoading(true);
+    setSkillSearchResult({ query: q, comparison: null, error: null, loading: true });
     const result = await searchSkillsAcrossPilots(q, ctl.signal).catch(error => {
       if (ctl.signal.aborted) return null;
       return { error: error instanceof Error ? error.message : 'skill search failed' };
     });
     if (ctl.signal.aborted || result === null) return;
 
-    setSkillSearchLoading(false);
     if ('error' in result) {
-      setSkillComparison(null);
-      setSkillSearchError(result.error);
+      setSkillSearchResult({ query: q, comparison: null, error: result.error, loading: false });
     } else {
-      setSkillComparison(result);
+      setSkillSearchResult({ query: q, comparison: result, error: null, loading: false });
     }
   }, [skillSearchInput]);
 
@@ -354,9 +350,9 @@ export function SkillsView({ chars }: Props) {
                   className="sk-refresh sk-search-submit"
                   type="button"
                   onClick={() => { void runSkillSearch(); }}
-                  disabled={skillSearchInput.trim().length < 2 || skillSearchLoading}
+                  disabled={skillSearchInput.trim().length < 2 || skillSearchResult?.loading}
                 >
-                  {skillSearchLoading ? 'Searching...' : 'Search'}
+                  {skillSearchResult?.loading ? 'Searching...' : 'Search'}
                 </button>
               </div>
             </form>
@@ -374,12 +370,12 @@ export function SkillsView({ chars }: Props) {
 
       {mode === 'overview' && (
         <>
-          {(skillSearchSubmitted || skillSearchLoading || skillComparison || skillSearchError) && (
+          {skillSearchResult && (
             <SkillComparisonPanel
-              query={skillSearch}
-              comparison={skillComparison}
-              loading={skillSearchLoading}
-              error={skillSearchError}
+              query={skillSearchResult.query}
+              comparison={skillSearchResult.comparison}
+              loading={skillSearchResult.loading}
+              error={skillSearchResult.error}
             />
           )}
           {!characterId && <div className="empty">Pick a pilot to see their skill queue and trained skills.</div>}
