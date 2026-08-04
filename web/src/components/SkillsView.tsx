@@ -138,9 +138,11 @@ export function SkillsView({ chars }: Props) {
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [skillSearchInput, setSkillSearchInput] = useState('');
   const [skillSearch, setSkillSearch] = useState('');
+  const [skillSearchSubmitted, setSkillSearchSubmitted] = useState(false);
   const [skillComparison, setSkillComparison] = useState<SkillComparison | null>(null);
   const [skillSearchError, setSkillSearchError] = useState<string | null>(null);
   const [skillSearchLoading, setSkillSearchLoading] = useState(false);
+  const skillSearchAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!ship || !characterId) { setPlan(null); setPlanError(null); return; }
@@ -199,44 +201,41 @@ export function SkillsView({ chars }: Props) {
 
   useEffect(() => { reloadOverview(); }, [reloadOverview]);
 
-  const runSkillSearch = useCallback((event?: FormEvent<HTMLFormElement>) => {
+  const runSkillSearch = useCallback(async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    setSkillSearch(skillSearchInput.trim());
-  }, [skillSearchInput]);
+    const q = skillSearchInput.trim();
+    setSkillSearch(q);
+    setSkillSearchSubmitted(q.length >= 2);
+    setSkillComparison(null);
+    setSkillSearchError(null);
+    skillSearchAbort.current?.abort();
 
-  useEffect(() => {
-    if (mode !== 'overview') return;
-    const q = skillSearch.trim();
     if (q.length < 2) {
-      setSkillComparison(null);
-      setSkillSearchError(null);
       setSkillSearchLoading(false);
       return;
     }
 
     const ctl = new AbortController();
-    const timer = setTimeout(async () => {
-      setSkillSearchLoading(true);
-      setSkillSearchError(null);
-      const result = await searchSkillsAcrossPilots(q, ctl.signal).catch(error => {
-        if (ctl.signal.aborted) return null;
-        return { error: error instanceof Error ? error.message : 'skill search failed' };
-      });
-      if (ctl.signal.aborted || result === null) return;
-      setSkillSearchLoading(false);
-      if ('error' in result) {
-        setSkillComparison(null);
-        setSkillSearchError(result.error);
-      } else {
-        setSkillComparison(result);
-      }
-    }, 180);
+    skillSearchAbort.current = ctl;
+    setSkillSearchLoading(true);
+    const result = await searchSkillsAcrossPilots(q, ctl.signal).catch(error => {
+      if (ctl.signal.aborted) return null;
+      return { error: error instanceof Error ? error.message : 'skill search failed' };
+    });
+    if (ctl.signal.aborted || result === null) return;
 
-    return () => {
-      ctl.abort();
-      clearTimeout(timer);
-    };
-  }, [mode, skillSearch]);
+    setSkillSearchLoading(false);
+    if ('error' in result) {
+      setSkillComparison(null);
+      setSkillSearchError(result.error);
+    } else {
+      setSkillComparison(result);
+    }
+  }, [skillSearchInput]);
+
+  useEffect(() => () => {
+    skillSearchAbort.current?.abort();
+  }, []);
 
   // Saved plans for the active pilot
   const [savedPlans, setSavedPlans] = useState<SavedSkillPlan[]>([]);
@@ -374,7 +373,7 @@ export function SkillsView({ chars }: Props) {
 
       {mode === 'overview' && (
         <>
-          {(skillSearch.trim().length >= 2 || skillComparison || skillSearchError) && (
+          {(skillSearchSubmitted || skillSearchLoading || skillComparison || skillSearchError) && (
             <SkillComparisonPanel
               query={skillSearch}
               comparison={skillComparison}

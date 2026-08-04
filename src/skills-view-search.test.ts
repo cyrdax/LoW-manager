@@ -8,10 +8,14 @@ test('skills view exposes an explicit cross-pilot skill search action', () => {
   const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
 
   assert.match(skillsView, /const \[skillSearchInput, setSkillSearchInput\] = useState\(''\)/);
+  assert.match(skillsView, /const \[skillSearchSubmitted, setSkillSearchSubmitted\] = useState\(false\)/);
   assert.match(skillsView, /const runSkillSearch = useCallback/);
+  assert.match(skillsView, /await searchSkillsAcrossPilots\(q, ctl\.signal\)/);
+  assert.doesNotMatch(skillsView, /setTimeout\(async \(\) =>[\s\S]*searchSkillsAcrossPilots/);
   assert.match(skillsView, /<form className="sk-control sk-all-skill-search" onSubmit=\{runSkillSearch\}>/);
   assert.match(skillsView, /placeholder="Skill name\.\.\."/);
   assert.match(skillsView, /skillSearchLoading \? 'Searching\.\.\.' : 'Search'/);
+  assert.match(skillsView, /skillSearchSubmitted \|\| skillSearchLoading \|\| skillComparison \|\| skillSearchError/);
   assert.match(styles, /\.sk-all-skill-search \{[\s\S]*?display: grid;/);
   assert.match(styles, /\.sk-skill-search-row \{[\s\S]*?grid-template-columns: minmax\(180px, 1fr\) auto;/);
 });
