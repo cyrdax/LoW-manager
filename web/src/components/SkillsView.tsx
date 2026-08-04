@@ -352,7 +352,8 @@ export function SkillsView({ chars }: Props) {
                 />
                 <button
                   className="sk-refresh sk-search-submit"
-                  type="submit"
+                  type="button"
+                  onClick={() => { void runSkillSearch(); }}
                   disabled={skillSearchInput.trim().length < 2 || skillSearchLoading}
                 >
                   {skillSearchLoading ? 'Searching...' : 'Search'}

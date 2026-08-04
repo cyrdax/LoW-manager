@@ -14,6 +14,7 @@ test('skills view exposes an explicit cross-pilot skill search action', () => {
   assert.doesNotMatch(skillsView, /setTimeout\(async \(\) =>[\s\S]*searchSkillsAcrossPilots/);
   assert.match(skillsView, /<form className="sk-control sk-all-skill-search" onSubmit=\{runSkillSearch\}>/);
   assert.match(skillsView, /placeholder="Skill name\.\.\."/);
+  assert.match(skillsView, /type="button"[\s\S]*?onClick=\{\(\) => \{ void runSkillSearch\(\); \}\}/);
   assert.match(skillsView, /skillSearchLoading \? 'Searching\.\.\.' : 'Search'/);
   assert.match(skillsView, /skillSearchSubmitted \|\| skillSearchLoading \|\| skillComparison \|\| skillSearchError/);
   assert.match(styles, /\.sk-all-skill-search \{[\s\S]*?display: grid;/);
