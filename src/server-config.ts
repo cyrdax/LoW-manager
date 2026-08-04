@@ -55,6 +55,12 @@ export function isSensitiveFallbackPath(url: string): boolean {
     || normalized.endsWith('/config.php');
 }
 
+export function htmlCacheControlForPath(pathname: string): string | null {
+  return pathname.toLowerCase().endsWith('.html')
+    ? 'no-cache, no-store, must-revalidate'
+    : null;
+}
+
 export function googleDocsApiKeyFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
   return env.GOOGLE_DOCS_API_KEY?.trim() || env.GOOGLE_API_KEY?.trim() || null;
 }

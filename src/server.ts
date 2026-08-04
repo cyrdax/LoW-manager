@@ -33,6 +33,7 @@ import { startContractIndexer } from './contracts/indexer.ts';
 import { createPostgresSavedSkillPlanStore } from './skills/saved-plans-store.ts';
 import {
   cookieSecretFromEnv,
+  htmlCacheControlForPath,
   isSensitiveFallbackPath,
   secureCookiesFromEnv,
   serverListenOptionsFromEnv,
@@ -77,10 +78,16 @@ const publicDir = resolve(serverDir, '..', 'web', 'public');
 async function sendLegalPage(reply: FastifyReply, filename: string) {
   try {
     const html = await readFile(resolve(distDir, filename), 'utf8');
-    return reply.type('text/html; charset=utf-8').send(html);
+    return reply
+      .header('Cache-Control', 'no-cache, no-store, must-revalidate')
+      .type('text/html; charset=utf-8')
+      .send(html);
   } catch {
     const html = await readFile(resolve(publicDir, filename), 'utf8');
-    return reply.type('text/html; charset=utf-8').send(html);
+    return reply
+      .header('Cache-Control', 'no-cache, no-store, must-revalidate')
+      .type('text/html; charset=utf-8')
+      .send(html);
   }
 }
 
@@ -88,7 +95,14 @@ app.get('/terms-of-service', async (_req, reply) => sendLegalPage(reply, 'terms-
 app.get('/privacy-policy', async (_req, reply) => sendLegalPage(reply, 'privacy-policy.html'));
 
 try {
-  await app.register(fastifyStatic, { root: distDir, prefix: '/' });
+  await app.register(fastifyStatic, {
+    root: distDir,
+    prefix: '/',
+    setHeaders: (res, pathname) => {
+      const cacheControl = htmlCacheControlForPath(pathname);
+      if (cacheControl) res.setHeader('Cache-Control', cacheControl);
+    },
+  });
   app.setNotFoundHandler((req, reply) => {
     const isPasswordResetPage = req.url.startsWith('/auth/password/reset');
     if (
