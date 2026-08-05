@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Fastify from 'fastify';
 import type { MasteryData } from '../skills/mastery-data.ts';
+import type { ContractDetails } from '../contracts/detail.ts';
 import { registerContractRoutes } from './contracts.ts';
 
 const data = {
@@ -185,3 +186,94 @@ test('GET /api/contracts/search returns 400 when origin system is missing from t
   assert.equal(res.statusCode, 400);
   assert.match(JSON.parse(res.body).error, /origin system 30000000 is not present in contract map topology/);
 });
+
+test('GET /api/contracts/:contractId/details returns itemized pricing for a contract', async () => {
+  const app = Fastify();
+  let observed: { contractId: number; hub: string } | null = null;
+  registerContractRoutes(app, {
+    loadData: () => data,
+    getDetails: async input => {
+      observed = { contractId: input.contractId, hub: input.hub };
+      return contractDetails(input.contractId);
+    },
+  });
+
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/contracts/42/details?hub=amarr',
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(observed, { contractId: 42, hub: 'amarr' });
+  const body = JSON.parse(res.body);
+  assert.equal(body.contract.contractId, 42);
+  assert.equal(body.items[0].name, 'Barghest');
+  assert.equal(body.quote.totalCost, 1_200_000_000);
+});
+
+test('GET /api/contracts/:contractId/details validates hub', async () => {
+  const app = Fastify();
+  let called = false;
+  registerContractRoutes(app, {
+    loadData: () => data,
+    getDetails: async input => {
+      called = true;
+      return contractDetails(input.contractId);
+    },
+  });
+
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/contracts/42/details?hub=perimeter',
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(called, false);
+  assert.match(JSON.parse(res.body).error, /hub/);
+});
+
+function contractDetails(contractId: number): ContractDetails {
+  return {
+    contract: {
+      contractId,
+      type: 'item_exchange',
+      title: 'Barghest pack',
+      price: 1_250_000_000,
+      buyout: null,
+      effectivePrice: 1_250_000_000,
+      quantity: 1,
+      regionId: 10000002,
+      regionName: 'The Forge',
+      systemId: 30000142,
+      systemName: 'Jita',
+      locationId: 60003760,
+      locationName: 'Jita IV - Moon 4',
+      locationKnown: true,
+      dateIssued: '2026-08-01T00:00:00Z',
+      dateExpired: '2026-08-29T00:00:00Z',
+    },
+    items: [
+      { recordId: 1, typeId: 17920, name: 'Barghest', groupName: 'Battleship', categoryName: 'Ship', quantity: 1 },
+    ],
+    quote: {
+      hub: 'amarr',
+      systemName: 'Amarr',
+      regionName: 'Domain',
+      fetchedAt: 1783526400000,
+      totalCost: 1_200_000_000,
+      counts: { ok: 1, partial: 0, noOrders: 0, unknown: 0 },
+      items: [{
+        inputName: 'Barghest',
+        resolvedName: 'Barghest',
+        typeId: 17920,
+        requestedQty: 1,
+        filledQty: 1,
+        totalCost: 1_200_000_000,
+        avgPrice: 1_200_000_000,
+        shortfall: 0,
+        status: 'ok',
+        bucket: 'Battleship',
+      }],
+    },
+  };
+}

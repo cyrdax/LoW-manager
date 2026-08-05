@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { loadMasteryData, type MasteryData } from '../skills/mastery-data.ts';
+import { getContractDetails, type ContractDetails, type GetContractDetailsInput } from '../contracts/detail.ts';
+import { HUBS, type HubKey } from '../market/pricing.ts';
 import {
   CONTRACT_RADIUS_DEFAULT,
   CONTRACT_RADIUS_MAX,
@@ -24,11 +26,13 @@ const searchQuery = z.object({
 export interface ContractRouteDeps {
   loadData?: () => MasteryData;
   runSearch?: (input: RunContractSearchInput) => Promise<ContractSearchResponse>;
+  getDetails?: (input: GetContractDetailsInput) => Promise<ContractDetails>;
 }
 
 export function registerContractRoutes(app: FastifyInstance, deps: ContractRouteDeps = {}) {
   const loadData = deps.loadData ?? loadMasteryData;
   const runSearch = deps.runSearch ?? runContractSearch;
+  const loadDetails = deps.getDetails ?? getContractDetails;
 
   app.get<{ Querystring: { q?: string } }>('/api/contracts/ships', async (req, reply) => {
     const parsed = shipQuery.safeParse(req.query);
@@ -72,6 +76,31 @@ export function registerContractRoutes(app: FastifyInstance, deps: ContractRoute
       return reply.code(500).send({ error: message });
     }
   });
+
+  app.get<{ Params: { contractId: string }; Querystring: { hub?: string } }>(
+    '/api/contracts/:contractId/details',
+    async (req, reply) => {
+      const contractId = Number(req.params.contractId);
+      if (!Number.isInteger(contractId) || contractId <= 0) {
+        return reply.code(400).send({ error: 'contractId must be a positive integer' });
+      }
+
+      const hub = (req.query.hub ?? 'jita').toLowerCase() as HubKey;
+      if (!HUBS[hub]) return reply.code(400).send({ error: 'hub must be "jita" or "amarr"' });
+
+      try {
+        return await loadDetails({
+          data: loadData(),
+          contractId,
+          hub,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load contract details';
+        if (message === 'Contract not found') return reply.code(404).send({ error: message });
+        return reply.code(500).send({ error: message });
+      }
+    },
+  );
 }
 
 function isAbortError(err: unknown): boolean {

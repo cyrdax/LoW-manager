@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
+  fetchContractDetails,
   searchContractShips,
   searchContracts,
   searchSystems,
+  type ContractDetails,
   type ContractSearchResponse,
   type ContractSearchResult,
   type ContractShipHit,
+  type ShoppingHub,
+  type ShoppingItemQuote,
   type SystemHit,
 } from '../api.ts';
 import {
@@ -50,6 +54,7 @@ export function ContractsView() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<ContractSearchResponse | null>(null);
+  const [detailRow, setDetailRow] = useState<ContractSearchResult | null>(null);
   const searchSeq = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
 
@@ -114,6 +119,7 @@ export function ContractsView() {
     searchAbortRef.current?.abort();
     searchAbortRef.current = null;
     setBusy(false);
+    setDetailRow(null);
   };
 
   const doSearch = async () => {
@@ -290,15 +296,25 @@ export function ContractsView() {
           {response.results.length === 0 ? (
             <div className="empty">No matching public contracts found.</div>
           ) : (
-            <ContractResultsTable rows={response.results} />
+            <ContractResultsTable rows={response.results} onOpenDetails={setDetailRow} />
           )}
         </>
+      )}
+
+      {detailRow && (
+        <ContractDetailsModal row={detailRow} onClose={() => setDetailRow(null)} />
       )}
     </main>
   );
 }
 
-function ContractResultsTable({ rows }: { rows: ContractSearchResult[] }) {
+function ContractResultsTable({
+  rows,
+  onOpenDetails,
+}: {
+  rows: ContractSearchResult[];
+  onOpenDetails: (row: ContractSearchResult) => void;
+}) {
   const [sort, setSort] = useState<{ key: ContractResultSortKey; direction: SortDirection } | null>(null);
   const sortedRows = useMemo(
     () => sort ? sortContractResultsByColumn(rows, sort.key, sort.direction) : rows,
@@ -311,6 +327,11 @@ function ContractResultsTable({ rows }: { rows: ContractSearchResult[] }) {
       }
       return { key, direction: 'asc' };
     });
+  };
+  const onRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, row: ContractSearchResult) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    onOpenDetails(row);
   };
 
   return (
@@ -331,7 +352,15 @@ function ContractResultsTable({ rows }: { rows: ContractSearchResult[] }) {
         </thead>
         <tbody>
           {sortedRows.map(row => (
-            <tr key={row.contractId}>
+            <tr
+              key={row.contractId}
+              className="ct-row-clickable"
+              tabIndex={0}
+              role="button"
+              onClick={() => onOpenDetails(row)}
+              onKeyDown={event => onRowKeyDown(event, row)}
+              aria-label={`Open contract ${row.contractId} details`}
+            >
               <td>{row.shipName}</td>
               <td>{row.type === 'item_exchange' ? 'Item exchange' : 'Auction'}</td>
               <td className="num">{formatIsk(row.effectivePrice)}</td>
@@ -346,13 +375,162 @@ function ContractResultsTable({ rows }: { rows: ContractSearchResult[] }) {
               <td className="num">{row.jumps == null ? '—' : row.jumps}</td>
               <td>{formatExpiry(row.dateExpired)}</td>
               <td>{row.title || '—'}</td>
-              <td className="num">{row.contractId}</td>
+              <td className="num">
+                <button className="ct-contract-link" type="button" onClick={event => {
+                  event.stopPropagation();
+                  onOpenDetails(row);
+                }}>
+                  {row.contractId}
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onClose: () => void }) {
+  const [hub, setHub] = useState<ShoppingHub>('jita');
+  const [details, setDetails] = useState<ContractDetails | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    setLoading(true);
+    setError(null);
+    fetchContractDetails(row.contractId, hub, ctrl.signal).then(result => {
+      if (ctrl.signal.aborted) return;
+      if ('error' in result) {
+        setDetails(null);
+        setError(result.error);
+      } else {
+        setDetails(result);
+      }
+    }).catch(err => {
+      if (!ctrl.signal.aborted) setError(err instanceof Error ? err.message : 'Failed to load contract details');
+    }).finally(() => {
+      if (!ctrl.signal.aborted) setLoading(false);
+    });
+    return () => ctrl.abort();
+  }, [row.contractId, hub]);
+
+  const quoteByType = useMemo(() => {
+    const byType = new Map<number, ShoppingItemQuote>();
+    if (!details) return byType;
+    for (const item of details.quote.items) {
+      if (item.typeId != null) byType.set(item.typeId, item);
+    }
+    return byType;
+  }, [details]);
+
+  const estimateDelta = details ? details.contract.effectivePrice == null ? null : details.contract.effectivePrice - details.quote.totalCost : null;
+
+  return (
+    <Modal title="Contract Price Breakdown" onClose={onClose} className="ct-detail-modal" bodyClassName="ct-detail-modal-body">
+      <div className="ct-detail">
+        <div className="ct-detail-head">
+          <div>
+            <strong>{row.shipName}</strong>
+            <span>{row.title || `Contract ${row.contractId}`}</span>
+          </div>
+          <div className="ct-hub-switch" role="group" aria-label="Pricing hub">
+            <button type="button" className={hub === 'jita' ? 'active' : ''} onClick={() => setHub('jita')}>Jita</button>
+            <button type="button" className={hub === 'amarr' ? 'active' : ''} onClick={() => setHub('amarr')}>Amarr</button>
+          </div>
+        </div>
+
+        {loading && <div className="empty">Loading contract items...</div>}
+        {error && <div className="ct-error">{error}</div>}
+
+        {details && (
+          <>
+            <div className="ct-detail-grid">
+              <DetailMetric label="Contract" value={`${formatIsk(details.contract.effectivePrice)} ISK`} />
+              <DetailMetric label={`${details.quote.systemName} estimate`} value={`${formatIsk(details.quote.totalCost)} ISK`} strong />
+              <DetailMetric label="Difference" value={estimateDelta == null ? '-' : `${formatSignedIsk(estimateDelta)} ISK`} />
+              <DetailMetric label="Pricing" value={`${details.quote.counts.ok} priced · ${details.quote.counts.noOrders} no sellers`} />
+            </div>
+
+            <section className="ct-detail-items">
+              <h3>Included items <span>{details.items.length}</span></h3>
+              <div className="ct-detail-table">
+                <div className="ct-detail-row ct-detail-row-head">
+                  <span>Item</span>
+                  <span>Category</span>
+                  <span>Qty</span>
+                  <span>Unit</span>
+                  <span>Total</span>
+                  <span>Status</span>
+                </div>
+                {details.items.map(item => {
+                  const quote = quoteByType.get(item.typeId) ?? null;
+                  return (
+                    <div className="ct-detail-row" key={item.recordId}>
+                      <span className="ct-detail-item">
+                        <img src={iconUrl(item.typeId)} alt="" />
+                        <b title={item.name}>{item.name}</b>
+                      </span>
+                      <span>{item.groupName}</span>
+                      <span>{item.quantity.toLocaleString()}</span>
+                      <span>{quote?.avgPrice == null ? '-' : `${formatIsk(quote.avgPrice)} ISK`}</span>
+                      <span>{formatIsk(quote?.totalCost ?? 0)} ISK</span>
+                      <small className={quote?.status ?? 'unknown-item'}>{quoteStatus(quote)}</small>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="ct-detail-total">
+                <span>Total estimate</span>
+                <b>{formatIsk(details.quote.totalCost)} ISK</b>
+              </div>
+            </section>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function DetailMetric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return <div className={strong ? 'strong' : ''}><span>{label}</span><b>{value}</b></div>;
+}
+
+function Modal({
+  title,
+  children,
+  onClose,
+  className = '',
+  bodyClassName = '',
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+  className?: string;
+  bodyClassName?: string;
+}) {
+  return (
+    <div className="fits-modal-backdrop">
+      <div className={`fits-modal${className ? ` ${className}` : ''}`}>
+        <div className="fits-modal-head"><strong>{title}</strong><button onClick={onClose}>x</button></div>
+        <div className={`fits-modal-body${bodyClassName ? ` ${bodyClassName}` : ''}`}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function quoteStatus(quote: ShoppingItemQuote | null): string {
+  if (!quote) return 'Not priced';
+  if (quote.status === 'ok') return 'Priced';
+  if (quote.status === 'partial') return `Partial (${quote.shortfall.toLocaleString()} short)`;
+  if (quote.status === 'no-orders') return 'No sellers';
+  return 'Unknown item';
+}
+
+function iconUrl(typeId: number): string {
+  return `https://images.evetech.net/types/${typeId}/icon?size=64`;
 }
 
 function SortableTh({
@@ -389,6 +567,12 @@ function formatIsk(value: number | null): string {
   if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
   if (value >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
   return Math.round(value).toLocaleString();
+}
+
+function formatSignedIsk(value: number): string {
+  if (value === 0) return '0';
+  const prefix = value > 0 ? '+' : '-';
+  return `${prefix}${formatIsk(Math.abs(value))}`;
 }
 
 function formatUpdatedAt(value: number): string {

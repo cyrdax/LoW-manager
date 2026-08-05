@@ -12,6 +12,11 @@ import {
   type ShoppingListQuote,
 } from '../api.ts';
 import { aggregateShoppingItems, parseShoppingList } from '../../../src/market/shopping-list-parser.ts';
+import {
+  sortShoppingListResults,
+  type ShoppingListSortDirection,
+  type ShoppingListSortKey,
+} from '../market-shopping-sort.ts';
 
 interface Props { chars: CharacterStatus[] }
 
@@ -352,6 +357,19 @@ function ShoppingListView({ chars }: { chars: CharacterStatus[] }) {
 }
 
 function ShoppingListResults({ quote }: { quote: ShoppingListQuote }) {
+  const [sort, setSort] = useState<{ key: ShoppingListSortKey; direction: ShoppingListSortDirection } | null>(null);
+  const rows = useMemo(
+    () => sort ? sortShoppingListResults(quote.items, sort.key, sort.direction) : quote.items,
+    [quote.items, sort],
+  );
+  const onSort = (key: ShoppingListSortKey) => {
+    setSort(current => (
+      current?.key === key
+        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: defaultShoppingListSortDirection(key) }
+    ));
+  };
+
   return (
     <div className="mk-shop-results">
       <div className="mk-shop-totals">
@@ -377,16 +395,16 @@ function ShoppingListResults({ quote }: { quote: ShoppingListQuote }) {
       <table className="mk-shop-table">
         <thead>
           <tr>
-            <th>Item</th>
-            <th className="num">Qty</th>
-            <th className="num">Filled</th>
-            <th className="num">Avg price</th>
-            <th className="num">Subtotal</th>
-            <th>Status</th>
+            <ShoppingSortTh label="Item" sortKey="item" active={sort} onSort={onSort} />
+            <ShoppingSortTh label="Qty" sortKey="requestedQty" active={sort} onSort={onSort} numeric />
+            <ShoppingSortTh label="Filled" sortKey="filledQty" active={sort} onSort={onSort} numeric />
+            <ShoppingSortTh label="Avg price" sortKey="avgPrice" active={sort} onSort={onSort} numeric />
+            <ShoppingSortTh label="Subtotal" sortKey="totalCost" active={sort} onSort={onSort} numeric />
+            <ShoppingSortTh label="Status" sortKey="status" active={sort} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
-          {quote.items.map((it, i) => (
+          {rows.map((it, i) => (
             <tr key={i} className={`mk-shop-row mk-shop-${it.status}`}>
               <td>{it.resolvedName ?? it.inputName}</td>
               <td className="num">{it.requestedQty.toLocaleString()}</td>
@@ -417,6 +435,38 @@ function ShoppingListResults({ quote }: { quote: ShoppingListQuote }) {
       </table>
     </div>
   );
+}
+
+function ShoppingSortTh({
+  label,
+  sortKey,
+  active,
+  onSort,
+  numeric = false,
+}: {
+  label: string;
+  sortKey: ShoppingListSortKey;
+  active: { key: ShoppingListSortKey; direction: ShoppingListSortDirection } | null;
+  onSort: (key: ShoppingListSortKey) => void;
+  numeric?: boolean;
+}) {
+  const direction = active?.key === sortKey ? active.direction : null;
+  return (
+    <th className={numeric ? 'num' : undefined} aria-sort={direction ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        className={`mk-shop-sort-btn${direction ? ' active' : ''}`}
+        onClick={() => onSort(sortKey)}
+      >
+        <span>{label}</span>
+        {direction && <span className="arrow" aria-hidden="true">{direction === 'asc' ? '▲' : '▼'}</span>}
+      </button>
+    </th>
+  );
+}
+
+function defaultShoppingListSortDirection(key: ShoppingListSortKey): ShoppingListSortDirection {
+  return key === 'item' || key === 'status' ? 'asc' : 'desc';
 }
 
 function Stat({ label, value, sub, cls, good }: {

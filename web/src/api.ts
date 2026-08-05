@@ -312,6 +312,23 @@ export interface ContractSearchResponse {
   warnings: ContractWarning[];
 }
 
+export interface ContractDetailItem {
+  recordId: number;
+  typeId: number;
+  name: string;
+  groupName: string;
+  categoryName: string;
+  quantity: number;
+}
+
+export interface ContractDetails {
+  contract: Omit<ContractSearchResult, 'shipTypeId' | 'shipName' | 'jumps'> & {
+    locationId: number | null;
+  };
+  items: ContractDetailItem[];
+  quote: ShoppingListQuote;
+}
+
 export interface ContractIndexSummary {
   complete: boolean;
   regionsTotal: number;
@@ -342,6 +359,17 @@ export async function searchContracts(
     radius: String(params.radius),
   });
   const res = await fetch(`/api/contracts/search?${qs.toString()}`, { signal });
+  if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
+  return res.json();
+}
+
+export async function fetchContractDetails(
+  contractId: number,
+  hub: ShoppingHub,
+  signal?: AbortSignal,
+): Promise<ContractDetails | { error: string }> {
+  const qs = new URLSearchParams({ hub });
+  const res = await fetch(`/api/contracts/${contractId}/details?${qs.toString()}`, { signal });
   if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
   return res.json();
 }
