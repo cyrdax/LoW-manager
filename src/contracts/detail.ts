@@ -3,6 +3,7 @@ import { db as appDb } from '../db.ts';
 import type { MasteryData } from '../skills/mastery-data.ts';
 import {
   quoteResolvedMarketItems,
+  resolveTypeNames,
   type HubKey,
   type MarketQuoteResult,
   type ResolvedMarketRequestItem,
@@ -60,6 +61,7 @@ export interface GetContractDetailsInput {
 export interface GetContractDetailsDeps {
   database?: SqliteDatabase;
   quoteItems?: (hub: HubKey, items: ResolvedMarketRequestItem[]) => Promise<MarketQuoteResult>;
+  resolveTypeNames?: (typeIds: number[]) => Promise<Map<number, string | null>>;
 }
 
 export async function getContractDetails(
@@ -96,7 +98,13 @@ export async function getContractDetails(
     ORDER BY record_id
   `).all(input.contractId) as ItemRow[];
 
-  const items = itemRows.map(row => contractDetailItem(input.data, row));
+  const missingTypeIds = itemRows
+    .map(row => row.type_id)
+    .filter(typeId => input.data.ships[String(typeId)] == null && input.data.items[String(typeId)] == null);
+  const resolvedNames = missingTypeIds.length > 0
+    ? await (deps.resolveTypeNames ?? resolveTypeNames)(missingTypeIds)
+    : new Map<number, string | null>();
+  const items = itemRows.map(row => contractDetailItem(input.data, row, resolvedNames));
   const quoteItems = items.map(item => ({
     inputName: item.name,
     resolvedName: item.name,
@@ -130,7 +138,11 @@ export async function getContractDetails(
   };
 }
 
-function contractDetailItem(data: MasteryData, row: ItemRow): ContractDetailItem {
+function contractDetailItem(
+  data: MasteryData,
+  row: ItemRow,
+  resolvedNames: ReadonlyMap<number, string | null>,
+): ContractDetailItem {
   const ship = data.ships[String(row.type_id)];
   if (ship) {
     return {
@@ -144,10 +156,11 @@ function contractDetailItem(data: MasteryData, row: ItemRow): ContractDetailItem
   }
 
   const item = data.items[String(row.type_id)];
+  const resolvedName = resolvedNames.get(row.type_id);
   return {
     recordId: row.record_id,
     typeId: row.type_id,
-    name: item?.name ?? `Type ${row.type_id}`,
+    name: item?.name ?? resolvedName ?? `Type ${row.type_id}`,
     groupName: item?.groupName ?? 'Unknown',
     categoryName: item?.categoryName ?? 'Unknown',
     quantity: row.quantity,

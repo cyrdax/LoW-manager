@@ -58,6 +58,7 @@ const ORDERS_TTL_MS = 5 * 60 * 1000;
 const historyCache = new Map<string, CacheSlot<HistoryEntry[]>>();
 const ordersCache = new Map<string, CacheSlot<MarketOrder[]>>();
 const typeIdCache = new Map<string, number | null>();
+const typeNameCache = new Map<number, string | null>();
 
 export async function getHistory(regionId: number, typeId: number): Promise<HistoryEntry[]> {
   const key = `${regionId}:${typeId}`;
@@ -99,6 +100,34 @@ export async function resolveTypeIds(names: string[]): Promise<Map<string, numbe
       const id = found.get(name) ?? null;
       typeIdCache.set(name, id);
       out.set(name, id);
+    }
+  }
+
+  return out;
+}
+
+export async function resolveTypeNames(typeIds: number[]): Promise<Map<number, string | null>> {
+  const out = new Map<number, string | null>();
+  const toLookup: number[] = [];
+  for (const id of new Set(typeIds.filter(id => Number.isFinite(id) && id > 0))) {
+    if (typeNameCache.has(id)) out.set(id, typeNameCache.get(id)!);
+    else toLookup.push(id);
+  }
+
+  for (let i = 0; i < toLookup.length; i += 1000) {
+    const batch = toLookup.slice(i, i + 1000);
+    const { data } = await esiPostPublic<Array<{ id: number; name: string; category: string }>>(
+      '/universe/names/',
+      batch,
+    );
+    const found = new Map<number, string>();
+    for (const type of data) {
+      if (type.category === 'inventory_type') found.set(type.id, type.name);
+    }
+    for (const id of batch) {
+      const name = found.get(id) ?? null;
+      typeNameCache.set(id, name);
+      out.set(id, name);
     }
   }
 

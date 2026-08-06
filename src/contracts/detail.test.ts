@@ -45,17 +45,23 @@ test('getContractDetails returns included items with market quote estimates', as
   replaceContractItems(db, 42, [
     { record_id: 1, type_id: 17920, quantity: 1, is_included: true },
     { record_id: 2, type_id: 34, quantity: 500, is_included: true },
+    { record_id: 4, type_id: 28668, quantity: 2, is_included: true },
     { record_id: 3, type_id: 35, quantity: 10, is_included: false },
   ], 2, 9_999_999);
 
   let quotedHub = '';
   let quotedItems: ResolvedMarketRequestItem[] = [];
+  let resolvedTypeIds: number[] = [];
   const details = await getContractDetails({
     contractId: 42,
     hub: 'jita',
     data,
   }, {
     database: db,
+    resolveTypeNames: async ids => {
+      resolvedTypeIds = ids;
+      return new Map([[28668, 'Synthetic Hull Conversion Inertia Stabilizers']]);
+    },
     quoteItems: async (hub, items): Promise<MarketQuoteResult> => {
       quotedHub = hub;
       quotedItems = items;
@@ -83,12 +89,15 @@ test('getContractDetails returns included items with market quote estimates', as
   });
 
   assert.equal(quotedHub, 'jita');
+  assert.deepEqual(resolvedTypeIds, [28668]);
   assert.deepEqual(quotedItems.map(item => [item.typeId, item.inputName, item.requestedQty, item.bucket]), [
     [17920, 'Barghest', 1, 'Battleship'],
     [34, 'Tritanium', 500, 'Mineral'],
+    [28668, 'Synthetic Hull Conversion Inertia Stabilizers', 2, 'Unknown'],
   ]);
   assert.equal(details.contract.contractId, 42);
-  assert.equal(details.items.length, 2);
+  assert.equal(details.items.length, 3);
   assert.equal(details.items[0].name, 'Barghest');
+  assert.equal(details.items[2].name, 'Synthetic Hull Conversion Inertia Stabilizers');
   assert.equal(details.quote.totalCost, 1_000_001_000);
 });
