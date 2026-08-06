@@ -17,6 +17,11 @@ import {
   type ContractResultSortKey,
   type SortDirection,
 } from '../../../src/contracts/result-sort.ts';
+import {
+  sortContractDetailItems,
+  type ContractDetailSortDirection,
+  type ContractDetailSortKey,
+} from '../contract-detail-sort.ts';
 
 const SHIP_ID_KEY = 'efd.contracts.shipId';
 const SHIP_NAME_KEY = 'efd.contracts.shipName';
@@ -396,6 +401,10 @@ function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onC
   const [details, setDetails] = useState<ContractDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detailSort, setDetailSort] = useState<{ key: ContractDetailSortKey; direction: ContractDetailSortDirection }>({
+    key: 'item',
+    direction: 'asc',
+  });
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -427,6 +436,17 @@ function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onC
   }, [details]);
 
   const estimateDelta = details ? details.contract.effectivePrice == null ? null : details.contract.effectivePrice - details.quote.totalCost : null;
+  const sortedDetailItems = useMemo(
+    () => details ? sortContractDetailItems(details.items, quoteByType, detailSort.key, detailSort.direction) : [],
+    [details, quoteByType, detailSort],
+  );
+  const onDetailSort = (key: ContractDetailSortKey) => {
+    setDetailSort(current => (
+      current.key === key
+        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: defaultContractDetailSortDirection(key) }
+    ));
+  };
 
   return (
     <Modal title="Contract Price Breakdown" onClose={onClose} className="ct-detail-modal" bodyClassName="ct-detail-modal-body">
@@ -458,14 +478,14 @@ function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onC
               <h3>Included items <span>{details.items.length}</span></h3>
               <div className="ct-detail-table">
                 <div className="ct-detail-row ct-detail-row-head">
-                  <span>Item</span>
-                  <span>Category</span>
-                  <span>Qty</span>
-                  <span>Unit</span>
-                  <span>Total</span>
-                  <span>Status</span>
+                  <ContractDetailSortTh label="Item" sortKey="item" active={detailSort} onSort={onDetailSort} />
+                  <ContractDetailSortTh label="Category" sortKey="category" active={detailSort} onSort={onDetailSort} />
+                  <ContractDetailSortTh label="Qty" sortKey="quantity" active={detailSort} onSort={onDetailSort} numeric />
+                  <ContractDetailSortTh label="Unit" sortKey="unit" active={detailSort} onSort={onDetailSort} numeric />
+                  <ContractDetailSortTh label="Total" sortKey="total" active={detailSort} onSort={onDetailSort} numeric />
+                  <ContractDetailSortTh label="Status" sortKey="status" active={detailSort} onSort={onDetailSort} />
                 </div>
-                {details.items.map(item => {
+                {sortedDetailItems.map(item => {
                   const quote = quoteByType.get(item.typeId) ?? null;
                   return (
                     <div className="ct-detail-row" key={item.recordId}>
@@ -496,6 +516,42 @@ function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onC
 
 function DetailMetric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return <div className={strong ? 'strong' : ''}><span>{label}</span><b>{value}</b></div>;
+}
+
+function ContractDetailSortTh({
+  label,
+  sortKey,
+  active,
+  onSort,
+  numeric = false,
+}: {
+  label: string;
+  sortKey: ContractDetailSortKey;
+  active: { key: ContractDetailSortKey; direction: ContractDetailSortDirection };
+  onSort: (key: ContractDetailSortKey) => void;
+  numeric?: boolean;
+}) {
+  const direction = active.key === sortKey ? active.direction : null;
+  return (
+    <span
+      className={numeric ? 'num' : undefined}
+      role="columnheader"
+      aria-sort={direction ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        className={`ct-detail-sort-btn${direction ? ' active' : ''}`}
+        onClick={() => onSort(sortKey)}
+      >
+        <span>{label}</span>
+        {direction && <span className="arrow" aria-hidden="true">{direction === 'asc' ? '▲' : '▼'}</span>}
+      </button>
+    </span>
+  );
+}
+
+function defaultContractDetailSortDirection(key: ContractDetailSortKey): ContractDetailSortDirection {
+  return key === 'item' || key === 'category' || key === 'status' ? 'asc' : 'desc';
 }
 
 function Modal({

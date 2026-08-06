@@ -17,11 +17,18 @@ test('contracts view opens a contract detail modal with itemized market estimate
   assert.match(view, /<ContractDetailsModal row=\{detailRow\}/);
   assert.match(view, /fetchContractDetails\(row\.contractId, hub/);
   assert.match(view, /Contract Price Breakdown/);
-  assert.match(view, /details\.items\.map/);
+  assert.match(view, /sortContractDetailItems\(details\.items, quoteByType, detailSort\.key, detailSort\.direction\)/);
   assert.match(view, /details\.quote\.items/);
+  assert.match(view, /<ContractDetailSortTh label="Item" sortKey="item"/);
+  assert.match(view, /<ContractDetailSortTh label="Category" sortKey="category"/);
+  assert.match(view, /<ContractDetailSortTh label="Qty" sortKey="quantity"/);
+  assert.match(view, /<ContractDetailSortTh label="Unit" sortKey="unit"/);
+  assert.match(view, /<ContractDetailSortTh label="Total" sortKey="total"/);
+  assert.match(view, /<ContractDetailSortTh label="Status" sortKey="status"/);
 
   assert.match(styles, /\.ct-row-clickable/);
   assert.match(styles, /\.ct-detail-modal/);
   assert.match(styles, /\.ct-detail-grid/);
+  assert.match(styles, /\.ct-detail-sort-btn/);
   assert.match(styles, /\.ct-detail-total/);
 });

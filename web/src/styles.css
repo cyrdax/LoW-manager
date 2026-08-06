@@ -3721,6 +3721,41 @@ body {
   text-transform: uppercase;
 }
 
+.ct-detail-row-head .num {
+  text-align: right;
+}
+
+.ct-detail-sort-btn {
+  display: inline-flex;
+  justify-content: inherit;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.ct-detail-sort-btn:hover,
+.ct-detail-sort-btn.active {
+  color: var(--text);
+}
+
+.ct-detail-sort-btn .arrow {
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.ct-detail-row-head .num .ct-detail-sort-btn {
+  justify-content: flex-end;
+}
+
 .ct-detail-item {
   display: flex;
   gap: 10px;
