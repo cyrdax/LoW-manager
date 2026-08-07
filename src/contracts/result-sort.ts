@@ -5,6 +5,7 @@ export type ContractResultSortKey =
   | 'quantity'
   | 'location'
   | 'jumps'
+  | 'capitalJumps'
   | 'expires'
   | 'title'
   | 'contract';
@@ -22,6 +23,7 @@ export interface SortableContractResult {
   systemName: string | null;
   locationName: string;
   jumps: number | null;
+  capitalJumps: number | null;
   dateExpired: string;
 }
 
@@ -67,6 +69,8 @@ function compareByKey(
       return factor * (compareText(locationLabel(a), locationLabel(b)) || compareNumber(a.contractId, b.contractId));
     case 'jumps':
       return compareNullableNumber(a.jumps, b.jumps, direction) || factor * compareNumber(a.contractId, b.contractId);
+    case 'capitalJumps':
+      return compareNullableNumber(a.capitalJumps, b.capitalJumps, direction) || factor * compareNumber(a.contractId, b.contractId);
     case 'expires':
       return factor * (compareDate(a.dateExpired, b.dateExpired) || compareNumber(a.contractId, b.contractId));
     case 'title':

@@ -71,6 +71,8 @@ test('indexed search returns matching included ship items and excludes out-of-ra
   const search = searchIndexedContracts(db, {
     shipTypeId: 17920,
     shipName: 'Barghest',
+    originSystemId: 30000142,
+    topology,
     regionIds: [10000002],
     distances,
     now: NOW,
@@ -80,6 +82,7 @@ test('indexed search returns matching included ship items and excludes out-of-ra
   assert.equal(search.results[0].quantity, 1);
   assert.equal(search.results[0].locationName, 'Jita IV - Moon 4 - Caldari Navy Assembly Plant');
   assert.equal(search.results[0].jumps, 0);
+  assert.equal(search.results[0].capitalJumps, null);
 });
 
 test('indexed search excludes unknown-location contracts and reports skipped count', () => {
@@ -107,6 +110,8 @@ test('indexed search excludes unknown-location contracts and reports skipped cou
   const search = searchIndexedContracts(db, {
     shipTypeId: 17920,
     shipName: 'Barghest',
+    originSystemId: 30000142,
+    topology,
     regionIds: [10000002],
     distances,
     now: NOW,

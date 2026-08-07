@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { capitalJumpsAtJdc5 } from './capital-jumps.ts';
 import { locationForId, type ContractMapTopology } from './map.ts';
 import { sortContractResultsDefault } from './result-sort.ts';
 import type { ContractSearchResult, PublicContractItem, PublicContractSummary } from './types.ts';
@@ -22,6 +23,8 @@ export interface UpsertRegionContractsInput {
 export interface IndexedContractSearchInput {
   shipTypeId: number;
   shipName: string;
+  originSystemId: number;
+  topology: ContractMapTopology;
   regionIds: number[];
   distances: Map<number, number>;
   now: number;
@@ -368,6 +371,7 @@ export function searchIndexedContracts(
       locationName: row.location_name ?? 'Unknown structure',
       locationKnown: row.location_known === 1,
       jumps,
+      capitalJumps: capitalJumpsAtJdc5(input.topology, input.originSystemId, row.location_system_id),
       dateIssued: row.date_issued,
       dateExpired: row.date_expired,
     });

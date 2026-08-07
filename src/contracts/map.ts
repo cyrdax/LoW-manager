@@ -10,6 +10,9 @@ export interface ContractMapSystemInput {
   regionId: number;
   regionName: string;
   neighbors: number[];
+  x?: number;
+  y?: number;
+  z?: number;
 }
 
 export interface StationLocation {
@@ -19,13 +22,14 @@ export interface StationLocation {
 }
 
 export interface ContractMapTopology {
-  systems: Map<number, { id: number; name: string; regionId: number; regionName: string }>;
+  systems: Map<number, { id: number; name: string; regionId: number; regionName: string; x?: number; y?: number; z?: number }>;
   adjacency: Map<number, number[]>;
   stations: Map<number, { stationId: number; stationName: string; solarSystemId: number }>;
 }
 
 interface SdeSolarSystemYaml {
   solarSystemID: number;
+  center?: [number, number, number];
   stargates?: Record<string, { destination: number }>;
 }
 
@@ -45,7 +49,7 @@ export function buildTopologyFromSystems(
   systems: ContractMapSystemInput[],
   stations: StationLocation[] = [],
 ): ContractMapTopology {
-  const systemMap = new Map<number, { id: number; name: string; regionId: number; regionName: string }>();
+  const systemMap = new Map<number, { id: number; name: string; regionId: number; regionName: string; x?: number; y?: number; z?: number }>();
   const adjacency = new Map<number, number[]>();
   const stationMap = new Map<number, { stationId: number; stationName: string; solarSystemId: number }>();
 
@@ -55,6 +59,9 @@ export function buildTopologyFromSystems(
       name: system.name,
       regionId: system.regionId,
       regionName: system.regionName,
+      x: system.x,
+      y: system.y,
+      z: system.z,
     });
     adjacency.set(system.systemId, Array.from(new Set(system.neighbors)).sort((a, b) => a - b));
   }
@@ -193,6 +200,9 @@ export function loadContractMap(): ContractMapTopology {
       regionId: region.id,
       regionName: region.name,
       neighbors: [],
+      x: system.center?.[0],
+      y: system.center?.[1],
+      z: system.center?.[2],
     });
     systemGateDestinations.set(system.solarSystemID, gateDestinations);
   }

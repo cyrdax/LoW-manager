@@ -350,6 +350,7 @@ function ContractResultsTable({
             <SortableTh label="Qty" sortKey="quantity" active={sort} onSort={onSort} numeric />
             <SortableTh label="Location" sortKey="location" active={sort} onSort={onSort} />
             <SortableTh label="Jumps" sortKey="jumps" active={sort} onSort={onSort} numeric />
+            <SortableTh label="Cap jumps" sortKey="capitalJumps" active={sort} onSort={onSort} numeric />
             <SortableTh label="Expires" sortKey="expires" active={sort} onSort={onSort} />
             <SortableTh label="Title" sortKey="title" active={sort} onSort={onSort} />
             <SortableTh label="Contract" sortKey="contract" active={sort} onSort={onSort} numeric />
@@ -378,6 +379,7 @@ function ContractResultsTable({
                 </small>
               </td>
               <td className="num">{row.jumps == null ? '—' : row.jumps}</td>
+              <td className="num">{row.capitalJumps == null ? '—' : row.capitalJumps}</td>
               <td>{formatExpiry(row.dateExpired)}</td>
               <td>{row.title || '—'}</td>
               <td className="num">

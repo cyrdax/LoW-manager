@@ -68,6 +68,8 @@ test('refreshContractRegion fetches all pages, indexes summaries, and refreshes 
   const search = searchIndexedContracts(db, {
     shipTypeId: 17920,
     shipName: 'Barghest',
+    originSystemId: 30000142,
+    topology,
     regionIds: [10000002],
     distances,
     now: NOW,
@@ -100,6 +102,8 @@ test('refreshContractRegion marks contracts missing from the latest region page 
   const search = searchIndexedContracts(db, {
     shipTypeId: 17920,
     shipName: 'Barghest',
+    originSystemId: 30000142,
+    topology,
     regionIds: [10000002],
     distances: distancesFrom(topology, 30000142, 30),
     now: NOW,

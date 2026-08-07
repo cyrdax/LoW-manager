@@ -117,6 +117,8 @@ export async function runContractSearch(
   const indexed = searchIndexedContracts(database, {
     shipTypeId: input.shipId,
     shipName: ship.name,
+    originSystemId: input.originSystemId,
+    topology,
     regionIds,
     distances,
     now,

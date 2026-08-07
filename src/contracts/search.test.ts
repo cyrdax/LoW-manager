@@ -100,6 +100,7 @@ test('runContractSearch reads indexed contracts and returns coverage metadata', 
   assert.equal(response.results[0].contractId, 1);
   assert.equal(response.results[0].quantity, 1);
   assert.equal(response.results[0].jumps, 0);
+  assert.equal(response.results[0].capitalJumps, 0);
   assert.equal(response.results[0].locationName, 'Jita IV - Moon 4 - Caldari Navy Assembly Plant');
   assert.equal(response.index.regionsTotal, 1);
   assert.equal(response.index.regionsReady, 1);
@@ -209,6 +210,7 @@ function row(contractId: number, jumps: number | null, effectivePrice: number | 
     locationName: jumps == null ? 'Unknown structure' : `System ${jumps}`,
     locationKnown: jumps != null,
     jumps,
+    capitalJumps: jumps,
     dateIssued: '2026-01-01T00:00:00Z',
     dateExpired: '2026-01-02T00:00:00Z',
   };
@@ -222,8 +224,8 @@ function memoryDb() {
 
 function topologyFixture() {
   return buildTopologyFromSystems([
-    { systemId: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145] },
-    { systemId: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge', neighbors: [30000142] },
+    { systemId: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145], x: 0, y: 0, z: 0 },
+    { systemId: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge', neighbors: [30000142], x: 1, y: 0, z: 0 },
   ], [
     { stationId: 60003760, stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant', solarSystemId: 30000142 },
   ]);

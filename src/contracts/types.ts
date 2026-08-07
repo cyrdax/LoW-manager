@@ -64,6 +64,7 @@ export interface ContractSearchResult {
   locationName: string;
   locationKnown: boolean;
   jumps: number | null;
+  capitalJumps: number | null;
   dateIssued: string;
   dateExpired: string;
 }

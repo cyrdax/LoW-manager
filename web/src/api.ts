@@ -297,6 +297,7 @@ export interface ContractSearchResult {
   locationName: string;
   locationKnown: boolean;
   jumps: number | null;
+  capitalJumps: number | null;
   dateIssued: string;
   dateExpired: string;
 }
@@ -322,7 +323,7 @@ export interface ContractDetailItem {
 }
 
 export interface ContractDetails {
-  contract: Omit<ContractSearchResult, 'shipTypeId' | 'shipName' | 'jumps'> & {
+  contract: Omit<ContractSearchResult, 'shipTypeId' | 'shipName' | 'jumps' | 'capitalJumps'> & {
     locationId: number | null;
   };
   items: ContractDetailItem[];
