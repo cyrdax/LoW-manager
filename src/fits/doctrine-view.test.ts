@@ -200,6 +200,10 @@ test('fit price widget opens an itemized category breakdown modal', () => {
   assert.match(fitsView, /PRICE_SECTION_ROLES/);
   assert.match(fitsView, /EXTRA_PRICE_ROLES/);
   assert.match(fitsView, /PriceItemRow/);
+  assert.match(fitsView, /showQuantityAndTotal/);
+  assert.match(fitsView, /displayTotalCost/);
+  assert.match(fitsView, /remainingQty: item\.requestedQty/);
+  assert.match(fitsView, /match\.remainingQty = Math\.max\(0, match\.remainingQty - item\.quantity\)/);
   assert.match(fitsView, /findQuoteForFitItem/);
   assert.match(fitsView, /statusLabel\(item\)/);
   assert.match(fitsView, /function Modal\(\{ title, children, onClose, className = '', bodyClassName = '' \}/);
@@ -214,7 +218,9 @@ test('fit price widget opens an itemized category breakdown modal', () => {
   assert.match(styles, /\.fits-price-breakdown-row/);
   const rowBlock = styles.match(/\.fits-price-breakdown-head,\n\.fits-price-breakdown-row \{[\s\S]*?\n\}/)?.[0] ?? '';
   assert.doesNotMatch(rowBlock, /min-width: 980px;/);
-  assert.match(styles, /grid-template-columns: minmax\(220px, 1fr\) 56px minmax\(90px, 0\.55fr\) minmax\(100px, 0\.6fr\) minmax\(96px, 0\.55fr\);/);
+  assert.match(styles, /\.fits-price-breakdown-table\.full \.fits-price-breakdown-head,[\s\S]*?grid-template-columns: minmax\(220px, 1fr\) 56px minmax\(90px, 0\.55fr\) minmax\(100px, 0\.6fr\) minmax\(96px, 0\.55fr\);/);
+  assert.match(styles, /\.fits-price-breakdown-table\.compact \.fits-price-breakdown-head,[\s\S]*?grid-template-columns: minmax\(220px, 1fr\) minmax\(110px, 0\.45fr\) minmax\(110px, 0\.45fr\);/);
+  assert.match(styles, /\.fits-price-breakdown-head span:not\(:first-child\),\n\.fits-price-breakdown-row > span:not\(:first-child\),\n\.fits-price-breakdown-row small \{\n  text-align: center;\n\}/);
 });
 
 test('fit header keeps cost and send controls on their own lower row without shrinking the selector row', () => {

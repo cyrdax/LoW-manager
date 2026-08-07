@@ -2801,12 +2801,19 @@ body {
 .fits-price-breakdown-head,
 .fits-price-breakdown-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 56px minmax(90px, 0.55fr) minmax(100px, 0.6fr) minmax(96px, 0.55fr);
   gap: 10px;
   align-items: center;
   padding: 7px 10px;
   border-bottom: 1px solid #20252d;
   font-variant-numeric: tabular-nums;
+}
+.fits-price-breakdown-table.full .fits-price-breakdown-head,
+.fits-price-breakdown-table.full .fits-price-breakdown-row {
+  grid-template-columns: minmax(220px, 1fr) 56px minmax(90px, 0.55fr) minmax(100px, 0.6fr) minmax(96px, 0.55fr);
+}
+.fits-price-breakdown-table.compact .fits-price-breakdown-head,
+.fits-price-breakdown-table.compact .fits-price-breakdown-row {
+  grid-template-columns: minmax(220px, 1fr) minmax(110px, 0.45fr) minmax(110px, 0.45fr);
 }
 .fits-price-breakdown-head {
   color: var(--dim);
@@ -2817,9 +2824,10 @@ body {
 .fits-price-breakdown-row:last-child {
   border-bottom: 0;
 }
+.fits-price-breakdown-head span:not(:first-child),
 .fits-price-breakdown-row > span:not(:first-child),
 .fits-price-breakdown-row small {
-  text-align: right;
+  text-align: center;
 }
 .fits-price-breakdown-row small {
   color: var(--dim);

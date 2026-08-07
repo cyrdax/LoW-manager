@@ -1128,6 +1128,7 @@ type PriceBreakdownGroup = {
   label: string;
   total: number;
   items: PriceBreakdownLine[];
+  showQuantityAndTotal: boolean;
 };
 
 type PriceBreakdownLine = {
@@ -1135,6 +1136,7 @@ type PriceBreakdownLine = {
   name: string;
   typeId: number | null;
   requestedQty: number;
+  displayTotalCost: number;
   quoteItem: FitQuoteItem | null;
 };
 
@@ -1157,15 +1159,17 @@ function PriceBreakdownModal({ quote, fit }: { quote: FitQuote; fit: FitDraft | 
           <section className="fits-price-breakdown-section" key={group.key}>
             <h3>{group.label}<span>{formatIsk(group.total)} ISK</span></h3>
             {group.items.length > 0 ? (
-              <div className="fits-price-breakdown-table">
+              <div className={`fits-price-breakdown-table ${group.showQuantityAndTotal ? 'full' : 'compact'}`}>
                 <div className="fits-price-breakdown-head">
                   <span>Item</span>
-                  <span>Qty</span>
+                  {group.showQuantityAndTotal && <span>Qty</span>}
                   <span>Unit</span>
-                  <span>Total</span>
+                  {group.showQuantityAndTotal && <span>Total</span>}
                   <span>Status</span>
                 </div>
-                {group.items.map(item => <PriceItemRow key={item.key} item={item} />)}
+                {group.items.map(item => (
+                  <PriceItemRow key={item.key} item={item} showQuantityAndTotal={group.showQuantityAndTotal} />
+                ))}
               </div>
             ) : (
               <div className="fits-empty">No items in this category.</div>
@@ -1178,12 +1182,12 @@ function PriceBreakdownModal({ quote, fit }: { quote: FitQuote; fit: FitDraft | 
 }
 
 function priceGroupsForFit(fit: FitDraft | SavedFitDetail, quote: FitQuote): PriceBreakdownGroup[] {
-  const remainingQuoteItems = quote.items.map(item => ({ ...item, used: false }));
+  const remainingQuoteItems = quote.items.map(item => ({ ...item, remainingQty: item.requestedQty }));
   const groups: PriceBreakdownGroup[] = [];
   const hullItems = quote.items
     .filter(item => item.bucket === 'hull')
     .map((item, index) => quoteLine(item, `hull-${index}`));
-  groups.push({ key: 'hull', label: 'Hull', total: quote.totals.hull, items: hullItems });
+  groups.push({ key: 'hull', label: 'Hull', total: quote.totals.hull, items: hullItems, showQuantityAndTotal: false });
 
   for (const role of PRICE_SECTION_ROLES) {
     const section = fit.sections[role];
@@ -1194,6 +1198,7 @@ function priceGroupsForFit(fit: FitDraft | SavedFitDetail, quote: FitQuote): Pri
       label: section.label,
       total: sumPriceLines(items),
       items,
+      showQuantityAndTotal: false,
     });
   }
 
@@ -1208,6 +1213,7 @@ function priceGroupsForFit(fit: FitDraft | SavedFitDetail, quote: FitQuote): Pri
       label: 'Extras / Cargo',
       total: sumPriceLines(extraItems),
       items: extraItems,
+      showQuantityAndTotal: true,
     });
   }
 
@@ -1220,6 +1226,7 @@ function quoteLine(item: FitQuoteItem, key: string): PriceBreakdownLine {
     name: item.resolvedName ?? item.inputName,
     typeId: item.typeId,
     requestedQty: item.requestedQty,
+    displayTotalCost: item.totalCost,
     quoteItem: item,
   };
 }
@@ -1230,27 +1237,33 @@ function fitLine(item: AssignedFitItem, quoteItem: FitQuoteItem | null): PriceBr
     name: item.resolvedName ?? item.inputName,
     typeId: item.typeId,
     requestedQty: item.quantity,
+    displayTotalCost: splitQuoteTotalCost(item.quantity, quoteItem),
     quoteItem,
   };
 }
 
 function findQuoteForFitItem(
   item: AssignedFitItem,
-  quoteItems: Array<FitQuoteItem & { used: boolean }>,
+  quoteItems: Array<FitQuoteItem & { remainingQty: number }>,
 ): FitQuoteItem | null {
   if (item.typeId == null || item.role === 'unmatched') return null;
-  const match = quoteItems.find(quoteItem => !quoteItem.used && quoteItem.typeId === item.typeId && quoteItem.requestedQty === item.quantity)
-    ?? quoteItems.find(quoteItem => !quoteItem.used && quoteItem.typeId === item.typeId);
+  const match = quoteItems.find(quoteItem => quoteItem.remainingQty > 0 && quoteItem.typeId === item.typeId && quoteItem.requestedQty === item.quantity)
+    ?? quoteItems.find(quoteItem => quoteItem.remainingQty > 0 && quoteItem.typeId === item.typeId);
   if (!match) return null;
-  match.used = true;
+  match.remainingQty = Math.max(0, match.remainingQty - item.quantity);
   return match;
 }
 
-function sumPriceLines(items: PriceBreakdownLine[]): number {
-  return items.reduce((sum, item) => sum + (item.quoteItem?.totalCost ?? 0), 0);
+function splitQuoteTotalCost(requestedQty: number, quoteItem: FitQuoteItem | null): number {
+  if (!quoteItem || quoteItem.requestedQty <= 0) return 0;
+  return quoteItem.totalCost * (requestedQty / quoteItem.requestedQty);
 }
 
-function PriceItemRow({ item }: { item: PriceBreakdownLine }) {
+function sumPriceLines(items: PriceBreakdownLine[]): number {
+  return items.reduce((sum, item) => sum + item.displayTotalCost, 0);
+}
+
+function PriceItemRow({ item, showQuantityAndTotal }: { item: PriceBreakdownLine; showQuantityAndTotal: boolean }) {
   const quoteItem = item.quoteItem;
   const name = item.name;
   const status = statusLabel(item);
@@ -1260,9 +1273,9 @@ function PriceItemRow({ item }: { item: PriceBreakdownLine }) {
         <span className="fits-price-breakdown-icon">{item.typeId ? <img src={iconUrl(item.typeId)} alt="" /> : '?'}</span>
         <b title={name}>{name}</b>
       </span>
-      <span>{item.requestedQty.toLocaleString()}</span>
+      {showQuantityAndTotal && <span>{item.requestedQty.toLocaleString()}</span>}
       <span>{quoteItem?.avgPrice == null ? '-' : `${formatIsk(quoteItem.avgPrice)} ISK`}</span>
-      <span>{formatIsk(quoteItem?.totalCost ?? 0)} ISK</span>
+      {showQuantityAndTotal && <span>{formatIsk(item.displayTotalCost)} ISK</span>}
       <small>{status}</small>
     </div>
   );

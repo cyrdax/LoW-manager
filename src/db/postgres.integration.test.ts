@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { runMigrations } from './migrations.ts';
+import { readMigrations, runMigrations } from './migrations.ts';
 import {
   createPostgresTestPool,
   dropPostgresTestDatabase,
@@ -18,11 +18,12 @@ test('postgres migrations boot the live test schema', { skip: config ? false : '
   await resetPostgresTestDatabase(isolated);
   const pool = createPostgresTestPool(isolated);
   try {
+    const expectedMigrationIds = readMigrations().map(migration => migration.id);
     const result = await runMigrations(pool);
-    assert.deepEqual(result.applied, ['0001_multi_tenant_foundation', '0002_asset_snapshots']);
+    assert.deepEqual(result.applied, expectedMigrationIds);
 
     const migrationCount = await pool.query<{ count: string }>('SELECT count(*) AS count FROM schema_migrations');
-    assert.equal(Number(migrationCount.rows[0].count), 2);
+    assert.equal(Number(migrationCount.rows[0].count), expectedMigrationIds.length);
 
     const tableCount = await pool.query<{ count: string }>(`
       SELECT count(*) AS count
@@ -30,7 +31,7 @@ test('postgres migrations boot the live test schema', { skip: config ? false : '
       WHERE table_schema = 'public'
         AND table_type = 'BASE TABLE'
     `);
-    assert.equal(Number(tableCount.rows[0].count), 21);
+    assert.equal(Number(tableCount.rows[0].count), 22);
 
     await truncatePostgresTables(pool);
     const userCount = await pool.query<{ count: string }>('SELECT count(*) AS count FROM app_users');
