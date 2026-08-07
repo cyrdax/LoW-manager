@@ -75,6 +75,35 @@ test('discord import service lists readable channels and threads alphabetically'
   assert.equal(channels.find(channel => channel.id === '11')?.parentName, 'z-fits');
 });
 
+test('discord import service hides channels and threads that cannot fetch messages', async () => {
+  const probed: string[] = [];
+  const service = createDiscordImportService({
+    api: api({
+      listGuildChannels: async () => [
+        { id: 'visible-channel', name: 'fits', type: 0 },
+        { id: 'blocked-channel', name: 'secret-fits', type: 0 },
+        { id: 'forum-1', name: 'eve-fitting-v2', type: 15 },
+      ],
+      listActiveThreads: async () => [
+        { id: 'visible-thread', name: 'Paladins', type: 11, parent_id: 'forum-1' },
+        { id: 'blocked-thread', name: 'Supers', type: 11, parent_id: 'forum-1' },
+      ],
+      fetchMessages: async channelId => {
+        probed.push(channelId);
+        if (channelId.startsWith('blocked')) throw new Error('Discord API request failed with 403');
+        return [];
+      },
+    }),
+    fitStore: stores(),
+    buildDraft: buildFitDraft,
+  });
+
+  const channels = await service.listChannels();
+
+  assert.deepEqual(channels.map(channel => channel.id), ['forum-1', 'visible-thread', 'visible-channel']);
+  assert.deepEqual(probed.sort(), ['blocked-channel', 'blocked-thread', 'forum-1', 'visible-channel', 'visible-thread']);
+});
+
 test('discord import service only loads archived threads for forum-style channels', async () => {
   const archivedChannelIds: string[] = [];
   const service = createDiscordImportService({

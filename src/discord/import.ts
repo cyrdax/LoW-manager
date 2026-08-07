@@ -200,7 +200,7 @@ export function createDiscordImportService(deps: DiscordImportServiceDeps): Disc
       ];
 
       rows.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
-      return rows;
+      return filterScannableChannels(deps.api, rows);
     },
 
     async scan(input) {
@@ -496,6 +496,35 @@ async function listArchivedThreads(api: DiscordApiClient, channels: DiscordChann
     }
   }));
   return nested.flat();
+}
+
+async function filterScannableChannels(api: DiscordApiClient, rows: DiscordImportChannel[]): Promise<DiscordImportChannel[]> {
+  const checks = await mapWithConcurrency(rows, 6, async row => {
+    try {
+      await api.fetchMessages(row.id, 1);
+      return { row, canScan: true };
+    } catch {
+      return { row, canScan: false };
+    }
+  });
+  return checks.filter(check => check.canScan).map(check => check.row);
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await worker(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 async function visibleFits(store: FitStore | AsyncFitStore, visibility: LibraryVisibility, ownerUserId: string): Promise<SavedFitSummary[]> {
