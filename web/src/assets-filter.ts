@@ -15,17 +15,26 @@ const LEGACY_CATEGORY_ROLLUPS: Record<string, string[]> = {
   pi: ['materials'],
 };
 
-export function filterAssetSnapshots(pilots: AssetSnapshot[], query: string, category: string): AssetSnapshot[] {
+export interface AssetFilterOptions {
+  includeShipCargoSearch?: boolean;
+}
+
+export function filterAssetSnapshots(
+  pilots: AssetSnapshot[],
+  query: string,
+  category: string,
+  options: AssetFilterOptions = {},
+): AssetSnapshot[] {
   const normalizedQuery = query.trim().toLowerCase();
   return pilots
-    .map(snapshot => filterSnapshot(snapshot, normalizedQuery, category))
+    .map(snapshot => filterSnapshot(snapshot, normalizedQuery, category, options))
     .filter((snapshot): snapshot is AssetSnapshot => snapshot != null);
 }
 
-function filterSnapshot(snapshot: AssetSnapshot, query: string, category: string): AssetSnapshot | null {
+function filterSnapshot(snapshot: AssetSnapshot, query: string, category: string, options: AssetFilterOptions): AssetSnapshot | null {
   const pilotMatches = matches(snapshot.pilot.characterName, query);
   const locations = snapshot.locations
-    .map(location => filterLocation(location, query, category, pilotMatches))
+    .map(location => filterLocation(location, query, category, pilotMatches, options))
     .filter((location): location is AssetLocationNode => location != null);
   if (locations.length === 0 && (query !== '' || category !== 'all')) return null;
 
@@ -36,21 +45,36 @@ function filterSnapshot(snapshot: AssetSnapshot, query: string, category: string
   };
 }
 
-function filterLocation(location: AssetLocationNode, query: string, category: string, ancestorMatches: boolean): AssetLocationNode | null {
+function filterLocation(
+  location: AssetLocationNode,
+  query: string,
+  category: string,
+  ancestorMatches: boolean,
+  options: AssetFilterOptions,
+): AssetLocationNode | null {
   const locationMatches = ancestorMatches || matches(location.name, query) || matches(location.systemName ?? '', query);
   const assets = location.assets
-    .map(asset => filterAsset(asset, query, category, locationMatches))
+    .map(asset => filterAsset(asset, query, category, locationMatches, options, false))
     .filter((asset): asset is AssetTreeNode => asset != null);
   if (assets.length === 0) return null;
 
   return { ...location, assets, ...summarize(assets) };
 }
 
-function filterAsset(asset: AssetTreeNode, query: string, category: string, ancestorMatches: boolean): AssetTreeNode | null {
-  const selfMatches = query === '' || matches(asset.name, query) || matches(asset.categoryLabel, query);
+function filterAsset(
+  asset: AssetTreeNode,
+  query: string,
+  category: string,
+  ancestorMatches: boolean,
+  options: AssetFilterOptions,
+  insideShipCargo: boolean,
+): AssetTreeNode | null {
+  const searchable = query === '' || options.includeShipCargoSearch === true || !insideShipCargo;
+  const selfMatches = query === '' || (searchable && (matches(asset.name, query) || matches(asset.categoryLabel, query)));
   const queryMatches = ancestorMatches || selfMatches;
+  const childInsideShipCargo = insideShipCargo || isShipAsset(asset);
   const children = asset.children
-    .map(child => filterAsset(child, query, category, queryMatches))
+    .map(child => filterAsset(child, query, category, queryMatches, options, childInsideShipCargo))
     .filter((child): child is AssetTreeNode => child != null);
   const rollups = asset.categoryRollups ?? LEGACY_CATEGORY_ROLLUPS[asset.category] ?? [];
   const categoryMatches = category === 'all' || asset.category === category || rollups.includes(category);
@@ -86,4 +110,9 @@ function summarize(rows: AssetValueSummary[]): AssetValueSummary {
 
 function matches(value: string, query: string): boolean {
   return query !== '' && value.toLowerCase().includes(query);
+}
+
+function isShipAsset(asset: AssetTreeNode): boolean {
+  const rollups = asset.categoryRollups ?? LEGACY_CATEGORY_ROLLUPS[asset.category] ?? [];
+  return asset.category === 'ships' || rollups.includes('ships');
 }

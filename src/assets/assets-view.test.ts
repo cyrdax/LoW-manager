@@ -121,6 +121,37 @@ test('location-name searches retain category-matching descendants and recompute 
   assert.equal(filtered.locations[0].assets[0].children[0].name, 'Rifter');
 });
 
+test('asset search ignores items inside ship cargo unless enabled', () => {
+  const snapshot = snapshotWithAssets(1, 'Hangar Pilot', [
+    { itemId: 1, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 60003760, locationFlag: 'Hangar', locationType: 'station', unitValue: 1_000, pricingStatus: 'priced' },
+    { itemId: 2, typeId: 2203, name: 'Needlejack Filament', groupId: 1920, groupName: 'Filament', categoryId: 4, categoryName: 'Commodity', quantity: 3, singleton: false, locationId: 1, locationFlag: 'Cargo', locationType: 'item', unitValue: 10, pricingStatus: 'priced' },
+  ]);
+
+  assert.deepEqual(filterAssetSnapshots([snapshot], 'needlejack', 'all'), []);
+
+  const [filtered] = filterAssetSnapshots([snapshot], 'needlejack', 'all', { includeShipCargoSearch: true });
+  assert.equal(filtered.locations.length, 1);
+  assert.equal(filtered.locations[0].assets[0].name, 'Rifter');
+  assert.equal(filtered.locations[0].assets[0].children[0].name, 'Needlejack Filament');
+});
+
+test('large unresolved asset locations are labeled as unknown structures', () => {
+  const snapshot = buildAssetTree({
+    characterId: 1,
+    characterName: 'Structure Pilot',
+    status: 'Ready',
+    error: null,
+    lastRefreshedAt: 1,
+    locations: [],
+    assets: [
+      { itemId: 1, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 1_050_000_000_000, locationFlag: 'Hangar', locationType: 'station', unitValue: 1_000, pricingStatus: 'priced' },
+    ],
+  });
+
+  assert.equal(snapshot.locations[0].name, 'Unknown structure 1050000000000');
+  assert.equal(snapshot.locations[0].status, 'unresolved');
+});
+
 test('system-name searches retain matching asset locations', () => {
   const snapshot = buildAssetTree({
     characterId: 1,
@@ -190,7 +221,13 @@ test('assets api helpers and component expose dashboard refresh search and expan
 
   assert.match(view, /Refresh All/);
   assert.match(view, /Search assets/);
+  assert.match(view, /Include ship cargo/);
+  assert.match(view, /includeShipCargoSearch/);
+  assert.match(view, /asset-loading-spinner/);
+  assert.match(view, /asset-refresh-label/);
+  assert.match(view, /aria-live="polite"/);
   assert.match(view, /locationMeta/);
+  assert.match(view, /Access denied or not visible to this pilot/);
   assert.match(view, /systemName/);
   assert.match(view, /sortAssetSnapshots\(filtered, sort\)/);
   assert.match(view, /ASSET_SORT_COLUMNS\.map/);
@@ -225,5 +262,8 @@ test('assets layout allows expanded asset rows to scroll vertically', () => {
   assert.match(styles, /\.asset-pilot-avatar\s*\{[\s\S]*width:\s*32px;/);
   assert.match(styles, /\.asset-sort-button\s*\{[\s\S]*cursor:\s*pointer;/);
   assert.match(styles, /\.asset-sort-indicator\s*\{[\s\S]*color:\s*var\(--accent\);/);
+  assert.match(styles, /@keyframes asset-spin/);
+  assert.match(styles, /\.asset-loading-spinner\s*\{[\s\S]*animation:\s*asset-spin/);
+  assert.match(styles, /\.asset-cargo-search-toggle\s*\{/);
   assert.doesNotMatch(styles, /\.assets-tree\s*\{[^}]*overflow-y:\s*hidden;/);
 });

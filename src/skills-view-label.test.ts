@@ -45,6 +45,8 @@ function character(overrides: Partial<CharacterStatus>): CharacterStatus {
     fleetSquadId: null,
     isBoss: false,
     needsReauth: false,
+    cloneState: 'unknown',
+    cloneStateReason: 'No inactive skills or long queue detected; ESI does not expose subscription state directly.',
     updatedAt: 0,
     ...overrides,
   };

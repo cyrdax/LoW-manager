@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   characterRowStatusItems,
@@ -45,6 +46,8 @@ const baseCharacter: CharacterStatus = {
   fleetSquadId: null,
   isBoss: false,
   needsReauth: false,
+  cloneState: 'unknown',
+  cloneStateReason: 'No inactive skills or long queue detected; ESI does not expose subscription state directly.',
   updatedAt: 0,
 };
 
@@ -99,4 +102,13 @@ test('pilot row tooltip positions near the pointer and clamps to viewport', () =
     pilotRowTooltipPosition({ x: 980, y: 780 }, { width: 1000, height: 800 }),
     { left: 568, top: 628 },
   );
+});
+
+test('character card exposes inferred clone state badge copy', () => {
+  const source = readFileSync(new URL('../web/src/components/CharacterCard.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /cloneStateLabel/);
+  assert.match(source, /Alpha\?/);
+  assert.match(source, /Omega\?/);
+  assert.match(source, /title=\{c\.cloneStateReason\}/);
 });

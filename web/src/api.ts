@@ -35,6 +35,8 @@ export interface CharacterStatus {
   fleetSquadId: number | null;
   isBoss: boolean;
   needsReauth: boolean;
+  cloneState: 'alpha-likely' | 'omega-likely' | 'unknown' | 'missing-skill-scope';
+  cloneStateReason: string;
   updatedAt: number;
 }
 

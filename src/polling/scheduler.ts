@@ -9,6 +9,7 @@ import type { CharacterAttributes } from '../skills/training-time.ts';
 import { getCharacterFleet } from '../esi/fleet.ts';
 import { getCharacterPublic, resolveCorporation, resolveStation, resolveSystem, resolveType, resolveStructure } from '../esi/universe.ts';
 import { bus } from './events.ts';
+import { inferCloneState } from './clone-state.ts';
 
 const MIN_POLL_MS = 5_000;
 const MAX_POLL_MS = 120_000;
@@ -139,6 +140,11 @@ export function ensureCharacter(row: CharacterRow) {
     s.cached.name = row.character_name;
     s.cached.isBoss = row.is_boss === 1;
     s.cached.needsReauth = row.needs_reauth === 1;
+    Object.assign(s.cached, inferCloneState({
+      hasSkillsScope: hasScope(row.scopes, 'esi-skills.read_skills.v1'),
+      skills: skillsCache.get(row.character_id) ?? null,
+      skillQueue: skillQueueCache.get(row.character_id) ?? null,
+    }));
   }
 }
 
@@ -194,8 +200,31 @@ function blankStatus(row: CharacterRow): CharacterStatus {
     fleetSquadId: null,
     isBoss: row.is_boss === 1,
     needsReauth: row.needs_reauth === 1,
+    ...inferCloneState({
+      hasSkillsScope: hasScope(row.scopes, 'esi-skills.read_skills.v1'),
+      skills: null,
+      skillQueue: null,
+    }),
     updatedAt: 0,
   };
+}
+
+function hasScope(scopes: string, scope: string): boolean {
+  return scopes.split(/\s+/).includes(scope);
+}
+
+function updateCloneState(row: CharacterRow, status: CharacterStatus, updates: Partial<CharacterStatus>): boolean {
+  const next = inferCloneState({
+    hasSkillsScope: hasScope(row.scopes, 'esi-skills.read_skills.v1'),
+    skills: skillsCache.get(row.character_id) ?? null,
+    skillQueue: skillQueueCache.get(row.character_id) ?? null,
+  });
+  if (status.cloneState === next.cloneState && status.cloneStateReason === next.cloneStateReason) return false;
+  status.cloneState = next.cloneState;
+  status.cloneStateReason = next.cloneStateReason;
+  updates.cloneState = next.cloneState;
+  updates.cloneStateReason = next.cloneStateReason;
+  return true;
 }
 
 function scheduleNext(id: number, delayMs: number) {
@@ -301,6 +330,7 @@ async function tick(id: number) {
       const { data, expires } = await getSkillQueue(id);
       s.skills.nextFetchAt = expires ?? now + FALLBACK_TTL.skills * 1000;
       skillQueueCache.set(id, data);
+      changed = updateCloneState(row, s.cached, updates) || changed;
       const training = currentlyTraining(data);
       const skillId = training?.skill_id ?? null;
       const level = training?.finished_level ?? null;
@@ -361,6 +391,7 @@ async function tick(id: number) {
       const { data, expires } = await getSkills(id);
       s.sp.nextFetchAt = expires ?? now + FALLBACK_TTL.sp * 1000;
       skillsCache.set(id, data);
+      changed = updateCloneState(row, s.cached, updates) || changed;
       if (s.cached.totalSp !== data.total_sp) {
         s.cached.totalSp = data.total_sp;
         updates.totalSp = data.total_sp;

@@ -80,7 +80,7 @@ export function aggregateAssetSnapshot(input: AssetSnapshotInput): AssetSnapshot
     if (!locationInputs.has(locationId)) {
       locationInputs.set(locationId, {
         locationId,
-        name: `Unknown location ${locationId}`,
+        name: unknownLocationName(locationId),
         type: 'unknown',
         status: 'unresolved',
       });
@@ -179,6 +179,10 @@ function summarize(rows: AssetValueSummary[]): AssetValueSummary {
 
 function emptySummary(): AssetValueSummary {
   return { itemCount: 0, stackCount: 0, pricedValue: 0, totalValue: 0, unpricedStacks: 0 };
+}
+
+function unknownLocationName(locationId: number): string {
+  return locationId >= 1_000_000_000 ? `Unknown structure ${locationId}` : `Unknown location ${locationId}`;
 }
 
 function summarizeCategories(assets: RawAssetInput[]): AssetCategorySummary[] {

@@ -435,6 +435,19 @@ body {
 .prow .col-name .pill { font-size: 11px; padding: 0 5px; border-radius: 3px; line-height: 1.4; font-weight: 500; }
 .prow .col-name .pill.ok { background: #1f3b2b; color: #bdf1cf; }
 .prow .col-name .pill.warn { background: #3b2f1f; color: #f1dcbd; }
+.prow .col-name .clone-state {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 5px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.prow .col-name .clone-state.omega-likely { border-color: #2d5f40; color: var(--green); }
+.prow .col-name .clone-state.alpha-likely { border-color: #8c4d2e; color: var(--amber); }
+.prow .col-name .clone-state.missing-skill-scope { border-color: #5f2d35; color: var(--red); }
 .prow .col-name .corp { font-size: 11px; color: var(--dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .prow .col-cell { min-width: 0; }
@@ -3484,7 +3497,8 @@ body {
   align-items: center;
 }
 .assets-controls button,
-.assets-controls input,
+.assets-controls .asset-search-input,
+.asset-cargo-search-toggle,
 .asset-refresh-small {
   min-height: 34px;
   border: 1px solid var(--border);
@@ -3499,8 +3513,40 @@ body {
 .assets-controls button.primary { background: var(--accent); border-color: transparent; color: #0b0e13; font-weight: 700; }
 .assets-controls button:disabled,
 .asset-refresh-small:disabled { cursor: not-allowed; opacity: 0.6; }
-.assets-controls input { width: min(340px, 100%); }
-.assets-controls input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.assets-controls .asset-search-input { width: min(340px, 100%); }
+.assets-controls .asset-search-input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.asset-cargo-search-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dim);
+  cursor: pointer;
+  user-select: none;
+}
+.asset-cargo-search-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.asset-refresh-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.asset-loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: asset-spin 0.8s linear infinite;
+}
+@keyframes asset-spin {
+  to { transform: rotate(360deg); }
+}
 .asset-error { color: var(--red); }
 .asset-warning { color: var(--amber); }
 .assets-tree {

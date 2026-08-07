@@ -25,6 +25,7 @@ export function AssetsView() {
   const [pilots, setPilots] = useState<AssetSnapshot[]>([]);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
+  const [includeShipCargoSearch, setIncludeShipCargoSearch] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -60,7 +61,10 @@ export function AssetsView() {
     return () => { cancelled = true; };
   }, []);
 
-  const filtered = useMemo(() => filterAssetSnapshots(pilots, query, category), [pilots, query, category]);
+  const filtered = useMemo(
+    () => filterAssetSnapshots(pilots, query, category, { includeShipCargoSearch }),
+    [pilots, query, category, includeShipCargoSearch],
+  );
   const sorted = useMemo(() => sortAssetSnapshots(filtered, sort), [filtered, sort]);
   const assetAccessNotice = useMemo(() => assetAccessMessage(pilots), [pilots]);
   const refreshDisabled = busy != null || loadState === 'loading';
@@ -141,8 +145,18 @@ export function AssetsView() {
       </section>
 
       <section className="assets-controls" aria-label="Assets controls">
-        <button className="primary" onClick={doRefreshAll} disabled={refreshDisabled}>{busy === 'all' ? 'Refreshing...' : 'Refresh All'}</button>
-        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search assets" aria-label="Search assets" />
+        <button className="primary" onClick={doRefreshAll} disabled={refreshDisabled}>
+          {busy === 'all' ? <RefreshLabel label="Refreshing assets..." /> : 'Refresh All'}
+        </button>
+        <input className="asset-search-input" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search assets" aria-label="Search assets" />
+        <label className="asset-cargo-search-toggle">
+          <input
+            type="checkbox"
+            checked={includeShipCargoSearch}
+            onChange={event => setIncludeShipCargoSearch(event.target.checked)}
+          />
+          <span>Include ship cargo</span>
+        </label>
         {category !== 'all' && <button onClick={() => setCategory('all')}>Clear filter</button>}
         {error && <span className="asset-error" role="alert">{error}</span>}
         {!error && assetAccessNotice && <span className="asset-warning" role="status">{assetAccessNotice}</span>}
@@ -195,6 +209,15 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   return <div className="asset-summary-card"><span>{label}</span><strong>{value}</strong></div>;
 }
 
+function RefreshLabel({ label }: { label: string }) {
+  return (
+    <span className="asset-refresh-label" aria-live="polite">
+      <span className="asset-loading-spinner" aria-hidden="true" />
+      <span>{label}</span>
+    </span>
+  );
+}
+
 function assetAccessMessage(pilots: AssetSnapshot[]): string | null {
   if (pilots.length === 0) return null;
   const missingScope = pilots.filter(snapshot => snapshot.pilot.status === 'Missing asset scope').length;
@@ -239,7 +262,9 @@ function PilotRow(props: {
           <span>{snapshot.pilot.locationCount} locations</span>
           <span>{formatTime(snapshot.pilot.lastRefreshedAt)}</span>
         </button>
-        <button className="asset-refresh-small" disabled={props.refreshDisabled} onClick={() => props.onRefresh(id)}>{props.busy ? 'Refreshing...' : 'Refresh'}</button>
+        <button className="asset-refresh-small" disabled={props.refreshDisabled} onClick={() => props.onRefresh(id)}>
+          {props.busy ? <RefreshLabel label="Refreshing..." /> : 'Refresh'}
+        </button>
       </div>
       {snapshot.pilot.error && <div className="asset-row-note">{snapshot.pilot.error}</div>}
       {open && snapshot.locations.map(location => (
@@ -260,7 +285,7 @@ function LocationRow(props: {
   const key = `${props.pilotId}:${props.location.locationId}`;
   const open = props.expandedLocations.has(key);
   const locationMeta = props.location.status === 'unresolved'
-    ? `Unresolved: ${props.location.rawLocationId}`
+    ? `Access denied or not visible to this pilot · ${props.location.rawLocationId}`
     : props.location.systemName && props.location.systemName !== props.location.name
       ? `${props.location.systemName} · ${props.location.type}`
       : props.location.type;

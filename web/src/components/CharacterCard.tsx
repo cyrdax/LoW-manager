@@ -43,6 +43,19 @@ function levelRoman(n: number | null): string {
   return ['', 'I', 'II', 'III', 'IV', 'V'][n ?? 0] ?? '';
 }
 
+function cloneStateLabel(state: CharacterStatus['cloneState']): string {
+  switch (state) {
+    case 'alpha-likely':
+      return 'Alpha?';
+    case 'omega-likely':
+      return 'Omega?';
+    case 'missing-skill-scope':
+      return 'Skill scope';
+    default:
+      return 'Unknown';
+  }
+}
+
 export interface CharacterRowVisualState {
   needsReauth: boolean;
   isBoss: boolean;
@@ -196,6 +209,9 @@ export function CharacterCard({ c, bossFleetId, selected, gridStyle, onToggle, o
         <div className="title">
           <span className={dotClass} />
           <span className="character">{c.name || `#${c.characterId}`}</span>
+          <span className={`clone-state ${c.cloneState}`} title={c.cloneStateReason}>
+            {cloneStateLabel(c.cloneState)}
+          </span>
           {c.isBoss && <span className="boss">BOSS</span>}
           {visualState.inBossFleet && <span className="pill ok">✓</span>}
           {visualState.missingFromBossFleet && <span className="pill warn">×</span>}
