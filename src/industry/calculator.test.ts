@@ -45,6 +45,39 @@ test('calculateIndustryQuote applies ME to total material quantity and rounds up
   assert.equal(quote.materials[1].adjustedQuantity, 16200);
 });
 
+test('calculateIndustryQuote marks materials that can be built from blueprints', () => {
+  const quote = calculateIndustryQuote({
+    blueprint: rifter,
+    runs: 1,
+    me: 0,
+    te: 0,
+    characterId: 'max',
+    pilot: {
+      kind: 'max',
+      skillLevels: new Map([[3380, 5], [3388, 5]]),
+      skillpoints: new Map(),
+    },
+    buildBlueprintsByProduct: new Map([
+      [34, {
+        blueprintId: 1001,
+        blueprintName: 'Compressed Tritanium Blueprint',
+        productTypeId: 34,
+        productName: 'Tritanium',
+        productQuantity: 100,
+      }],
+    ]),
+  });
+
+  assert.deepEqual(quote.materials[0].buildBlueprint, {
+    blueprintId: 1001,
+    blueprintName: 'Compressed Tritanium Blueprint',
+    productTypeId: 34,
+    productName: 'Tritanium',
+    productQuantity: 100,
+  });
+  assert.equal(quote.materials[1].buildBlueprint, null);
+});
+
 test('calculateIndustryQuote applies TE plus Industry and Advanced Industry time reductions', () => {
   const quote = calculateIndustryQuote({
     blueprint: rifter,

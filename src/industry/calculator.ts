@@ -6,6 +6,14 @@ export interface IndustryMaterial {
   quantity: number;
 }
 
+export interface IndustryBuildBlueprintLink {
+  blueprintId: number;
+  blueprintName: string;
+  productTypeId: number;
+  productName: string;
+  productQuantity: number;
+}
+
 export interface IndustryRequiredSkill {
   skillId: number;
   name: string;
@@ -40,6 +48,7 @@ export interface IndustryQuoteInput {
   te: number;
   characterId: 'max' | number;
   pilot: IndustryPilotSkills;
+  buildBlueprintsByProduct?: Map<number, IndustryBuildBlueprintLink>;
 }
 
 export interface IndustryQuote {
@@ -53,7 +62,13 @@ export interface IndustryQuote {
   inputs: { runs: number; me: number; te: number; characterId: 'max' | number };
   output: { typeId: number; name: string; quantity: number };
   time: { baseSeconds: number; adjustedSeconds: number; perRunSeconds: number };
-  materials: Array<{ typeId: number; name: string; baseQuantity: number; adjustedQuantity: number }>;
+  materials: Array<{
+    typeId: number;
+    name: string;
+    baseQuantity: number;
+    adjustedQuantity: number;
+    buildBlueprint: IndustryBuildBlueprintLink | null;
+  }>;
   skills: Array<{
     skillId: number;
     name: string;
@@ -136,6 +151,7 @@ export function calculateIndustryQuote(input: IndustryQuoteInput): IndustryQuote
       name: material.name,
       baseQuantity: material.quantity * runs,
       adjustedQuantity: Math.max(1, Math.ceil(material.quantity * runs * (1 - me / 100))),
+      buildBlueprint: input.buildBlueprintsByProduct?.get(material.typeId) ?? null,
     })),
     skills,
     totals: {

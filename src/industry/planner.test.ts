@@ -51,6 +51,7 @@ test('calculateIndustryPlan builds a Simurgh from invention and recursive inputs
   assert.ok(plan.jobs.some(j => j.activityName === 'Invention' && j.productName === 'Simurgh Blueprint'));
   assert.ok(plan.jobs.some(j => j.activityName === 'Manufacturing' && j.productName === 'Simurgh'));
   assert.ok(plan.jobs.some(j => j.activityName === 'Manufacturing' && j.productName === 'Chimera'));
+  assert.equal(plan.materials.final.find(m => m.name === 'Chimera')?.buildBlueprint?.blueprintName, 'Chimera Blueprint');
   assert.ok(plan.skills.some(s => s.name === 'Caldari Encryption Methods' && s.requiredLevel === 1));
   assert.ok(plan.skills.some(s => s.name === 'Hacking' && s.requiredLevel >= 2));
   assert.ok(plan.totals.jobSeconds > 0);

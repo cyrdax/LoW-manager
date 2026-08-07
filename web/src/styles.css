@@ -2018,6 +2018,21 @@ body {
 
 /* Industry */
 .industry-view { padding: 12px 16px; gap: 12px; }
+.industry-back-button {
+  align-self: flex-start;
+  background: #182536;
+  color: #bfdbfe;
+  border: 1px solid #31557d;
+  border-radius: 4px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.industry-back-button:hover {
+  background: #20324a;
+  border-color: #5aa2ff;
+}
 .ind-controls {
   display: grid;
   grid-template-columns: minmax(180px, 220px) minmax(300px, 1fr) 100px 84px 84px;
@@ -2244,6 +2259,24 @@ body {
 .ind-head span:not(:first-child) { text-align: right; }
 .ind-row.met { color: var(--dim); }
 .ind-row.missing { background: rgba(248, 113, 113, 0.06); }
+.ind-row.buildable { background: rgba(96, 165, 250, 0.09); }
+.ind-row.buildable:hover { background: rgba(96, 165, 250, 0.14); }
+.ind-material-blueprint-link {
+  display: inline;
+  max-width: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: #bfdbfe;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ind-material-blueprint-link:hover {
+  color: #dbeafe;
+  text-decoration: underline;
+}
 .ind-row small { color: var(--dim); }
 .ind-none { padding: 12px; color: var(--dim); }
 .ind-next-note {

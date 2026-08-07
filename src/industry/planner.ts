@@ -1,4 +1,5 @@
 import { skillPointsForLevel, type IndustryPilotSkills } from './calculator.ts';
+import type { IndustryBuildBlueprintLink } from './calculator.ts';
 import { trainingSecondsForSp } from '../skills/training-time.ts';
 import type { IndustryActivityData, IndustryBlueprintData, MasteryData } from '../skills/mastery-data.ts';
 import type { IndustrySystemCostIndex, MarketAdjustedPrice } from '../esi/industry.ts';
@@ -87,6 +88,13 @@ export interface IndustryPlanSkill {
   met: boolean;
 }
 
+export interface IndustryPlanMaterial {
+  typeId: number;
+  name: string;
+  quantity: number;
+  buildBlueprint: IndustryBuildBlueprintLink | null;
+}
+
 export interface IndustryPlan {
   target: {
     blueprintId: number;
@@ -115,8 +123,8 @@ export interface IndustryPlan {
   } | null;
   jobs: IndustryPlanJob[];
   materials: {
-    final: Array<{ typeId: number; name: string; quantity: number }>;
-    raw: Array<{ typeId: number; name: string; quantity: number }>;
+    final: IndustryPlanMaterial[];
+    raw: IndustryPlanMaterial[];
   };
   skills: IndustryPlanSkill[];
   totals: {
@@ -256,6 +264,31 @@ function productBlueprints(data: MasteryData, activityId: number): Map<number, I
     for (const product of activity.products) out.set(product.typeId, blueprint);
   }
   return out;
+}
+
+function buildBlueprintLink(
+  blueprint: IndustryBlueprintData,
+  product: { typeId: number; name: string; quantity: number },
+): IndustryBuildBlueprintLink {
+  return {
+    blueprintId: blueprint.blueprintId,
+    blueprintName: blueprint.blueprintName,
+    productTypeId: product.typeId,
+    productName: product.name,
+    productQuantity: product.quantity,
+  };
+}
+
+function materialBlueprintLink(
+  typeId: number,
+  manufacturingByProduct: Map<number, IndustryBlueprintData>,
+  reactionByProduct: Map<number, IndustryBlueprintData>,
+): IndustryBuildBlueprintLink | null {
+  const blueprint = manufacturingByProduct.get(typeId) ?? reactionByProduct.get(typeId);
+  if (!blueprint) return null;
+  const activityId = manufacturingByProduct.has(typeId) ? ACTIVITY_MANUFACTURING : ACTIVITY_REACTIONS;
+  const product = blueprint.activities?.[String(activityId)]?.products.find(row => row.typeId === typeId);
+  return product ? buildBlueprintLink(blueprint, product) : null;
 }
 
 function findInventionSource(data: MasteryData, targetBlueprintId: number): {
@@ -472,8 +505,16 @@ export function calculateIndustryPlan(input: IndustryPlanInput): IndustryPlan {
     invention,
     jobs,
     materials: {
-      final: finalMaterials,
-      raw: Array.from(rawMaterials.values()).sort((a, b) => a.name.localeCompare(b.name)),
+      final: finalMaterials.map(material => ({
+        ...material,
+        buildBlueprint: materialBlueprintLink(material.typeId, manufacturingByProduct, reactionByProduct),
+      })),
+      raw: Array.from(rawMaterials.values())
+        .map(material => ({
+          ...material,
+          buildBlueprint: materialBlueprintLink(material.typeId, manufacturingByProduct, reactionByProduct),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     },
     skills,
     totals: {

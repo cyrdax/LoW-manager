@@ -5,6 +5,7 @@ import {
   searchSystems,
   searchIndustryBlueprints,
   type CharacterStatus,
+  type IndustryBuildBlueprintLink,
   type IndustryBlueprintHit,
   type IndustryPlan,
   type IndustryPlanBonuses,
@@ -15,6 +16,13 @@ import {
 interface Props { chars: CharacterStatus[] }
 
 type PilotChoice = 'max' | number;
+
+interface BlueprintHistoryEntry {
+  blueprint: IndustryBlueprintHit;
+  runs: number;
+  me: number;
+  te: number;
+}
 
 const DECRYPTORS = [
   ['none', 'No decryptor'],
@@ -91,6 +99,7 @@ export function IndustryView({ chars }: Props) {
   useEffect(() => { localStorage.setItem('efd.industry.pilot', String(pilot)); }, [pilot]);
 
   const [blueprint, setBlueprint] = useState<IndustryBlueprintHit | null>(null);
+  const [blueprintHistory, setBlueprintHistory] = useState<BlueprintHistoryEntry[]>([]);
   const [runs, setRuns] = useState(1);
   const [me, setMe] = useState(0);
   const [te, setTe] = useState(0);
@@ -186,8 +195,39 @@ export function IndustryView({ chars }: Props) {
     setBonuses(prev => ({ ...prev, [key]: clamp(value, 0, 100) }));
   };
 
+  const selectBlueprint = (value: IndustryBlueprintHit | null) => {
+    setBlueprint(value);
+    setBlueprintHistory([]);
+  };
+
+  const openMaterialBlueprint = (buildBlueprint: IndustryBuildBlueprintLink, neededQuantity: number) => {
+    if (blueprint) setBlueprintHistory(prev => [...prev, { blueprint, runs, me, te }]);
+    setBlueprint(buildBlueprint);
+    setRuns(clamp(Math.ceil(neededQuantity / Math.max(1, buildBlueprint.productQuantity)), 1, 1_000_000));
+  };
+
+  const goBackBlueprint = () => {
+    setBlueprintHistory(prev => {
+      const last = prev[prev.length - 1];
+      if (!last) return prev;
+      setBlueprint(last.blueprint);
+      setRuns(last.runs);
+      setMe(last.me);
+      setTe(last.te);
+      return prev.slice(0, -1);
+    });
+  };
+
+  const backTarget = blueprintHistory[blueprintHistory.length - 1];
+
   return (
     <main className="rows-wrap industry-view">
+      {backTarget && (
+        <button type="button" className="industry-back-button" onClick={goBackBlueprint}>
+          Back to {backTarget.blueprint.blueprintName}
+        </button>
+      )}
+
       <div className="ind-controls">
         <label className="ind-control">
           <span>Pilot</span>
@@ -206,7 +246,7 @@ export function IndustryView({ chars }: Props) {
 
         <label className="ind-control ind-blueprint">
           <span>Blueprint</span>
-          <BlueprintSearch value={blueprint} onChange={setBlueprint} />
+          <BlueprintSearch value={blueprint} onChange={selectBlueprint} />
         </label>
 
         <label className="ind-control small">
@@ -250,7 +290,7 @@ export function IndustryView({ chars }: Props) {
       )}
       {loading && <div className="ind-status">Calculating…</div>}
       {error && <div className="ind-status err">{error}</div>}
-      {quote && <IndustryQuotePanel quote={quote} pilot={pilot} />}
+      {quote && <IndustryQuotePanel quote={quote} pilot={pilot} onMaterialBlueprintSelect={openMaterialBlueprint} />}
       {blueprint && (
         <IndustryPlanControls
           system={system}
@@ -269,7 +309,7 @@ export function IndustryView({ chars }: Props) {
       )}
       {planLoading && <div className="ind-status">Planning build chain…</div>}
       {planError && <div className="ind-status err">{planError}</div>}
-      {plan && <IndustryPlanPanel plan={plan} />}
+      {plan && <IndustryPlanPanel plan={plan} onMaterialBlueprintSelect={openMaterialBlueprint} />}
     </main>
   );
 }
@@ -489,7 +529,15 @@ function SystemSearch({ value, onChange }: { value: SystemHit | null; onChange: 
   );
 }
 
-function IndustryQuotePanel({ quote, pilot }: { quote: IndustryQuote; pilot: PilotChoice }) {
+function IndustryQuotePanel({
+  quote,
+  pilot,
+  onMaterialBlueprintSelect,
+}: {
+  quote: IndustryQuote;
+  pilot: PilotChoice;
+  onMaterialBlueprintSelect: (buildBlueprint: IndustryBuildBlueprintLink, neededQuantity: number) => void;
+}) {
   const missing = quote.totals.missingSkills;
   return (
     <section className="ind-quote">
@@ -525,8 +573,13 @@ function IndustryQuotePanel({ quote, pilot }: { quote: IndustryQuote; pilot: Pil
           <div className="ind-table ind-materials">
             <div className="ind-head"><span>Material</span><span>Base</span><span>Adjusted</span></div>
             {quote.materials.map(m => (
-              <div key={m.typeId} className="ind-row">
-                <span>{m.name}</span>
+              <div key={m.typeId} className={`ind-row${m.buildBlueprint ? ' buildable' : ''}`}>
+                <MaterialName
+                  name={m.name}
+                  buildBlueprint={m.buildBlueprint}
+                  quantity={m.adjustedQuantity}
+                  onMaterialBlueprintSelect={onMaterialBlueprintSelect}
+                />
                 <span>{formatQty(m.baseQuantity)}</span>
                 <span>{formatQty(m.adjustedQuantity)}</span>
               </div>
@@ -559,7 +612,13 @@ function IndustryQuotePanel({ quote, pilot }: { quote: IndustryQuote; pilot: Pil
   );
 }
 
-function IndustryPlanPanel({ plan }: { plan: IndustryPlan }) {
+function IndustryPlanPanel({
+  plan,
+  onMaterialBlueprintSelect,
+}: {
+  plan: IndustryPlan;
+  onMaterialBlueprintSelect: (buildBlueprint: IndustryBuildBlueprintLink, neededQuantity: number) => void;
+}) {
   const missingSkills = plan.skills.filter(s => !s.met);
   const rawMaterials = plan.materials.raw.slice(0, 18);
   return (
@@ -659,8 +718,13 @@ function IndustryPlanPanel({ plan }: { plan: IndustryPlan }) {
         <div className="ind-table ind-raw">
           <div className="ind-head"><span>Material</span><span>Quantity</span></div>
           {rawMaterials.map(material => (
-            <div key={material.typeId} className="ind-row">
-              <span>{material.name}</span>
+            <div key={material.typeId} className={`ind-row${material.buildBlueprint ? ' buildable' : ''}`}>
+              <MaterialName
+                name={material.name}
+                buildBlueprint={material.buildBlueprint}
+                quantity={material.quantity}
+                onMaterialBlueprintSelect={onMaterialBlueprintSelect}
+              />
               <span>{formatQty(material.quantity)}</span>
             </div>
           ))}
@@ -670,5 +734,31 @@ function IndustryPlanPanel({ plan }: { plan: IndustryPlan }) {
         </div>
       </div>
     </section>
+  );
+}
+
+function MaterialName({
+  name,
+  buildBlueprint,
+  quantity,
+  onMaterialBlueprintSelect,
+}: {
+  name: string;
+  buildBlueprint: IndustryBuildBlueprintLink | null;
+  quantity: number;
+  onMaterialBlueprintSelect: (buildBlueprint: IndustryBuildBlueprintLink, neededQuantity: number) => void;
+}) {
+  if (!buildBlueprint) return <span>{name}</span>;
+  return (
+    <span>
+      <button
+        type="button"
+        className="ind-material-blueprint-link"
+        title={`Open ${buildBlueprint.blueprintName}`}
+        onClick={() => onMaterialBlueprintSelect(buildBlueprint, quantity)}
+      >
+        {name}
+      </button>
+    </span>
   );
 }

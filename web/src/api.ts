@@ -867,6 +867,8 @@ export interface IndustryBlueprintHit {
   productQuantity: number;
 }
 
+export type IndustryBuildBlueprintLink = IndustryBlueprintHit;
+
 export interface IndustryQuote {
   blueprint: {
     blueprintId: number;
@@ -878,7 +880,13 @@ export interface IndustryQuote {
   inputs: { runs: number; me: number; te: number; characterId: 'max' | number };
   output: { typeId: number; name: string; quantity: number };
   time: { baseSeconds: number; adjustedSeconds: number; perRunSeconds: number };
-  materials: Array<{ typeId: number; name: string; baseQuantity: number; adjustedQuantity: number }>;
+  materials: Array<{
+    typeId: number;
+    name: string;
+    baseQuantity: number;
+    adjustedQuantity: number;
+    buildBlueprint: IndustryBuildBlueprintLink | null;
+  }>;
   skills: Array<{
     skillId: number;
     name: string;
@@ -946,8 +954,8 @@ export interface IndustryPlan {
     estimatedInstallFee: number | null;
   }>;
   materials: {
-    final: Array<{ typeId: number; name: string; quantity: number }>;
-    raw: Array<{ typeId: number; name: string; quantity: number }>;
+    final: Array<{ typeId: number; name: string; quantity: number; buildBlueprint: IndustryBuildBlueprintLink | null }>;
+    raw: Array<{ typeId: number; name: string; quantity: number; buildBlueprint: IndustryBuildBlueprintLink | null }>;
   };
   skills: Array<{
     skillId: number;

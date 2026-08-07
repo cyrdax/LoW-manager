@@ -10,8 +10,19 @@ import {
 import { getAdjustedPrices, getSystemCostIndex } from '../esi/industry.ts';
 import { resolveSystem } from '../esi/universe.ts';
 import { getCharacterAttributes, getCharacterSkills } from '../polling/scheduler.ts';
-import { calculateIndustryQuote, type IndustryBlueprint, type IndustryPilotSkills } from '../industry/calculator.ts';
-import { calculateIndustryPlan, DECRYPTORS, type IndustryPlanBonuses } from '../industry/planner.ts';
+import {
+  calculateIndustryQuote,
+  type IndustryBlueprint,
+  type IndustryBuildBlueprintLink,
+  type IndustryPilotSkills,
+} from '../industry/calculator.ts';
+import {
+  ACTIVITY_MANUFACTURING,
+  ACTIVITY_REACTIONS,
+  calculateIndustryPlan,
+  DECRYPTORS,
+  type IndustryPlanBonuses,
+} from '../industry/planner.ts';
 import { loadMasteryData, type IndustryBlueprintData, type MasteryData } from '../skills/mastery-data.ts';
 
 const searchQuery = z.object({
@@ -118,6 +129,25 @@ function enrichBlueprintSkills(blueprint: IndustryBlueprintData, data: MasteryDa
   };
 }
 
+function buildBlueprintsByProduct(data: MasteryData): Map<number, IndustryBuildBlueprintLink> {
+  const out = new Map<number, IndustryBuildBlueprintLink>();
+  for (const bp of Object.values(data.industry?.blueprints ?? {})) {
+    for (const activity of Object.values(bp.activities ?? {})) {
+      if (activity.activityId !== ACTIVITY_MANUFACTURING && activity.activityId !== ACTIVITY_REACTIONS) continue;
+      for (const product of activity.products) {
+        out.set(product.typeId, {
+          blueprintId: bp.blueprintId,
+          blueprintName: bp.blueprintName,
+          productTypeId: product.typeId,
+          productName: product.name,
+          productQuantity: product.quantity,
+        });
+      }
+    }
+  }
+  return out;
+}
+
 export interface IndustryRouteDeps {
   currentUser?: CurrentUserResolver;
   ownsCharacter?: OwnsCharacter;
@@ -165,6 +195,7 @@ export function registerIndustryRoutes(app: FastifyInstance, deps: IndustryRoute
       te: parsed.data.te,
       characterId,
       pilot,
+      buildBlueprintsByProduct: buildBlueprintsByProduct(masteryData),
     });
   });
 
