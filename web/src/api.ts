@@ -272,6 +272,7 @@ export interface ContractShipHit {
   id: number;
   name: string;
   groupName: string;
+  jumpDriveBaseRangeLy: number | null;
 }
 
 export interface ContractWarning {

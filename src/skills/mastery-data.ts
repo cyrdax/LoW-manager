@@ -10,6 +10,7 @@ export interface MasteryShip {
   name: string;
   groupId: number;
   groupName: string;
+  jumpDriveBaseRangeLy?: number | null;
   requiredSkills: Array<{ skillId: number; level: number }>;
   masteries: number[][]; // 5 entries (Mastery I..V) of cert ID arrays
 }

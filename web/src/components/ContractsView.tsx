@@ -34,7 +34,7 @@ function readSavedShip(): ContractShipHit | null {
   const id = Number(localStorage.getItem(SHIP_ID_KEY));
   const name = localStorage.getItem(SHIP_NAME_KEY);
   const groupName = localStorage.getItem(SHIP_GROUP_KEY);
-  return Number.isFinite(id) && id > 0 && name && groupName ? { id, name, groupName } : null;
+  return Number.isFinite(id) && id > 0 && name && groupName ? { id, name, groupName, jumpDriveBaseRangeLy: null } : null;
 }
 
 function readSavedOrigin(): SystemHit | null {
@@ -379,7 +379,7 @@ function ContractResultsTable({
                 </small>
               </td>
               <td className="num">{row.jumps == null ? '—' : row.jumps}</td>
-              <td className="num">{row.capitalJumps == null ? '—' : row.capitalJumps}</td>
+              <td className="num">{row.capitalJumps == null ? 'N/A' : row.capitalJumps}</td>
               <td>{formatExpiry(row.dateExpired)}</td>
               <td>{row.title || '—'}</td>
               <td className="num">

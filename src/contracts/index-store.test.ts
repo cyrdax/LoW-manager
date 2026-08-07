@@ -71,6 +71,7 @@ test('indexed search returns matching included ship items and excludes out-of-ra
   const search = searchIndexedContracts(db, {
     shipTypeId: 17920,
     shipName: 'Barghest',
+    jumpDriveBaseRangeLy: null,
     originSystemId: 30000142,
     topology,
     regionIds: [10000002],
@@ -110,6 +111,7 @@ test('indexed search excludes unknown-location contracts and reports skipped cou
   const search = searchIndexedContracts(db, {
     shipTypeId: 17920,
     shipName: 'Barghest',
+    jumpDriveBaseRangeLy: null,
     originSystemId: 30000142,
     topology,
     regionIds: [10000002],

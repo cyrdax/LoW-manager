@@ -23,7 +23,7 @@ test('GET /api/contracts/ships returns ship suggestions', async () => {
 
   const res = await app.inject({ method: 'GET', url: '/api/contracts/ships?q=bar' });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(JSON.parse(res.body), [{ id: 17920, name: 'Barghest', groupName: 'Battleship' }]);
+  assert.deepEqual(JSON.parse(res.body), [{ id: 17920, name: 'Barghest', groupName: 'Battleship', jumpDriveBaseRangeLy: null }]);
 });
 
 test('GET /api/contracts/search validates required query params', async () => {
@@ -43,7 +43,7 @@ test('GET /api/contracts/search delegates to contract search service', async () 
     runSearch: async input => {
       observedSignal = input.signal;
       return {
-        ship: { id: input.shipId, name: 'Barghest', groupName: 'Battleship' },
+        ship: { id: input.shipId, name: 'Barghest', groupName: 'Battleship', jumpDriveBaseRangeLy: null },
         origin: { id: input.originSystemId, name: 'Jita' },
         radius: input.radius,
         regionsScanned: [],
@@ -74,7 +74,7 @@ test('GET /api/contracts/search defaults omitted radius to 30', async () => {
     runSearch: async input => {
       receivedRadius = input.radius;
       return {
-        ship: { id: input.shipId, name: 'Barghest', groupName: 'Battleship' },
+        ship: { id: input.shipId, name: 'Barghest', groupName: 'Battleship', jumpDriveBaseRangeLy: null },
         origin: { id: input.originSystemId, name: 'Jita' },
         radius: input.radius,
         regionsScanned: [],
@@ -104,7 +104,7 @@ test('GET /api/contracts/search rejects radius below the allowed range', async (
     runSearch: async () => {
       called = true;
       return {
-        ship: { id: 17920, name: 'Barghest', groupName: 'Battleship' },
+        ship: { id: 17920, name: 'Barghest', groupName: 'Battleship', jumpDriveBaseRangeLy: null },
         origin: { id: 30000142, name: 'Jita' },
         radius: 30,
         regionsScanned: [],
@@ -133,7 +133,7 @@ test('GET /api/contracts/search rejects radius above the allowed range', async (
     runSearch: async () => {
       called = true;
       return {
-        ship: { id: 17920, name: 'Barghest', groupName: 'Battleship' },
+        ship: { id: 17920, name: 'Barghest', groupName: 'Battleship', jumpDriveBaseRangeLy: null },
         origin: { id: 30000142, name: 'Jita' },
         radius: 30,
         regionsScanned: [],

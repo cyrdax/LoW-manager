@@ -31,6 +31,8 @@ const ATTR_REQUIRED_LEVEL = [277, 278, 279, 1286, 1287, 1288];
 const ATTR_PRIMARY = 180;
 const ATTR_SECONDARY = 181;
 const ATTR_SKILL_RANK = 275;
+const ATTR_CAN_JUMP = 861;
+const ATTR_JUMP_DRIVE_RANGE = 867;
 const SHIP_CATEGORY_ID = 6;
 
 const MASTERY_GRADES = ['basic', 'standard', 'improved', 'advanced', 'elite'] as const;
@@ -112,6 +114,7 @@ interface OutShip {
   name: string;
   groupId: number;
   groupName: string;
+  jumpDriveBaseRangeLy: number | null;
   requiredSkills: Array<{ skillId: number; level: number }>;
   masteries: number[][];
 }
@@ -335,6 +338,15 @@ function extractRequiredSkills(d: SdeTypeDogma | undefined): Array<{ skillId: nu
   return out;
 }
 
+function extractJumpDriveBaseRangeLy(d: SdeTypeDogma | undefined): number | null {
+  if (!d?.dogmaAttributes) return null;
+  const byId = new Map<number, number>();
+  for (const a of d.dogmaAttributes) byId.set(a.attributeID, a.value);
+  if (byId.get(ATTR_CAN_JUMP) !== 1) return null;
+  const range = byId.get(ATTR_JUMP_DRIVE_RANGE);
+  return range != null && Number.isFinite(range) && range > 0 ? range : null;
+}
+
 function shapeMasteries(raw: Record<string, number[]> | undefined): number[][] {
   // Normalize into a 5-element array indexed 0..4 (Mastery I..V).
   const out: number[][] = [[], [], [], [], []];
@@ -365,6 +377,12 @@ function extractRequiredSkillsFromAttrs(attrs: Map<number, number> | undefined):
     if (sid && lvl != null) out.push({ skillId: Math.round(sid), level: Math.round(lvl) });
   }
   return out;
+}
+
+function extractJumpDriveBaseRangeLyFromAttrs(attrs: Map<number, number> | undefined): number | null {
+  if (!attrs || attrs.get(ATTR_CAN_JUMP) !== 1) return null;
+  const range = attrs.get(ATTR_JUMP_DRIVE_RANGE);
+  return range != null && Number.isFinite(range) && range > 0 ? range : null;
 }
 
 function activityKey(blueprintId: number, activityId: number): string {
@@ -454,6 +472,7 @@ function overlayFuzzworkData(
         name: type.name,
         groupId: type.groupId,
         groupName: group?.name ?? `Group ${type.groupId}`,
+        jumpDriveBaseRangeLy: extractJumpDriveBaseRangeLyFromAttrs(attrsByType.get(type.typeId)) ?? existing?.jumpDriveBaseRangeLy ?? null,
         requiredSkills: required,
         masteries: existing?.masteries ?? [[], [], [], [], []],
       };
@@ -718,6 +737,7 @@ async function main() {
         name: t.name?.en ?? `Type ${tid}`,
         groupId,
         groupName: groupNames.get(groupId) ?? `Group ${groupId}`,
+        jumpDriveBaseRangeLy: extractJumpDriveBaseRangeLy(typeDogma[tid]),
         requiredSkills: required,
         masteries,
       };

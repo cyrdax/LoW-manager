@@ -33,7 +33,7 @@ export function searchContractShips(data: MasteryData, q: string, limit = 25): C
   const substr: ContractShipHit[] = [];
 
   for (const [id, ship] of Object.entries(data.ships)) {
-    const row = { id: Number(id), name: ship.name, groupName: ship.groupName };
+    const row = { id: Number(id), name: ship.name, groupName: ship.groupName, jumpDriveBaseRangeLy: ship.jumpDriveBaseRangeLy ?? null };
     const name = ship.name.toLowerCase();
     const haystack = `${ship.name} ${ship.groupName}`.toLowerCase();
 
@@ -117,6 +117,7 @@ export async function runContractSearch(
   const indexed = searchIndexedContracts(database, {
     shipTypeId: input.shipId,
     shipName: ship.name,
+    jumpDriveBaseRangeLy: ship.jumpDriveBaseRangeLy ?? null,
     originSystemId: input.originSystemId,
     topology,
     regionIds,
@@ -152,7 +153,7 @@ export async function runContractSearch(
   };
 
   return {
-    ship: { id: input.shipId, name: ship.name, groupName: ship.groupName },
+    ship: { id: input.shipId, name: ship.name, groupName: ship.groupName, jumpDriveBaseRangeLy: ship.jumpDriveBaseRangeLy ?? null },
     origin: { id: input.originSystemId, name: originName },
     radius,
     index,
