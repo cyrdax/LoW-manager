@@ -12,6 +12,9 @@ import {
 import { createPostgresAssetSnapshotStore, type AssetSnapshotStore } from '../assets/store.ts';
 import { ASSET_STALE_MS, type AssetPilotStatus, type AssetSnapshot } from '../assets/types.ts';
 
+const STRUCTURE_SCOPE = 'esi-universe.read_structures.v1';
+const STRUCTURE_SCOPE_HINT = 'Re-auth this pilot with the structure scope esi-universe.read_structures.v1 to resolve player structure names.';
+
 export interface AssetsRouteDeps {
   currentUser?: CurrentUserResolver;
   characters?: Pick<AsyncCharacterStore, 'listByUser' | 'listUsableByUser' | 'getOwned'>;
@@ -93,16 +96,17 @@ function mergeAssetRoster(
     const snapshot = snapshotsByCharacterId.get(character.character_id);
     const authorizationStatus = currentAuthorizationStatus(character);
     const restoredStatus = snapshot && !authorizationStatus ? restoredAuthorizationStatus(snapshot, now) : undefined;
-    return snapshot
-      ? {
+    if (!snapshot) return emptySnapshotFor(character.character_id, character.character_name, placeholderStatus(character));
+
+    const merged = {
         ...snapshot,
         pilot: {
           ...snapshot.pilot,
           characterName: character.character_name,
           ...(authorizationStatus ? { status: authorizationStatus, error: null } : restoredStatus ? { status: restoredStatus, error: null } : {}),
         },
-      }
-      : emptySnapshotFor(character.character_id, character.character_name, placeholderStatus(character));
+      };
+    return authorizationStatus ? merged : withStructureScopeNotice(merged, character);
   });
 }
 
@@ -110,8 +114,37 @@ function currentAuthorizationStatus(
   character: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>[number],
 ): Extract<AssetPilotStatus, 'Missing asset scope' | 'Needs re-auth'> | undefined {
   if (character.needs_reauth === 1) return 'Needs re-auth';
-  if (!character.scopes.split(/\s+/).includes('esi-assets.read_assets.v1')) return 'Missing asset scope';
+  if (!hasScope(character.scopes, 'esi-assets.read_assets.v1')) return 'Missing asset scope';
   return undefined;
+}
+
+function withStructureScopeNotice(
+  snapshot: AssetSnapshot,
+  character: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>[number],
+): AssetSnapshot {
+  if (hasScope(character.scopes, STRUCTURE_SCOPE) || !hasUnresolvedStructures(snapshot)) return snapshot;
+  return {
+    ...snapshot,
+    pilot: {
+      ...snapshot.pilot,
+      error: STRUCTURE_SCOPE_HINT,
+    },
+    locations: snapshot.locations.map(location => isUnresolvedStructure(location)
+      ? { ...location, hint: location.hint ?? STRUCTURE_SCOPE_HINT }
+      : location),
+  };
+}
+
+function hasScope(scopes: string, scope: string): boolean {
+  return scopes.split(/\s+/).includes(scope);
+}
+
+function hasUnresolvedStructures(snapshot: AssetSnapshot): boolean {
+  return snapshot.locations.some(isUnresolvedStructure);
+}
+
+function isUnresolvedStructure(location: AssetSnapshot['locations'][number]): boolean {
+  return location.status === 'unresolved' && (location.type === 'structure' || location.locationId >= 1_000_000_000);
 }
 
 function restoredAuthorizationStatus(snapshot: AssetSnapshot, now: number): AssetPilotStatus | undefined {

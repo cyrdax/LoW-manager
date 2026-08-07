@@ -74,6 +74,7 @@ export interface AssetLocationNode extends AssetValueSummary {
   locationId: number;
   name: string;
   systemName?: string | null;
+  hint?: string | null;
   type: string;
   status: AssetLocationStatus;
   rawLocationId: number;
@@ -122,6 +123,7 @@ export interface RawAssetLocationInput {
   locationId: number;
   name: string;
   systemName?: string | null;
+  hint?: string | null;
   type: string;
   status: AssetLocationStatus;
 }

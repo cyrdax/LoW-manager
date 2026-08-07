@@ -283,6 +283,42 @@ test('GET /api/assets restores stale cached authorization snapshots as stale aft
   assert.equal(body.pilots[0].pilot.totalValue, 456);
 });
 
+test('GET /api/assets explains unresolved structures when the structure scope is missing', async () => {
+  const store = testStore();
+  const snapshot = snapshotFor(123, 'Asset Pilot');
+  snapshot.locations = [{
+    locationId: 1_046_326_100_288,
+    name: 'Unknown structure 1046326100288',
+    type: 'structure',
+    status: 'unresolved',
+    rawLocationId: 1_046_326_100_288,
+    assets: [],
+    itemCount: 1,
+    stackCount: 1,
+    pricedValue: 10,
+    totalValue: 10,
+    unpricedStacks: 0,
+  }];
+  store.replaceSnapshot('user-a', snapshot);
+
+  const app = Fastify();
+  registerAssetsRoutes(app, {
+    currentUser: async () => userA,
+    store,
+    characters: {
+      listByUser: async () => [pilot],
+      listUsableByUser: async () => [],
+      getOwned: async () => undefined,
+    },
+  });
+
+  const res = await app.inject({ method: 'GET', url: '/api/assets' });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.match(body.pilots[0].pilot.error, /structure scope/i);
+  assert.match(body.pilots[0].locations[0].hint, /Re-auth/i);
+});
+
 test('POST /api/assets/characters/:id/refresh scopes refresh to owned pilot', async () => {
   const app = Fastify();
   let refreshed = 0;

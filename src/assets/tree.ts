@@ -96,6 +96,7 @@ export function aggregateAssetSnapshot(input: AssetSnapshotInput): AssetSnapshot
         rawLocationId: location.locationId,
         name: location.name,
         systemName: location.systemName ?? null,
+        hint: location.hint ?? null,
         type: location.type,
         status: location.status,
         assets,

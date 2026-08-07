@@ -285,7 +285,7 @@ function LocationRow(props: {
   const key = `${props.pilotId}:${props.location.locationId}`;
   const open = props.expandedLocations.has(key);
   const locationMeta = props.location.status === 'unresolved'
-    ? `Access denied or not visible to this pilot · ${props.location.rawLocationId}`
+    ? `${props.location.hint ?? 'Access denied or not visible to this pilot'} · ${props.location.rawLocationId}`
     : props.location.systemName && props.location.systemName !== props.location.name
       ? `${props.location.systemName} · ${props.location.type}`
       : props.location.type;

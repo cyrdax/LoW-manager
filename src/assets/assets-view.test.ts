@@ -152,6 +152,30 @@ test('large unresolved asset locations are labeled as unknown structures', () =>
   assert.equal(snapshot.locations[0].status, 'unresolved');
 });
 
+test('unresolved asset location hints are preserved for the assets UI', () => {
+  const snapshot = buildAssetTree({
+    characterId: 1,
+    characterName: 'Structure Pilot',
+    status: 'Ready',
+    error: null,
+    lastRefreshedAt: 1,
+    locations: [
+      {
+        locationId: 1_050_000_000_000,
+        name: 'Unknown structure',
+        type: 'structure',
+        status: 'unresolved',
+        hint: 'ESI did not reveal this player structure to any authorized pilot.',
+      },
+    ],
+    assets: [
+      { itemId: 1, typeId: 587, name: 'Rifter', groupId: 25, groupName: 'Frigate', categoryId: 6, categoryName: 'Ship', quantity: 1, singleton: true, locationId: 1_050_000_000_000, locationFlag: 'Hangar', locationType: 'other', unitValue: 1_000, pricingStatus: 'priced' },
+    ],
+  });
+
+  assert.equal(snapshot.locations[0].hint, 'ESI did not reveal this player structure to any authorized pilot.');
+});
+
 test('system-name searches retain matching asset locations', () => {
   const snapshot = buildAssetTree({
     characterId: 1,

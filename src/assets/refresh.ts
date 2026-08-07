@@ -15,6 +15,8 @@ import type {
   RawAssetLocationInput,
 } from './types.ts';
 
+const UNRESOLVED_STRUCTURE_HINT = 'ESI did not reveal this player structure to any authorized pilot. Re-auth pilots with the structure scope and confirm at least one authorized pilot has access to the structure.';
+
 export interface RefreshPilotAssetsInput {
   userId: string;
   character: CharacterRow;
@@ -188,7 +190,7 @@ export async function resolveAssetLocation(
         };
       }
     }
-    return { locationId, name: 'Unknown structure', type: 'structure', status: 'unresolved' };
+    return { locationId, name: `Unknown structure ${locationId}`, type: 'structure', status: 'unresolved', hint: UNRESOLVED_STRUCTURE_HINT };
   }
   return { locationId, name: `Unknown location ${locationId}`, type: locationType, status: 'unresolved' };
 }
@@ -287,6 +289,15 @@ async function resolveRootLocations(
     try {
       return await resolveLocation(locationId, locationType, characterId);
     } catch {
+      if (isLikelyStructureId(locationId)) {
+        return {
+          locationId,
+          name: `Unknown structure ${locationId}`,
+          type: 'structure',
+          status: 'unresolved' as const,
+          hint: UNRESOLVED_STRUCTURE_HINT,
+        };
+      }
       return { locationId, name: `Unknown location ${locationId}`, type: 'unknown', status: 'unresolved' as const };
     }
   }));
@@ -306,6 +317,10 @@ function addSummary(target: AssetValueSummary, source: AssetValueSummary): void 
 
 function uniqueCharacterIds(characterIds: number[]): number[] {
   return [...new Set(characterIds.filter(id => Number.isSafeInteger(id) && id > 0))];
+}
+
+function isLikelyStructureId(locationId: number): boolean {
+  return locationId >= 1_000_000_000;
 }
 
 async function safeResolveSystem(systemId: number): Promise<string | null> {
