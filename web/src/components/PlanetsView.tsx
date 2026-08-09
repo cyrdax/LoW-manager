@@ -119,7 +119,7 @@ export function PlanetsView({ chars }: Props) {
       <InventoryPanel />
 
       <div className="planets-header">
-        <button className="sort-btn" onClick={() => onSort('name')}>
+        <button className="sort-btn planet-character-heading" onClick={() => onSort('name')}>
           Character {sortKey === 'name' && <span className="arrow">{sortAsc ? '▲' : '▼'}</span>}
         </button>
         <button className="sort-btn" onClick={() => onSort('colonies')}>
