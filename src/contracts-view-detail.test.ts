@@ -11,6 +11,8 @@ test('contracts view opens a contract detail modal with itemized market estimate
   assert.match(api, /export interface ContractDetails/);
   assert.match(api, /export async function fetchContractDetails/);
   assert.match(api, /\/api\/contracts\/\$\{contractId\}\/details\?/);
+  assert.match(api, /export async function setWaypointAll/);
+  assert.match(api, /export async function fetchCharacters/);
 
   assert.match(view, /const \[detailRow, setDetailRow\] = useState<ContractSearchResult \| null>\(null\)/);
   assert.match(view, /<ContractResultsTable rows=\{response\.results\} onOpenDetails=\{setDetailRow\} \/>/);
@@ -25,10 +27,15 @@ test('contracts view opens a contract detail modal with itemized market estimate
   assert.match(view, /<ContractDetailSortTh label="Unit" sortKey="unit"/);
   assert.match(view, /<ContractDetailSortTh label="Total" sortKey="total"/);
   assert.match(view, /<ContractDetailSortTh label="Status" sortKey="status"/);
+  assert.match(view, /fetchCharacters\(\)\.then\(pilots =>/);
+  assert.match(view, /setWaypointAll\(details\.contract\.locationId, \[selectedDestinationPilotId\]\)/);
+  assert.match(view, /Set destination/);
+  assert.match(view, /disabled=\{destinationBusy \|\| !details\.contract\.locationId \|\| selectedDestinationPilotId == null\}/);
 
   assert.match(styles, /\.ct-row-clickable/);
   assert.match(styles, /\.ct-detail-modal/);
   assert.match(styles, /\.ct-detail-grid/);
   assert.match(styles, /\.ct-detail-sort-btn/);
   assert.match(styles, /\.ct-detail-total/);
+  assert.match(styles, /\.ct-destination/);
 });

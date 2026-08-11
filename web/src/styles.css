@@ -3771,6 +3771,79 @@ body {
   color: var(--green);
 }
 
+.ct-destination {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #111821;
+}
+
+.ct-destination > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ct-destination strong {
+  font-size: 15px;
+}
+
+.ct-destination span,
+.ct-destination small {
+  color: var(--dim);
+}
+
+.ct-destination .ok {
+  color: var(--green);
+}
+
+.ct-destination .err {
+  color: var(--red);
+}
+
+.ct-destination-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.ct-destination-controls select,
+.ct-destination-controls button {
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--text);
+  font: inherit;
+}
+
+.ct-destination-controls select {
+  background: var(--panel);
+}
+
+.ct-destination-controls button {
+  background: var(--accent);
+  color: #0b0e13;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ct-destination-controls button:disabled,
+.ct-destination-controls select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ct-destination-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
 .ct-detail-items {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -3906,6 +3979,10 @@ body {
 
   .ct-detail-head {
     flex-direction: column;
+  }
+
+  .ct-destination-controls {
+    grid-template-columns: 1fr;
   }
 }
 

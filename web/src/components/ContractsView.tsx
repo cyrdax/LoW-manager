@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
+  fetchCharacters,
   fetchContractDetails,
   searchContractShips,
   searchContracts,
   searchSystems,
+  setWaypointAll,
+  type CharacterStatus,
   type ContractDetails,
   type ContractSearchResponse,
   type ContractSearchResult,
@@ -11,6 +14,7 @@ import {
   type ShoppingHub,
   type ShoppingItemQuote,
   type SystemHit,
+  type WaypointResult,
 } from '../api.ts';
 import {
   sortContractResultsByColumn,
@@ -403,10 +407,30 @@ function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onC
   const [details, setDetails] = useState<ContractDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [destinationPilots, setDestinationPilots] = useState<CharacterStatus[]>([]);
+  const [selectedDestinationPilotId, setSelectedDestinationPilotId] = useState<number | null>(null);
+  const [destinationBusy, setDestinationBusy] = useState(false);
+  const [destinationStatus, setDestinationStatus] = useState<string | null>(null);
+  const [destinationResults, setDestinationResults] = useState<WaypointResult[] | null>(null);
   const [detailSort, setDetailSort] = useState<{ key: ContractDetailSortKey; direction: ContractDetailSortDirection }>({
     key: 'item',
     direction: 'asc',
   });
+
+  useEffect(() => {
+    let active = true;
+    fetchCharacters().then(pilots => {
+      if (!active) return;
+      const sorted = [...pilots].sort((a, b) => a.name.localeCompare(b.name));
+      setDestinationPilots(sorted);
+      setSelectedDestinationPilotId(current => current ?? sorted[0]?.characterId ?? null);
+    }).catch(() => {
+      if (active) setDestinationStatus('Failed to load pilots.');
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -449,6 +473,23 @@ function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onC
         : { key, direction: defaultContractDetailSortDirection(key) }
     ));
   };
+  const setContractDestination = async () => {
+    if (!details?.contract.locationId || selectedDestinationPilotId == null) return;
+    setDestinationBusy(true);
+    setDestinationStatus(null);
+    setDestinationResults(null);
+    try {
+      const result = await setWaypointAll(details.contract.locationId, [selectedDestinationPilotId]);
+      setDestinationResults(result.results);
+      const success = result.results.find(item => item.ok);
+      const failure = result.results.find(item => !item.ok);
+      setDestinationStatus(success ? `Destination set for ${success.name}.` : failure?.error ?? 'Failed to set destination.');
+    } catch (err) {
+      setDestinationStatus(err instanceof Error ? err.message : 'Failed to set destination.');
+    } finally {
+      setDestinationBusy(false);
+    }
+  };
 
   return (
     <Modal title="Contract Price Breakdown" onClose={onClose} className="ct-detail-modal" bodyClassName="ct-detail-modal-body">
@@ -475,6 +516,55 @@ function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onC
               <DetailMetric label="Difference" value={estimateDelta == null ? '-' : `${formatSignedIsk(estimateDelta)} ISK`} />
               <DetailMetric label="Pricing" value={`${details.quote.counts.ok} priced · ${details.quote.counts.noOrders} no sellers`} />
             </div>
+
+            <section className="ct-destination" aria-label="Set contract destination">
+              <div>
+                <strong>Set destination</strong>
+                <span>{details.contract.locationName} · {details.contract.systemName ?? 'Unknown system'}</span>
+              </div>
+              <div className="ct-destination-controls">
+                <select
+                  value={selectedDestinationPilotId ?? ''}
+                  disabled={destinationBusy || destinationPilots.length === 0}
+                  onChange={event => {
+                    setSelectedDestinationPilotId(event.target.value ? Number(event.target.value) : null);
+                    setDestinationStatus(null);
+                    setDestinationResults(null);
+                  }}
+                >
+                  {destinationPilots.length === 0 ? (
+                    <option value="">No pilots available</option>
+                  ) : destinationPilots.map(pilot => (
+                    <option key={pilot.characterId} value={pilot.characterId}>
+                      {pilot.name}{pilot.online === true ? ' · online' : pilot.online === false ? ' · offline' : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={destinationBusy || !details.contract.locationId || selectedDestinationPilotId == null}
+                  onClick={setContractDestination}
+                >
+                  {destinationBusy ? 'Setting...' : 'Set destination'}
+                </button>
+              </div>
+              {!details.contract.locationId && (
+                <small className="err">This contract location is unresolved, so it cannot be set as a destination.</small>
+              )}
+              {destinationStatus && (
+                <small className={destinationResults?.some(item => item.ok) ? 'ok' : 'err'}>{destinationStatus}</small>
+              )}
+              {destinationResults && (
+                <div className="ct-destination-results">
+                  {destinationResults.map(result => (
+                    <span key={result.characterId} className={result.ok ? 'ok' : 'err'}>
+                      {result.name}: {result.ok ? 'waypoint set' : result.error ?? 'failed'}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </section>
 
             <section className="ct-detail-items">
               <h3>Included items <span>{details.items.length}</span></h3>
