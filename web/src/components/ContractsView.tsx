@@ -27,6 +27,7 @@ import {
   type ContractDetailSortDirection,
   type ContractDetailSortKey,
 } from '../contract-detail-sort.ts';
+import { formatContractSearchSummaryLine } from '../../../src/contracts/summary-copy.ts';
 
 const SHIP_ID_KEY = 'efd.contracts.shipId';
 const SHIP_NAME_KEY = 'efd.contracts.shipName';
@@ -193,6 +194,17 @@ export function ContractsView() {
     return `Index warming · ${index.regionsReady}/${index.regionsTotal} regions ready`;
   }, [response]);
 
+  const jumpCapableSummary = useMemo(() => {
+    if (!response || searchMode !== 'jumpCapable') return null;
+    return formatContractSearchSummaryLine({
+      mode: searchMode,
+      resultCount: response.results.length,
+      originName: response.origin.name,
+      radius: response.radius,
+      fetchedAt: response.fetchedAt,
+    });
+  }, [response, searchMode]);
+
   return (
     <main className="rows-wrap contracts-view">
       <section className="ct-search" aria-label="Contracts search">
@@ -334,11 +346,17 @@ export function ContractsView() {
       {response && (
         <>
           <section className="ct-summary" aria-label="Contracts summary">
-            <strong>{response.ship.name}</strong>
-            <span>{response.origin.name} · {response.radius} jumps</span>
-            {summary && <span>{summary}</span>}
-            {indexSummary && <span>{indexSummary}</span>}
-            <span>Updated {formatUpdatedAt(response.fetchedAt)}</span>
+            {jumpCapableSummary ? (
+              <span>{jumpCapableSummary}</span>
+            ) : (
+              <>
+                <strong>{response.ship.name}</strong>
+                <span>{response.origin.name} · {response.radius} jumps</span>
+                {summary && <span>{summary}</span>}
+                {indexSummary && <span>{indexSummary}</span>}
+                <span>Updated {formatUpdatedAt(response.fetchedAt)}</span>
+              </>
+            )}
           </section>
 
           {response.warnings.length > 0 && (
