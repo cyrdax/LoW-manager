@@ -8,8 +8,10 @@ import {
   CONTRACT_RADIUS_MAX,
   CONTRACT_RADIUS_MIN,
   runContractSearch,
+  runJumpCapableContractSearch,
   searchContractShips,
   type ContractSearchResponse,
+  type RunJumpCapableContractSearchInput,
   type RunContractSearchInput,
 } from '../contracts/search.ts';
 
@@ -23,15 +25,21 @@ const searchQuery = z.object({
   radius: z.coerce.number().int().min(CONTRACT_RADIUS_MIN).max(CONTRACT_RADIUS_MAX).default(CONTRACT_RADIUS_DEFAULT),
 });
 
+const jumpCapableSearchQuery = z.object({
+  originSystemId: z.coerce.number().int().positive(),
+});
+
 export interface ContractRouteDeps {
   loadData?: () => MasteryData;
   runSearch?: (input: RunContractSearchInput) => Promise<ContractSearchResponse>;
+  runJumpSearch?: (input: RunJumpCapableContractSearchInput) => Promise<ContractSearchResponse>;
   getDetails?: (input: GetContractDetailsInput) => Promise<ContractDetails>;
 }
 
 export function registerContractRoutes(app: FastifyInstance, deps: ContractRouteDeps = {}) {
   const loadData = deps.loadData ?? loadMasteryData;
   const runSearch = deps.runSearch ?? runContractSearch;
+  const runJumpSearch = deps.runJumpSearch ?? runJumpCapableContractSearch;
   const loadDetails = deps.getDetails ?? getContractDetails;
 
   app.get<{ Querystring: { q?: string } }>('/api/contracts/ships', async (req, reply) => {
@@ -70,6 +78,40 @@ export function registerContractRoutes(app: FastifyInstance, deps: ContractRoute
 
       const message = err instanceof Error ? err.message : 'Failed to search contracts';
       if (message === 'Ship not found') return reply.code(404).send({ error: message });
+      if (message.includes('origin system ') && message.includes(' is not present in contract map topology')) {
+        return reply.code(400).send({ error: message });
+      }
+      return reply.code(500).send({ error: message });
+    }
+  });
+
+  app.get<{ Querystring: Record<string, string | undefined> }>('/api/contracts/search/jump-capable', async (req, reply) => {
+    const parsed = jumpCapableSearchQuery.safeParse(req.query);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
+
+    const controller = new AbortController();
+    const abortRequest = () => {
+      if (!controller.signal.aborted) controller.abort(new Error('Request aborted by client'));
+    };
+
+    req.raw.on('aborted', abortRequest);
+    reply.raw.on('close', () => {
+      if (!reply.raw.writableEnded) abortRequest();
+    });
+
+    try {
+      return await runJumpSearch({
+        data: loadData(),
+        originSystemId: parsed.data.originSystemId,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (controller.signal.aborted || isAbortError(err)) {
+        reply.hijack();
+        return reply;
+      }
+
+      const message = err instanceof Error ? err.message : 'Failed to search jump-capable contracts';
       if (message.includes('origin system ') && message.includes(' is not present in contract map topology')) {
         return reply.code(400).send({ error: message });
       }

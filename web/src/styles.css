@@ -510,6 +510,35 @@ body {
   align-items: end;
 }
 
+.ct-mode-toggle {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ct-mode-toggle button {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--dim);
+  padding: 6px 12px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ct-mode-toggle button.active {
+  background: var(--accent);
+  border-color: transparent;
+  color: #0b0e13;
+}
+
+.ct-mode-toggle small {
+  color: var(--dim);
+}
+
 .ct-field {
   position: relative;
   display: flex;

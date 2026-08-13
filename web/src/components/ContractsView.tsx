@@ -4,6 +4,7 @@ import {
   fetchContractDetails,
   searchContractShips,
   searchContracts,
+  searchJumpCapableContracts,
   searchSystems,
   setWaypointAll,
   type CharacterStatus,
@@ -33,6 +34,13 @@ const SHIP_GROUP_KEY = 'efd.contracts.shipGroupName';
 const ORIGIN_ID_KEY = 'efd.contracts.originSystemId';
 const ORIGIN_NAME_KEY = 'efd.contracts.originSystemName';
 const RADIUS_KEY = 'efd.contracts.radius';
+const SEARCH_MODE_KEY = 'efd.contracts.searchMode';
+
+type ContractSearchMode = 'ship' | 'jumpCapable';
+
+function readSavedSearchMode(): ContractSearchMode {
+  return localStorage.getItem(SEARCH_MODE_KEY) === 'jumpCapable' ? 'jumpCapable' : 'ship';
+}
 
 function readSavedShip(): ContractShipHit | null {
   const id = Number(localStorage.getItem(SHIP_ID_KEY));
@@ -53,6 +61,7 @@ function readSavedRadius(): number {
 }
 
 export function ContractsView() {
+  const [searchMode, setSearchMode] = useState<ContractSearchMode>(() => readSavedSearchMode());
   const [shipText, setShipText] = useState(() => localStorage.getItem(SHIP_NAME_KEY) ?? '');
   const [ship, setShip] = useState<ContractShipHit | null>(() => readSavedShip());
   const [shipHits, setShipHits] = useState<ContractShipHit[]>([]);
@@ -68,14 +77,14 @@ export function ContractsView() {
   const searchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (shipText.trim().length < 2 || ship?.name === shipText.trim()) {
+    if (searchMode === 'jumpCapable' || shipText.trim().length < 2 || ship?.name === shipText.trim()) {
       setShipHits([]);
       return;
     }
     const ctrl = new AbortController();
     searchContractShips(shipText, ctrl.signal).then(setShipHits).catch(() => {});
     return () => ctrl.abort();
-  }, [shipText, ship]);
+  }, [searchMode, shipText, ship]);
 
   useEffect(() => {
     if (originText.trim().length < 2 || origin?.name === originText.trim()) {
@@ -114,6 +123,10 @@ export function ContractsView() {
   }, [radius]);
 
   useEffect(() => {
+    localStorage.setItem(SEARCH_MODE_KEY, searchMode);
+  }, [searchMode]);
+
+  useEffect(() => {
     return () => {
       searchSeq.current += 1;
       searchAbortRef.current?.abort();
@@ -121,7 +134,10 @@ export function ContractsView() {
     };
   }, []);
 
-  const canSearch = ship != null && origin != null && radius >= 1 && radius <= 100;
+  const canSearch = origin != null && (
+    searchMode === 'jumpCapable'
+      || (ship != null && radius >= 1 && radius <= 100)
+  );
 
   const invalidateSearch = () => {
     searchSeq.current += 1;
@@ -132,7 +148,7 @@ export function ContractsView() {
   };
 
   const doSearch = async () => {
-    if (!ship || !origin) return;
+    if (!origin || (searchMode === 'ship' && !ship)) return;
     searchAbortRef.current?.abort();
     const seq = ++searchSeq.current;
     const ctrl = new AbortController();
@@ -140,9 +156,10 @@ export function ContractsView() {
     setBusy(true);
     setError(null);
     try {
-      const result = await searchContracts(
-        { shipId: ship.id, originSystemId: origin.id, radius },
-        ctrl.signal,
+      const result = await (
+        searchMode === 'jumpCapable'
+          ? searchJumpCapableContracts({ originSystemId: origin.id }, ctrl.signal)
+          : searchContracts({ shipId: ship!.id, originSystemId: origin.id, radius }, ctrl.signal)
       ).catch(err => {
         return { error: err instanceof Error ? err.message : 'Failed to search contracts' };
       });
@@ -179,14 +196,45 @@ export function ContractsView() {
   return (
     <main className="rows-wrap contracts-view">
       <section className="ct-search" aria-label="Contracts search">
+        <div className="ct-mode-toggle" role="group" aria-label="Contract search mode">
+          <button
+            type="button"
+            className={searchMode === 'ship' ? 'active' : ''}
+            onClick={() => {
+              invalidateSearch();
+              setSearchMode('ship');
+              setResponse(null);
+              setError(null);
+            }}
+          >
+            Ship
+          </button>
+          <button
+            type="button"
+            className={searchMode === 'jumpCapable' ? 'active' : ''}
+            onClick={() => {
+              invalidateSearch();
+              setSearchMode('jumpCapable');
+              setShipHits([]);
+              setResponse(null);
+              setError(null);
+            }}
+          >
+            Any cap jump
+          </button>
+          {searchMode === 'jumpCapable' && <small>Within 1 JDC V cap jump</small>}
+        </div>
+
         <label className="ct-field" htmlFor="contracts-ship-input">
           <span>Ship</span>
           <input
             id="contracts-ship-input"
-            value={shipText}
-            placeholder="Type 2+ characters"
+            value={searchMode === 'jumpCapable' ? 'Any jump-capable ship' : shipText}
+            placeholder={searchMode === 'jumpCapable' ? 'Any jump-capable ship' : 'Type 2+ characters'}
             autoComplete="off"
+            disabled={searchMode === 'jumpCapable' || busy}
             onChange={e => {
+              if (searchMode === 'jumpCapable') return;
               invalidateSearch();
               setShipText(e.target.value);
               setShip(null);
@@ -194,7 +242,7 @@ export function ContractsView() {
               setError(null);
             }}
           />
-          {shipHits.length > 0 && ship == null && (
+          {searchMode === 'ship' && shipHits.length > 0 && ship == null && (
             <div className="ct-suggest" role="listbox" aria-label="Ship suggestions">
               {shipHits.map(hit => (
                 <button
@@ -256,7 +304,9 @@ export function ContractsView() {
             min={1}
             max={100}
             value={radius}
+            disabled={searchMode === 'jumpCapable'}
             onChange={e => {
+              if (searchMode === 'jumpCapable') return;
               invalidateSearch();
               setRadius(Math.max(1, Math.min(100, Number(e.target.value) || 1)));
               setResponse(null);

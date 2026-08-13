@@ -31,6 +31,22 @@ export interface IndexedContractSearchInput {
   now: number;
 }
 
+export interface IndexedJumpCapableShip {
+  typeId: number;
+  name: string;
+  jumpDriveBaseRangeLy: number;
+}
+
+export interface IndexedJumpCapableContractSearchInput {
+  ships: IndexedJumpCapableShip[];
+  originSystemId: number;
+  topology: ContractMapTopology;
+  regionIds: number[];
+  distances: Map<number, number>;
+  now: number;
+  maxCapitalJumps: number;
+}
+
 export interface IndexedContractSearch {
   results: ContractSearchResult[];
   unresolvedLocationCount: number;
@@ -68,6 +84,10 @@ interface ContractIndexSummaryRow {
   location_name: string | null;
   location_known: number;
   quantity: number;
+}
+
+interface JumpCapableContractIndexSummaryRow extends ContractIndexSummaryRow {
+  matched_type_id: number;
 }
 
 interface ContractIndexRegionRow {
@@ -378,6 +398,91 @@ export function searchIndexedContracts(
         row.location_system_id,
         input.jumpDriveBaseRangeLy,
       ),
+      dateIssued: row.date_issued,
+      dateExpired: row.date_expired,
+    });
+  }
+
+  return { results: sortContractResultsDefault(results), unresolvedLocationCount };
+}
+
+export function searchIndexedJumpCapableContracts(
+  database: SqliteDatabase,
+  input: IndexedJumpCapableContractSearchInput,
+): IndexedContractSearch {
+  if (input.regionIds.length === 0 || input.ships.length === 0) {
+    return { results: [], unresolvedLocationCount: 0 };
+  }
+
+  const shipByType = new Map(input.ships.map(ship => [ship.typeId, ship]));
+  const regionFilter = input.regionIds.map(() => '?').join(',');
+  const typeFilter = input.ships.map(() => '?').join(',');
+  const rows = database.prepare(`
+    SELECT
+      c.contract_id,
+      c.region_id,
+      c.region_name,
+      c.type,
+      c.date_issued,
+      c.date_expired,
+      c.title,
+      c.price,
+      c.buyout,
+      c.location_system_id,
+      c.location_system_name,
+      c.location_name,
+      c.location_known,
+      i.type_id AS matched_type_id,
+      SUM(i.quantity) AS quantity
+    FROM contract_index_summaries c
+    JOIN contract_index_items i ON i.contract_id = c.contract_id
+    WHERE c.region_id IN (${regionFilter})
+      AND c.active = 1
+      AND c.type IN ('item_exchange', 'auction')
+      AND i.type_id IN (${typeFilter})
+      AND i.is_included = 1
+      AND i.quantity > 0
+    GROUP BY c.contract_id, i.type_id
+  `).all(...input.regionIds, ...input.ships.map(ship => ship.typeId)) as JumpCapableContractIndexSummaryRow[];
+
+  const results: ContractSearchResult[] = [];
+  let unresolvedLocationCount = 0;
+  for (const row of rows) {
+    const ship = shipByType.get(row.matched_type_id);
+    if (!ship) continue;
+    if (!CONTRACT_TYPES.has(row.type)) continue;
+    if (Date.parse(row.date_expired) <= input.now) continue;
+    if (row.location_system_id == null) {
+      unresolvedLocationCount += 1;
+      continue;
+    }
+
+    const capitalJumps = jumpDriveJumpsAtJdc5(
+      input.topology,
+      input.originSystemId,
+      row.location_system_id,
+      ship.jumpDriveBaseRangeLy,
+    );
+    if (capitalJumps == null || capitalJumps > input.maxCapitalJumps) continue;
+
+    results.push({
+      contractId: row.contract_id,
+      type: row.type,
+      title: row.title ?? '',
+      price: row.price,
+      buyout: row.buyout,
+      effectivePrice: row.price ?? row.buyout ?? null,
+      quantity: row.quantity,
+      shipTypeId: ship.typeId,
+      shipName: ship.name,
+      regionId: row.region_id,
+      regionName: row.region_name,
+      systemId: row.location_system_id,
+      systemName: row.location_system_name,
+      locationName: row.location_name ?? 'Unknown structure',
+      locationKnown: row.location_known === 1,
+      jumps: input.distances.get(row.location_system_id) ?? null,
+      capitalJumps,
       dateIssued: row.date_issued,
       dateExpired: row.date_expired,
     });

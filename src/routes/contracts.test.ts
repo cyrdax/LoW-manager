@@ -96,6 +96,36 @@ test('GET /api/contracts/search defaults omitted radius to 30', async () => {
   assert.equal(JSON.parse(res.body).radius, 30);
 });
 
+test('GET /api/contracts/search/jump-capable delegates to one-jump contract search service', async () => {
+  const app = Fastify();
+  let observedOrigin: number | undefined;
+  registerContractRoutes(app, {
+    loadData: () => data,
+    runJumpSearch: async input => {
+      observedOrigin = input.originSystemId;
+      return {
+        ship: { id: 0, name: 'Any jump-capable ship', groupName: 'Within 1 JDC V jump', jumpDriveBaseRangeLy: null },
+        origin: { id: input.originSystemId, name: 'Jita' },
+        radius: 1,
+        regionsScanned: [],
+        index: readyIndex(),
+        fetchedAt: 1783526400000,
+        results: [],
+        warnings: [],
+      };
+    },
+  });
+
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/contracts/search/jump-capable?originSystemId=30000142',
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(observedOrigin, 30000142);
+  assert.equal(JSON.parse(res.body).ship.name, 'Any jump-capable ship');
+});
+
 test('GET /api/contracts/search rejects radius below the allowed range', async () => {
   const app = Fastify();
   let called = false;

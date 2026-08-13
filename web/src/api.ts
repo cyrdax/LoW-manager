@@ -367,6 +367,18 @@ export async function searchContracts(
   return res.json();
 }
 
+export async function searchJumpCapableContracts(
+  params: { originSystemId: number },
+  signal?: AbortSignal,
+): Promise<ContractSearchResponse | { error: string }> {
+  const qs = new URLSearchParams({
+    originSystemId: String(params.originSystemId),
+  });
+  const res = await fetch(`/api/contracts/search/jump-capable?${qs.toString()}`, { signal });
+  if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
+  return res.json();
+}
+
 export async function fetchContractDetails(
   contractId: number,
   hub: ShoppingHub,

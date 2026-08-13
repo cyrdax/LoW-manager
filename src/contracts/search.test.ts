@@ -6,6 +6,7 @@ import {
   effectiveContractPrice,
   matchingShipQuantity,
   runContractSearch,
+  runJumpCapableContractSearch,
   searchContractShips,
   sortContractResults,
   validateContractRadius,
@@ -30,6 +31,7 @@ const masteryData = {
     '24688': { name: 'Rokh', groupId: 27, groupName: 'Battleship', requiredSkills: [], masteries: [[], [], [], [], []] },
     '587': { name: 'Rifter', groupId: 25, groupName: 'Frigate', requiredSkills: [], masteries: [[], [], [], [], []] },
     '23757': { name: 'Archon', groupId: 547, groupName: 'Carrier', requiredSkills: [], masteries: [[], [], [], [], []], jumpDriveBaseRangeLy: 3.5 },
+    '19720': { name: 'Revelation', groupId: 485, groupName: 'Dreadnought', requiredSkills: [], masteries: [[], [], [], [], []], jumpDriveBaseRangeLy: 3.5 },
   },
 } as unknown as MasteryData;
 
@@ -141,6 +143,46 @@ test('runContractSearch calculates JDC V jump-drive jumps from the searched ship
   });
 
   assert.equal(response.results[0].capitalJumps, 1);
+});
+
+test('runJumpCapableContractSearch returns any jump-capable ship within one JDC V jump', async () => {
+  const db = memoryDb();
+  const topology = topologyFixture();
+  upsertContractIndexRegions(db, [{ id: 10000002, name: 'The Forge' }], NOW);
+  upsertRegionContracts(db, {
+    region: { id: 10000002, name: 'The Forge' },
+    topology,
+    refreshedAt: NOW - 60_000,
+    expiresAt: EXPIRES,
+    contracts: [
+      contract(1, { start_location_id: 60000001, price: 50, title: 'Archon hull' }),
+      contract(2, { start_location_id: 60003760, price: 75, title: 'Rifter hull' }),
+      contract(3, { start_location_id: 60000002, price: 100, title: 'Far Revelation hull' }),
+    ],
+  });
+  replaceContractItems(db, 1, [item(11, 23757, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 2, [item(21, 587, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 3, [item(31, 19720, 1, true)], NOW - 60_000, EXPIRES);
+  db.prepare(`
+    UPDATE contract_index_regions
+    SET next_refresh_at = ?
+    WHERE region_id = ?
+  `).run(EXPIRES, 10000002);
+
+  const response = await runJumpCapableContractSearch({
+    data: masteryData,
+    originSystemId: 30000142,
+  }, {
+    database: db,
+    now: () => NOW,
+    topology,
+  });
+
+  assert.equal(response.ship.name, 'Any jump-capable ship');
+  assert.equal(response.radius, 1);
+  assert.deepEqual(response.results.map(row => [row.contractId, row.shipName, row.capitalJumps]), [
+    [1, 'Archon', 1],
+  ]);
 });
 
 test('runContractSearch warns when matching contracts have unresolved locations', async () => {
@@ -262,9 +304,11 @@ function topologyFixture() {
     { systemId: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145], x: 0, y: 0, z: 0 },
     { systemId: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge', neighbors: [30000142, 30000148], x: 1, y: 0, z: 0 },
     { systemId: 30000148, name: 'Urlen', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145], x: 6.934 * 9_460_000_000_000_000, y: 0, z: 0 },
+    { systemId: 30000149, name: 'Far System', regionId: 10000002, regionName: 'The Forge', neighbors: [], x: 8 * 9_460_000_000_000_000, y: 0, z: 0 },
   ], [
     { stationId: 60003760, stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant', solarSystemId: 30000142 },
     { stationId: 60000001, stationName: 'Urlen Station', solarSystemId: 30000148 },
+    { stationId: 60000002, stationName: 'Far Station', solarSystemId: 30000149 },
   ]);
 }
 
