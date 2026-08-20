@@ -62,14 +62,21 @@ function AutopilotPanel({ selectedIds }: { selectedIds: number[] }) {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SystemHit[]>([]);
   const [active, setActive] = useState(-1);
+  const [selectedSystem, setSelectedSystem] = useState<SystemHit | null>(null);
   const [busy, setBusy] = useState(false);
   const [apResults, setApResults] = useState<WaypointResult[] | null>(null);
+  const [resultsTitle, setResultsTitle] = useState('');
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
     if (abortRef.current) abortRef.current.abort();
+    if (selectedSystem && query === selectedSystem.name) {
+      setHits([]);
+      setActive(-1);
+      return;
+    }
     const ctl = new AbortController();
     abortRef.current = ctl;
 
@@ -80,16 +87,23 @@ function AutopilotPanel({ selectedIds }: { selectedIds: number[] }) {
     }, 120);
 
     return () => { if (debounce.current) clearTimeout(debounce.current); };
-  }, [query]);
+  }, [query, selectedSystem]);
 
-  const pick = async (hit: SystemHit) => {
+  const chooseSystem = (hit: SystemHit) => {
+    setSelectedSystem(hit);
+    setQuery(hit.name);
+    setHits([]);
+  };
+
+  const setWaypoint = async () => {
+    if (!selectedSystem) return;
     setBusy(true);
     setApResults(null);
-    const r = await setWaypointAll(hit.id, selectedIds.length ? selectedIds : undefined)
-      .catch(() => ({ destination_id: hit.id, results: [] as WaypointResult[] }));
+    const r = await setWaypointAll(selectedSystem.id, selectedIds.length ? selectedIds : undefined)
+      .catch(() => ({ destination_id: selectedSystem.id, results: [] as WaypointResult[] }));
     setBusy(false);
     setApResults(r.results);
-    setQuery(hit.name);
+    setResultsTitle(`Waypoint results for ${selectedSystem.name}`);
     setHits([]);
   };
 
@@ -103,7 +117,7 @@ function AutopilotPanel({ selectedIds }: { selectedIds: number[] }) {
       setActive(i => (i - 1 + hits.length) % hits.length);
     } else if (e.key === 'Enter' && active >= 0) {
       e.preventDefault();
-      pick(hits[active]);
+      chooseSystem(hits[active]);
     } else if (e.key === 'Escape') {
       setHits([]);
     }
@@ -119,28 +133,52 @@ function AutopilotPanel({ selectedIds }: { selectedIds: number[] }) {
         type="text"
         placeholder="system name..."
         value={query}
-        onChange={e => setQuery(e.target.value)}
+        onChange={e => {
+          setQuery(e.target.value);
+          setSelectedSystem(null);
+        }}
         onKeyDown={onKeyDown}
         disabled={busy}
         autoComplete="off"
       />
+      <button
+        className="primary ap-set-btn"
+        type="button"
+        disabled={busy || !selectedSystem}
+        onClick={setWaypoint}
+      >
+        {busy ? 'Setting...' : 'Set waypoint'}
+      </button>
       {hits.length > 0 && (
         <ul className="ap-suggestions">
           {hits.map((h, i) => (
-            <li key={h.id} className={i === active ? 'active' : ''} onMouseDown={() => pick(h)}>
+            <li key={h.id} className={i === active ? 'active' : ''} onMouseDown={() => chooseSystem(h)}>
               {h.name}
             </li>
           ))}
         </ul>
       )}
       {apResults && (
-        <div className="tool-widget-results">
-          {apResults.map(r => (
-            <div key={r.characterId} className="row">
-              <span>{r.name}</span>
-              <span className={r.ok ? 'ok' : 'err'}>{r.ok ? 'waypoint set' : r.error}</span>
+        <div className="waypoint-results-modal" role="dialog" aria-modal="true" aria-label="Waypoint results">
+          <div className="waypoint-results-panel">
+            <div className="waypoint-results-head">
+              <div>
+                <h3>{resultsTitle}</h3>
+                <p>{apResults.length} pilots processed</p>
+              </div>
+              <button type="button" onClick={() => setApResults(null)} aria-label="Close waypoint results">
+                X
+              </button>
             </div>
-          ))}
+            <div className="waypoint-results-list">
+              {apResults.map(r => (
+                <div key={r.characterId} className="row">
+                  <span>{r.name}</span>
+                  <span className={r.ok ? 'ok' : 'err'}>{r.ok ? 'waypoint set' : r.error}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

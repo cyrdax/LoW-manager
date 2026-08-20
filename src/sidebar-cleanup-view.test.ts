@@ -23,3 +23,18 @@ test('sidebar stays navigation-only while pilot and fleet tools live in content 
   assert.match(fleetInviteWidget, /Invite selected/);
 });
 
+test('pilot waypoint command uses an explicit button and modal results', () => {
+  const pilotTools = readFileSync(resolve('web/src/components/PilotTools.tsx'), 'utf8');
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
+
+  const keyHandlerStart = pilotTools.indexOf('const onKeyDown');
+  const keyHandlerEnd = pilotTools.indexOf('return (', keyHandlerStart);
+  const keyHandler = pilotTools.slice(keyHandlerStart, keyHandlerEnd);
+
+  assert.match(pilotTools, /className="primary ap-set-btn"[\s\S]*Set waypoint[\s\S]*<\/button>/);
+  assert.match(pilotTools, /selectedSystem/);
+  assert.match(pilotTools, /waypoint-results-modal/);
+  assert.doesNotMatch(keyHandler, /pick\(/);
+  assert.match(styles, /\.waypoint-results-modal/);
+  assert.match(styles, /\.waypoint-results-list/);
+});
