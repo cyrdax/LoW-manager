@@ -38,3 +38,14 @@ test('pilot waypoint command uses an explicit button and modal results', () => {
   assert.match(styles, /\.waypoint-results-modal/);
   assert.match(styles, /\.waypoint-results-list/);
 });
+
+test('fleet invite command results render in a modal instead of the widget body', () => {
+  const fleetInviteWidget = readFileSync(resolve('web/src/components/FleetInviteWidget.tsx'), 'utf8');
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
+
+  assert.match(fleetInviteWidget, /fleet-results-modal/);
+  assert.match(fleetInviteWidget, /fleet-results-list/);
+  assert.doesNotMatch(fleetInviteWidget, /className="tool-widget-results"/);
+  assert.match(styles, /\.fleet-results-modal/);
+  assert.match(styles, /\.fleet-results-list/);
+});

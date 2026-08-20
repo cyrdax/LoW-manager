@@ -191,16 +191,28 @@ export function FleetInviteWidget({ chars, selection }: Props) {
 
       {error && <div className="tool-widget-error">{error}</div>}
       {results && (
-        <div className="tool-widget-results">
-          {results.map(r => (
-            <div key={r.characterId} className="row">
-              <span>{r.name}</span>
-              <span className={r.ok ? 'ok' : 'err'}>{r.ok ? resultsLabel : r.error}</span>
+        <div className="fleet-results-modal" role="dialog" aria-modal="true" aria-label="Fleet command results">
+          <div className="fleet-results-panel">
+            <div className="fleet-results-head">
+              <div>
+                <h3>{resultsLabel === 'invited' ? 'Fleet invite results' : 'Fleet move results'}</h3>
+                <p>{results.length} pilots processed</p>
+              </div>
+              <button type="button" onClick={() => setResults(null)} aria-label="Close fleet results">
+                X
+              </button>
             </div>
-          ))}
+            <div className="fleet-results-list">
+              {results.map(r => (
+                <div key={r.characterId} className="row">
+                  <span>{r.name}</span>
+                  <span className={r.ok ? 'ok' : 'err'}>{r.ok ? resultsLabel : r.error}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </section>
   );
 }
-
