@@ -3,7 +3,9 @@ import { useCharacters } from './hooks/useCharacters.ts';
 import { useTableState, type SortKey, type ColKey } from './hooks/useTableState.ts';
 import { CharacterCard } from './components/CharacterCard.tsx';
 import { ControlPanel } from './components/ControlPanel.tsx';
+import { FleetInviteWidget } from './components/FleetInviteWidget.tsx';
 import { PlanetsView } from './components/PlanetsView.tsx';
+import { PilotTools } from './components/PilotTools.tsx';
 import { SkillsView } from './components/SkillsView.tsx';
 import { FleetView } from './components/FleetView.tsx';
 import { MarketView } from './components/MarketView.tsx';
@@ -196,16 +198,25 @@ export function App() {
       <ControlPanel
         chars={currentUser ? list : []}
         selection={selection}
-        onRefresh={refresh}
         view={view}
         setView={navigateToView}
         currentUser={currentUser ?? undefined}
         onLogout={onLogout}
-        onSetMainCharacter={onSetMainCharacter}
       />
 
       {view === 'pilots' && (
         <main className="rows-wrap">
+          <div className="pilot-widget-grid">
+            <PilotTools
+              chars={list}
+              selection={selection}
+              currentUser={currentUser}
+              onRefresh={refresh}
+              onSetMainCharacter={onSetMainCharacter}
+            />
+            <FleetInviteWidget chars={list} selection={selection} />
+          </div>
+
           <div className="rows-header" style={table.gridStyle}>
             <label className="col-select">
               <input type="checkbox" checked={allSelected} onChange={onToggleAll} aria-label="Select all" />
@@ -227,7 +238,7 @@ export function App() {
           {loading && <div className="empty">Loading…</div>}
           {!loading && list.length === 0 && (
             <div className="empty">
-              No characters yet. Click <b>Add character</b> in the sidebar to authenticate one via EVE SSO.
+              No characters yet. Click <b>Add character</b> above to authenticate one via EVE SSO.
             </div>
           )}
           {list.map(c => (
@@ -247,7 +258,7 @@ export function App() {
 
       {view === 'planets' && <PlanetsView chars={list} />}
       {view === 'skills' && <SkillsView chars={list} />}
-      {view === 'fleet' && <FleetView chars={list} />}
+      {view === 'fleet' && <FleetView chars={list} selection={selection} />}
       {view === 'market' && <MarketView chars={list} />}
       {view === 'industry' && <IndustryView chars={list} />}
       {view === 'contracts' && <ContractsView />}

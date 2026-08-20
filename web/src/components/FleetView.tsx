@@ -7,8 +7,12 @@ import {
   type FleetRoster,
   type FleetRosterMember,
 } from '../api.ts';
+import { FleetInviteWidget } from './FleetInviteWidget.tsx';
 
-interface Props { chars: CharacterStatus[] }
+interface Props {
+  chars: CharacterStatus[];
+  selection: Set<number>;
+}
 
 interface DragPayload {
   kind: 'member' | 'squad' | 'wing';
@@ -18,7 +22,7 @@ interface DragPayload {
   sourceLabel: string;
 }
 
-export function FleetView({ chars }: Props) {
+export function FleetView({ chars, selection }: Props) {
   // Persist FC choice across reloads.
   const [actorId, setActorId] = useState<number | null>(() => {
     const stored = Number(localStorage.getItem('efd.fleet.actorId'));
@@ -85,6 +89,8 @@ export function FleetView({ chars }: Props) {
 
   return (
     <main className="rows-wrap fleet-view">
+      <FleetInviteWidget chars={chars} selection={selection} />
+
       <div className="fl-controls">
         <div className="sk-control">
           <label>Acting as</label>

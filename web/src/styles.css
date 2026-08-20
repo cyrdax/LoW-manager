@@ -233,6 +233,124 @@ body {
 }
 .main-pilot-select { width: 100%; }
 
+.pilot-widget-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.1fr);
+  gap: 12px;
+  align-items: start;
+}
+.pilot-tools,
+.fleet-invite-widget {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tool-widget-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tool-widget-head h2 {
+  margin: 0;
+  font-size: 14px;
+}
+.tool-widget-head p {
+  margin: 3px 0 0;
+  color: var(--dim);
+  font-size: 12px;
+}
+.pilot-tools button,
+.fleet-invite-widget button,
+.pilot-tools select,
+.fleet-invite-widget select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+.pilot-tools button.primary,
+.fleet-invite-widget button.primary {
+  background: var(--accent);
+  color: #0b0e13;
+  border-color: transparent;
+  font-weight: 700;
+}
+.pilot-tools button:disabled,
+.fleet-invite-widget button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.fleet-invite-widget button.ghost {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.pilot-main-control {
+  color: var(--dim);
+}
+.fleet-invite-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1.2fr);
+  gap: 10px;
+}
+.fleet-boss-card,
+.fleet-target-control {
+  background: #131820;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 10px;
+}
+.fleet-boss-card,
+.fleet-target-control {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.fleet-boss-card span,
+.fleet-target-control span,
+.autopilot-label {
+  color: var(--dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.45px;
+}
+.fleet-boss-card strong {
+  font-size: 14px;
+}
+.fleet-boss-card small,
+.fleet-target-control small {
+  line-height: 1.35;
+}
+.fleet-invite-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tool-widget-error {
+  color: var(--red);
+  font-size: 12px;
+}
+.tool-widget-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.tool-widget-results .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+
 /* rows */
 .rows-wrap {
   padding: 12px 16px;
