@@ -3,15 +3,20 @@ import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-test('app favicon uses Wayne Kerr portrait from EVE images', () => {
+test('app favicon and preview metadata use Outfit 420-2 branding', () => {
   const indexHtml = readFileSync(resolve('web/index.html'), 'utf8');
 
   assert.match(
     indexHtml,
-    /<link rel="icon" type="image\/png" href="https:\/\/images\.evetech\.net\/characters\/231005176\/portrait\?size=64" \/>/,
+    /<link rel="icon" type="image\/png" sizes="32x32" href="\/outfit-icon-32\.png" \/>/,
   );
   assert.match(
     indexHtml,
-    /<link rel="apple-touch-icon" href="https:\/\/images\.evetech\.net\/characters\/231005176\/portrait\?size=128" \/>/,
+    /<link rel="apple-touch-icon" href="\/outfit-icon-180\.png" \/>/,
   );
+  assert.match(indexHtml, /<meta property="og:image" content="https:\/\/outfit420-2\.com\/outfit-social\.png" \/>/);
+  assert.match(indexHtml, /<meta property="og:image:width" content="1200" \/>/);
+  assert.match(indexHtml, /<meta property="og:image:height" content="630" \/>/);
+  assert.match(indexHtml, /<meta name="twitter:card" content="summary_large_image" \/>/);
+  assert.match(indexHtml, /<meta name="twitter:image" content="https:\/\/outfit420-2\.com\/outfit-social\.png" \/>/);
 });

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Outfit 420-2 icon</title>
+  <desc id="desc">A square Outfit 420-2 icon made from the three corporation images.</desc>
+  <defs>
+    <clipPath id="iconClip">
+      <rect width="512" height="512" rx="74" />
+    </clipPath>
+    <linearGradient id="shade" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#000" stop-opacity="0.04" />
+      <stop offset="0.5" stop-color="#000" stop-opacity="0.42" />
+      <stop offset="1" stop-color="#000" stop-opacity="0.1" />
+    </linearGradient>
+    <filter id="textShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="8" flood-color="#000" flood-opacity="1" />
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity="1" />
+    </filter>
+  </defs>
+
+  <g clip-path="url(#iconClip)">
+    <rect width="512" height="512" fill="#0b0e13" />
+    <image href="outfit-logo-bg-bull.png" x="-34" y="-6" width="195" height="524" preserveAspectRatio="xMidYMid slice" />
+    <image href="outfit-logo-bg-wings.png" x="154" y="-6" width="205" height="524" preserveAspectRatio="xMidYMid slice" />
+    <image href="outfit-logo-bg-wayne.png" x="352" y="-6" width="195" height="524" preserveAspectRatio="xMidYMid slice" />
+    <rect width="512" height="512" fill="url(#shade)" />
+    <rect width="512" height="512" fill="none" stroke="#2b3340" stroke-width="8" />
+  </g>
+
+  <text
+    x="256"
+    y="292"
+    text-anchor="middle"
+    filter="url(#textShadow)"
+    fill="#f4f7fb"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="128"
+    font-weight="900"
+  >420-2</text>
+</svg>

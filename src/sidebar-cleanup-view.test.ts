@@ -14,6 +14,8 @@ test('sidebar stays navigation-only while pilot and fleet tools live in content 
   assert.doesNotMatch(controlPanel, /Main pilot/);
   assert.doesNotMatch(controlPanel, /Invite selected/);
   assert.doesNotMatch(controlPanel, /Fleet boss/);
+  assert.match(controlPanel, /src="\/outfit-logo\.png"/);
+  assert.match(controlPanel, /alt="Outfit 420-2"/);
 
   assert.match(app, /<PilotTools/);
   assert.match(app, /<FleetInviteWidget/);

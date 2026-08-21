@@ -173,6 +173,18 @@ body {
   gap: 16px;
   overflow-y: auto;
 }
+.sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sidebar-brand img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 760 / 230;
+  border-radius: 8px;
+}
 .sidebar h1 { font-size: 15px; margin: 0 0 4px; letter-spacing: 0.5px; }
 .sidebar small { color: var(--dim); }
 .sidebar button, .sidebar select {

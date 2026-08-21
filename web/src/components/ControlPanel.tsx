@@ -18,8 +18,8 @@ export function ControlPanel({ chars, selection, view, setView, currentUser, onL
 
   return (
     <aside className="sidebar">
-      <div>
-        <h1>Legion of Wayne Manger</h1>
+      <div className="sidebar-brand">
+        <img src="/outfit-logo.png" alt="Outfit 420-2" />
         <small>{chars.length} characters · {selection.size} selected</small>
       </div>
 
