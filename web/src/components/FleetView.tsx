@@ -89,7 +89,7 @@ export function FleetView({ chars, selection }: Props) {
 
   return (
     <main className="rows-wrap fleet-view">
-      <FleetInviteWidget chars={chars} selection={selection} />
+      <FleetInviteWidget chars={chars} selection={selection} defaultExpanded={false} />
 
       <div className="fl-controls">
         <div className="sk-control">

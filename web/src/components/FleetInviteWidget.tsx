@@ -11,9 +11,11 @@ import {
 interface Props {
   chars: CharacterStatus[];
   selection: Set<number>;
+  defaultExpanded: boolean;
 }
 
-export function FleetInviteWidget({ chars, selection }: Props) {
+export function FleetInviteWidget({ chars, selection, defaultExpanded }: Props) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<InviteResult[] | null>(null);
   const [resultsLabel, setResultsLabel] = useState<'invited' | 'moved'>('invited');
@@ -120,76 +122,92 @@ export function FleetInviteWidget({ chars, selection }: Props) {
   const hasTargets = fcOpts.length > 0 || fallbackOpts.length > 0;
 
   return (
-    <section className="fleet-invite-widget" aria-label="Fleet invite tools">
+    <section className={`fleet-invite-widget${expanded ? '' : ' collapsed'}`} aria-label="Fleet invite tools">
       <div className="tool-widget-head">
         <div>
           <h2>Fleet invite</h2>
           <p>{selection.size} selected · {selectedCharsNonBoss.length} invite-ready</p>
         </div>
-        <button className="ghost" onClick={() => setPokeNonce(n => n + 1)}>
-          Check now
-        </button>
-      </div>
-
-      <div className="fleet-invite-grid">
-        <div className="fleet-boss-card">
-          <span>Fleet boss</span>
-          <strong>{boss ? boss.name : 'Pick a boss on Pilots'}</strong>
-          {boss && (
-            <small className={bossInFleet && bossIsFC && bossIsFleetOwner ? 'ok' : 'warn'}>
-              {!bossInFleet && 'Not in a fleet — form one in-client.'}
-              {bossInFleet && bossIsFC && bossIsFleetOwner && `Fleet boss · fleet ${boss.fleetId}`}
-              {bossInFleet && bossIsFC && bossNotOwner && `FC role but not fleet owner. Transfer Fleet Boss to ${boss.name} in-client.`}
-              {bossInFleet && !bossIsFC && `Currently ${boss.fleetRole ?? 'member'}. Move this pilot to Fleet Commander in-client.`}
-            </small>
+        <div className="tool-widget-head-actions">
+          {expanded && (
+            <button className="ghost" onClick={() => setPokeNonce(n => n + 1)}>
+              Check now
+            </button>
           )}
+          <button
+            className="ghost fleet-invite-toggle"
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(v => !v)}
+          >
+            {expanded ? 'Hide' : 'Show'}
+          </button>
         </div>
-
-        <label className="fleet-target-control">
-          <span>Invite / move target</span>
-          {hasTargets ? (
-            <select value={targetKey} onChange={e => setTargetKey(e.target.value)}>
-              <option value="auto">Auto (first wing with a squad)</option>
-              {fcOpts.length > 0 && (
-                <optgroup label="From FC token">
-                  {fcOpts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-                </optgroup>
-              )}
-              {fallbackOpts.length > 0 && (
-                <optgroup label="Known via your pilots">
-                  {fallbackOpts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-                </optgroup>
-              )}
-            </select>
-          ) : (
-            <small className="warn">
-              {bossNotOwner
-                ? `${boss?.name} is FC, but not the original fleet owner. Transfer Fleet Boss in-client.`
-                : structure?.error ?? 'Waiting for fleet wings from ESI.'}
-            </small>
-          )}
-        </label>
       </div>
 
-      <div className="fleet-invite-actions">
-        <button className="primary" disabled={!canInvite || busy} onClick={doInviteAll}>
-          {busy ? 'Working...' : `Invite selected (${selectedCharsNonBoss.length})`}
-        </button>
-        <button
-          disabled={!canMove || busy}
-          onClick={doMove}
-          title={
-            !bossIsFC ? 'Boss must be in the Fleet Commander slot to move pilots via ESI'
-            : !parsedTarget ? 'Pick a specific wing/squad above to move into'
-            : moveable.length === 0 ? 'No selected characters are in the boss fleet'
-            : `Move ${moveable.length} to the chosen squad`
-          }
-        >
-          {busy ? 'Working...' : `Move selected to target (${moveable.length})`}
-        </button>
-      </div>
+      {expanded && (
+        <div className="fleet-invite-body">
+          <div className="fleet-invite-grid">
+            <div className="fleet-boss-card">
+              <span>Fleet boss</span>
+              <strong>{boss ? boss.name : 'Pick a boss on Pilots'}</strong>
+              {boss && (
+                <small className={bossInFleet && bossIsFC && bossIsFleetOwner ? 'ok' : 'warn'}>
+                  {!bossInFleet && 'Not in a fleet — form one in-client.'}
+                  {bossInFleet && bossIsFC && bossIsFleetOwner && `Fleet boss · fleet ${boss.fleetId}`}
+                  {bossInFleet && bossIsFC && bossNotOwner && `FC role but not fleet owner. Transfer Fleet Boss to ${boss.name} in-client.`}
+                  {bossInFleet && !bossIsFC && `Currently ${boss.fleetRole ?? 'member'}. Move this pilot to Fleet Commander in-client.`}
+                </small>
+              )}
+            </div>
 
-      {error && <div className="tool-widget-error">{error}</div>}
+            <label className="fleet-target-control">
+              <span>Invite / move target</span>
+              {hasTargets ? (
+                <select value={targetKey} onChange={e => setTargetKey(e.target.value)}>
+                  <option value="auto">Auto (first wing with a squad)</option>
+                  {fcOpts.length > 0 && (
+                    <optgroup label="From FC token">
+                      {fcOpts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                    </optgroup>
+                  )}
+                  {fallbackOpts.length > 0 && (
+                    <optgroup label="Known via your pilots">
+                      {fallbackOpts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                    </optgroup>
+                  )}
+                </select>
+              ) : (
+                <small className="warn">
+                  {bossNotOwner
+                    ? `${boss?.name} is FC, but not the original fleet owner. Transfer Fleet Boss in-client.`
+                    : structure?.error ?? 'Waiting for fleet wings from ESI.'}
+                </small>
+              )}
+            </label>
+          </div>
+
+          <div className="fleet-invite-actions">
+            <button className="primary" disabled={!canInvite || busy} onClick={doInviteAll}>
+              {busy ? 'Working...' : `Invite selected (${selectedCharsNonBoss.length})`}
+            </button>
+            <button
+              disabled={!canMove || busy}
+              onClick={doMove}
+              title={
+                !bossIsFC ? 'Boss must be in the Fleet Commander slot to move pilots via ESI'
+                : !parsedTarget ? 'Pick a specific wing/squad above to move into'
+                : moveable.length === 0 ? 'No selected characters are in the boss fleet'
+                : `Move ${moveable.length} to the chosen squad`
+              }
+            >
+              {busy ? 'Working...' : `Move selected to target (${moveable.length})`}
+            </button>
+          </div>
+
+          {error && <div className="tool-widget-error">{error}</div>}
+        </div>
+      )}
       {results && (
         <div className="fleet-results-modal" role="dialog" aria-modal="true" aria-label="Fleet command results">
           <div className="fleet-results-panel">

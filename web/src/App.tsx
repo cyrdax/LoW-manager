@@ -214,7 +214,7 @@ export function App() {
               onRefresh={refresh}
               onSetMainCharacter={onSetMainCharacter}
             />
-            <FleetInviteWidget chars={list} selection={selection} />
+            <FleetInviteWidget chars={list} selection={selection} defaultExpanded={true} />
           </div>
 
           <div className="rows-header" style={table.gridStyle}>

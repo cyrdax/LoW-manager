@@ -255,6 +255,12 @@ body {
   justify-content: space-between;
   gap: 12px;
 }
+.tool-widget-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .tool-widget-head h2 {
   margin: 0;
   font-size: 14px;
@@ -292,8 +298,19 @@ body {
   padding: 6px 10px;
   font-size: 12px;
 }
+.fleet-invite-widget.collapsed {
+  gap: 0;
+}
+.fleet-invite-toggle {
+  min-width: 58px;
+}
 .pilot-main-control {
   color: var(--dim);
+}
+.fleet-invite-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .fleet-invite-grid {
   display: grid;

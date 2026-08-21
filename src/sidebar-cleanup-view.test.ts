@@ -49,3 +49,18 @@ test('fleet invite command results render in a modal instead of the widget body'
   assert.match(styles, /\.fleet-results-modal/);
   assert.match(styles, /\.fleet-results-list/);
 });
+
+test('fleet invite widget is collapsible with page-specific defaults', () => {
+  const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
+  const fleetView = readFileSync(resolve('web/src/components/FleetView.tsx'), 'utf8');
+  const fleetInviteWidget = readFileSync(resolve('web/src/components/FleetInviteWidget.tsx'), 'utf8');
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
+
+  assert.match(app, /<FleetInviteWidget[\s\S]*defaultExpanded={true}/);
+  assert.match(fleetView, /<FleetInviteWidget[\s\S]*defaultExpanded={false}/);
+  assert.match(fleetInviteWidget, /defaultExpanded/);
+  assert.match(fleetInviteWidget, /aria-expanded={expanded}/);
+  assert.match(fleetInviteWidget, /fleet-invite-body/);
+  assert.match(styles, /\.fleet-invite-toggle/);
+  assert.match(styles, /\.fleet-invite-widget\.collapsed/);
+});
