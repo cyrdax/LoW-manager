@@ -120,6 +120,7 @@ export function App() {
   }, [chars, table.sortKey, table.sortAsc]);
 
   const [selection, setSelection] = useState<Set<number>>(new Set());
+  const [pilotWidgetsExpanded, setPilotWidgetsExpanded] = useState(true);
   const knownIdsRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
@@ -213,8 +214,15 @@ export function App() {
               currentUser={currentUser}
               onRefresh={refresh}
               onSetMainCharacter={onSetMainCharacter}
+              expanded={pilotWidgetsExpanded}
             />
-            <FleetInviteWidget chars={list} selection={selection} defaultExpanded={true} />
+            <FleetInviteWidget
+              chars={list}
+              selection={selection}
+              defaultExpanded={true}
+              expanded={pilotWidgetsExpanded}
+              onExpandedChange={setPilotWidgetsExpanded}
+            />
           </div>
 
           <div className="rows-header" style={table.gridStyle}>

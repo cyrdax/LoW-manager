@@ -54,6 +54,7 @@ test('fleet invite widget is collapsible with page-specific defaults', () => {
   const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
   const fleetView = readFileSync(resolve('web/src/components/FleetView.tsx'), 'utf8');
   const fleetInviteWidget = readFileSync(resolve('web/src/components/FleetInviteWidget.tsx'), 'utf8');
+  const pilotTools = readFileSync(resolve('web/src/components/PilotTools.tsx'), 'utf8');
   const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
 
   assert.match(app, /<FleetInviteWidget[\s\S]*defaultExpanded={true}/);
@@ -63,4 +64,10 @@ test('fleet invite widget is collapsible with page-specific defaults', () => {
   assert.match(fleetInviteWidget, /fleet-invite-body/);
   assert.match(styles, /\.fleet-invite-toggle/);
   assert.match(styles, /\.fleet-invite-widget\.collapsed/);
+  assert.match(app, /pilotWidgetsExpanded/);
+  assert.match(app, /<PilotTools[\s\S]*expanded={pilotWidgetsExpanded}/);
+  assert.match(app, /<FleetInviteWidget[\s\S]*expanded={pilotWidgetsExpanded}[\s\S]*onExpandedChange={setPilotWidgetsExpanded}/);
+  assert.match(pilotTools, /expanded/);
+  assert.match(pilotTools, /pilot-tools-body/);
+  assert.match(styles, /\.pilot-tools\.collapsed/);
 });

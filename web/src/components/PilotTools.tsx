@@ -14,9 +14,10 @@ interface Props {
   currentUser?: CurrentUser | null;
   onRefresh: () => void;
   onSetMainCharacter: (characterId: number | null) => void;
+  expanded?: boolean;
 }
 
-export function PilotTools({ chars, selection, currentUser, onRefresh, onSetMainCharacter }: Props) {
+export function PilotTools({ chars, selection, currentUser, onRefresh, onSetMainCharacter, expanded = true }: Props) {
   const selectedIds = Array.from(selection);
 
   const openAuth = () => {
@@ -30,30 +31,34 @@ export function PilotTools({ chars, selection, currentUser, onRefresh, onSetMain
   };
 
   return (
-    <section className="pilot-tools" aria-label="Pilot tools">
+    <section className={`pilot-tools${expanded ? '' : ' collapsed'}`} aria-label="Pilot tools">
       <div className="tool-widget-head">
         <div>
           <h2>Pilot tools</h2>
           <p>Authenticate pilots, choose your avatar, and send waypoints.</p>
         </div>
-        <button className="primary" onClick={openAuth}>Add character</button>
+        {expanded && <button className="primary" onClick={openAuth}>Add character</button>}
       </div>
 
-      {currentUser && chars.length > 0 && (
-        <label className="main-pilot-control pilot-main-control">
-          <span>Main pilot</span>
-          <select
-            className="main-pilot-select"
-            value={currentUser.mainCharacterId ?? ''}
-            onChange={e => onSetMainCharacter(e.target.value ? Number(e.target.value) : null)}
-          >
-            <option value="">Choose a pilot</option>
-            {chars.map(c => <option key={c.characterId} value={c.characterId}>{c.name}</option>)}
-          </select>
-        </label>
-      )}
+      {expanded && (
+        <div className="pilot-tools-body">
+          {currentUser && chars.length > 0 && (
+            <label className="main-pilot-control pilot-main-control">
+              <span>Main pilot</span>
+              <select
+                className="main-pilot-select"
+                value={currentUser.mainCharacterId ?? ''}
+                onChange={e => onSetMainCharacter(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">Choose a pilot</option>
+                {chars.map(c => <option key={c.characterId} value={c.characterId}>{c.name}</option>)}
+              </select>
+            </label>
+          )}
 
-      <AutopilotPanel selectedIds={selectedIds} />
+          <AutopilotPanel selectedIds={selectedIds} />
+        </div>
+      )}
     </section>
   );
 }

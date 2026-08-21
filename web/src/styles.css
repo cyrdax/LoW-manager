@@ -301,11 +301,19 @@ body {
 .fleet-invite-widget.collapsed {
   gap: 0;
 }
+.pilot-tools.collapsed {
+  gap: 0;
+}
 .fleet-invite-toggle {
   min-width: 58px;
 }
 .pilot-main-control {
   color: var(--dim);
+}
+.pilot-tools-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .fleet-invite-body {
   display: flex;

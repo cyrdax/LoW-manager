@@ -12,10 +12,12 @@ interface Props {
   chars: CharacterStatus[];
   selection: Set<number>;
   defaultExpanded: boolean;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
-export function FleetInviteWidget({ chars, selection, defaultExpanded }: Props) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+export function FleetInviteWidget({ chars, selection, defaultExpanded, expanded: controlledExpanded, onExpandedChange }: Props) {
+  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<InviteResult[] | null>(null);
   const [resultsLabel, setResultsLabel] = useState<'invited' | 'moved'>('invited');
@@ -32,6 +34,13 @@ export function FleetInviteWidget({ chars, selection, defaultExpanded }: Props) 
   const bossNotOwner = bossIsFC && fleetBossId != null && fleetBossId !== boss?.characterId;
   const selectedCharsNonBoss = chars.filter(c => selection.has(c.characterId) && !c.isBoss && !c.needsReauth);
   const wingsVisible = !!structure && structure.wings.some(w => w.squads.length > 0);
+  const expanded = controlledExpanded ?? internalExpanded;
+
+  const setExpanded = (next: boolean | ((current: boolean) => boolean)) => {
+    const value = typeof next === 'function' ? next(expanded) : next;
+    if (controlledExpanded == null) setInternalExpanded(value);
+    onExpandedChange?.(value);
+  };
 
   useEffect(() => {
     if (!bossInFleet || !bossIsFC) {
