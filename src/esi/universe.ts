@@ -1,5 +1,10 @@
 import { esiGet, esiGetPublic, esiPostPublic } from './client.ts';
-import { createUniverseCacheStore, type CorporationInfo } from './universe-cache-store.ts';
+import {
+  createUniverseCacheStore,
+  STRUCTURE_NAME_CACHE_CATEGORY,
+  STRUCTURE_SYSTEM_ID_CACHE_CATEGORY,
+  type CorporationInfo,
+} from './universe-cache-store.ts';
 
 export interface ResolvedStructureInfo {
   name: string;
@@ -129,6 +134,9 @@ interface StructureInfoPrivate {
 }
 
 async function resolveStructureInfo(id: number, characterId: number): Promise<ResolvedStructureInfo | null> {
+  const globalHit = await cachedStructureInfo(id);
+  if (globalHit) return globalHit;
+
   const cacheKey = `${characterId}:${id}`;
   const hit = privateStructureNames.get(cacheKey);
   if (hit) return hit;
@@ -137,6 +145,7 @@ async function resolveStructureInfo(id: number, characterId: number): Promise<Re
     if (data?.name) {
       const info = { name: data.name, systemId: data.solar_system_id ?? null };
       privateStructureNames.set(cacheKey, info);
+      await storeStructureInfo(id, info);
       return info;
     }
     return null;
@@ -158,6 +167,27 @@ export async function resolveStructureLocation(id: number, characterId: number):
 // the caller can fall back to the system/wormhole label it already has.
 export async function resolveStructure(id: number, characterId: number): Promise<string | null> {
   return (await resolveStructureInfo(id, characterId))?.name ?? null;
+}
+
+async function cachedStructureInfo(id: number): Promise<ResolvedStructureInfo | null> {
+  try {
+    const name = await cached(STRUCTURE_NAME_CACHE_CATEGORY, id);
+    if (!name) return null;
+    const systemIdText = await cached(STRUCTURE_SYSTEM_ID_CACHE_CATEGORY, id);
+    const systemId = systemIdText && /^\d+$/.test(systemIdText) ? Number(systemIdText) : null;
+    return { name, systemId };
+  } catch {
+    return null;
+  }
+}
+
+async function storeStructureInfo(id: number, info: ResolvedStructureInfo): Promise<void> {
+  try {
+    await store(STRUCTURE_NAME_CACHE_CATEGORY, id, info.name);
+    if (info.systemId != null) await store(STRUCTURE_SYSTEM_ID_CACHE_CATEGORY, id, String(info.systemId));
+  } catch {
+    // Structure names are still usable for this refresh even if the global cache is temporarily unavailable.
+  }
 }
 
 export interface CharacterPublic {

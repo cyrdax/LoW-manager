@@ -242,6 +242,8 @@ test('assets api helpers and component expose dashboard refresh search and expan
   assert.match(api, /export async function fetchAssets/);
   assert.match(api, /export async function refreshAllAssets/);
   assert.match(api, /export async function refreshPilotAssets/);
+  assert.match(api, /export async function labelAssetStructure/);
+  assert.match(api, /\/api\/assets\/structures\/\$\{structureId\}\/label/);
 
   assert.match(view, /Refresh All/);
   assert.match(view, /Search assets/);
@@ -251,7 +253,7 @@ test('assets api helpers and component expose dashboard refresh search and expan
   assert.match(view, /asset-refresh-label/);
   assert.match(view, /aria-live="polite"/);
   assert.match(view, /locationMeta/);
-  assert.match(view, /Access denied or not visible to this pilot/);
+  assert.match(view, /Access denied or not visible to any authorized pilot/);
   assert.match(view, /systemName/);
   assert.match(view, /sortAssetSnapshots\(filtered, sort\)/);
   assert.match(view, /ASSET_SORT_COLUMNS\.map/);
@@ -259,6 +261,11 @@ test('assets api helpers and component expose dashboard refresh search and expan
   assert.match(view, /asset-pilot-avatar/);
   assert.match(view, /images\.evetech\.net\/characters\/\$\{id\}\/portrait\?size=32/);
   assert.match(view, /Asset access needs EVE re-auth/);
+  assert.match(view, /Label structure/);
+  assert.match(view, /Re-auth for structure names/);
+  assert.match(view, /window\.prompt\('Structure label'/);
+  assert.match(view, /window\.open\('\/auth\/login'/);
+  assert.match(view, /onLabelStructure\(props\.location\.rawLocationId/);
   assert.match(view, /Missing asset scope/);
   assert.match(view, /All assets/);
   assert.match(view, /expandedPilots/);

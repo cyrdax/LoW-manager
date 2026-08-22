@@ -319,6 +319,90 @@ test('GET /api/assets explains unresolved structures when the structure scope is
   assert.match(body.pilots[0].locations[0].hint, /Re-auth/i);
 });
 
+test('GET /api/assets applies globally cached structure labels to unresolved locations', async () => {
+  const store = testStore();
+  const snapshot = snapshotFor(123, 'Asset Pilot');
+  snapshot.locations = [structureLocation(1_046_326_100_288)];
+  store.replaceSnapshot('user-a', snapshot);
+
+  const app = Fastify();
+  registerAssetsRoutes(app, {
+    currentUser: async () => userA,
+    store,
+    characters: {
+      listByUser: async () => [pilot],
+      listUsableByUser: async () => [],
+      getOwned: async () => undefined,
+    },
+    structureNames: {
+      getName: async (category, id) => category === 'structure' && id === 1_046_326_100_288 ? 'Taff Hub - Freeport' : null,
+      setName: async () => undefined,
+    },
+  });
+
+  const res = await app.inject({ method: 'GET', url: '/api/assets' });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.pilots[0].locations[0].name, 'Taff Hub - Freeport');
+  assert.equal(body.pilots[0].locations[0].status, 'resolved');
+  assert.equal(body.pilots[0].locations[0].hint, null);
+});
+
+test('POST /api/assets/structures/:id/label stores a manual global structure label', async () => {
+  const labels = new Map<string, string>();
+  const app = Fastify();
+  registerAssetsRoutes(app, {
+    currentUser: async () => userA,
+    store: testStore(),
+    characters: {
+      listByUser: async () => [pilot],
+      listUsableByUser: async () => [],
+      getOwned: async () => undefined,
+    },
+    structureNames: {
+      getName: async (category, id) => labels.get(`${category}:${id}`) ?? null,
+      setName: async (category, id, name) => { labels.set(`${category}:${id}`, name); },
+    },
+  });
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/assets/structures/1046326100288/label',
+    payload: { name: 'Taff Hub - Freeport' },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(JSON.parse(res.body), { ok: true, structureId: 1_046_326_100_288, name: 'Taff Hub - Freeport' });
+  assert.equal(labels.get('structure:1046326100288'), 'Taff Hub - Freeport');
+});
+
+test('POST /api/assets/structures/:id/label validates structure ids and labels', async () => {
+  for (const request of [
+    { url: '/api/assets/structures/123/label', payload: { name: 'Too small' }, error: 'invalid_structure_id' },
+    { url: '/api/assets/structures/1046326100288/label', payload: { name: '' }, error: 'invalid_structure_label' },
+    { url: '/api/assets/structures/1046326100288/label', payload: { name: 'x'.repeat(121) }, error: 'invalid_structure_label' },
+  ]) {
+    const app = Fastify();
+    registerAssetsRoutes(app, {
+      currentUser: async () => userA,
+      store: testStore(),
+      characters: {
+        listByUser: async () => [pilot],
+        listUsableByUser: async () => [],
+        getOwned: async () => undefined,
+      },
+      structureNames: {
+        getName: async () => null,
+        setName: async () => { throw new Error('invalid input must not write labels'); },
+      },
+    });
+
+    const res = await app.inject({ method: 'POST', url: request.url, payload: request.payload });
+    assert.equal(res.statusCode, 400, request.url);
+    assert.deepEqual(JSON.parse(res.body), { error: request.error }, request.url);
+  }
+});
+
 test('POST /api/assets/characters/:id/refresh scopes refresh to owned pilot', async () => {
   const app = Fastify();
   let refreshed = 0;
@@ -520,5 +604,21 @@ function snapshotFor(characterId: number, characterName: string): AssetSnapshot 
     },
     locations: [],
     categories: [],
+  };
+}
+
+function structureLocation(locationId: number): AssetSnapshot['locations'][number] {
+  return {
+    locationId,
+    name: `Unknown structure ${locationId}`,
+    type: 'structure',
+    status: 'unresolved',
+    rawLocationId: locationId,
+    assets: [],
+    itemCount: 1,
+    stackCount: 1,
+    pricedValue: 10,
+    totalValue: 10,
+    unpricedStacks: 0,
   };
 }

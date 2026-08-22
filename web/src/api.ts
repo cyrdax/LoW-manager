@@ -1389,6 +1389,14 @@ export async function refreshPilotAssets(characterId: number): Promise<{ dashboa
   return jsonOrError(await fetch(`/api/assets/characters/${characterId}/refresh`, { method: 'POST' }));
 }
 
+export async function labelAssetStructure(structureId: number, name: string): Promise<{ ok: true; structureId: number; name: string } | { error: string }> {
+  return jsonOrError(await fetch(`/api/assets/structures/${structureId}/label`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  }));
+}
+
 export async function fetchFits(visibility: LibraryVisibility = 'private'): Promise<SavedFitSummary[]> {
   const qs = new URLSearchParams({ visibility });
   const res = await fetch(`/api/fits?${qs}`);

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   fetchAssets,
+  labelAssetStructure,
   refreshAllAssets,
   refreshPilotAssets,
   type AssetDashboard,
@@ -124,6 +125,43 @@ export function AssetsView() {
     }
   };
 
+  const doLabelStructure = async (structureId: number, currentName: string) => {
+    const suggested = currentName.startsWith('Unknown structure') ? '' : currentName;
+    const name = window.prompt('Structure label', suggested);
+    if (name == null) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setError(null);
+    const result = await labelAssetStructure(structureId, trimmed);
+    if ('error' in result) {
+      setError(result.error);
+      return;
+    }
+    const refreshed = await fetchAssets();
+    if ('error' in refreshed) {
+      setError(refreshed.error);
+      return;
+    }
+    setDashboard(refreshed.dashboard);
+    setPilots(refreshed.pilots);
+  };
+
+  const doReauthForStructures = () => {
+    const w = window.open('/auth/login', '_blank', 'width=560,height=720');
+    const poll = setInterval(() => {
+      if (!w || w.closed) {
+        clearInterval(poll);
+        fetchAssets().then(result => {
+          if ('error' in result) setError(result.error);
+          else {
+            setDashboard(result.dashboard);
+            setPilots(result.pilots);
+          }
+        }).catch(() => setError('Unable to reload assets after re-auth.'));
+      }
+    }, 500);
+  };
+
   return (
     <main className="assets-view">
       <section className="assets-dashboard" aria-label="Assets dashboard">
@@ -192,6 +230,8 @@ export function AssetsView() {
               setExpandedLocations={setExpandedLocations}
               setExpandedAssets={setExpandedAssets}
               onRefresh={doRefreshPilot}
+              onLabelStructure={doLabelStructure}
+              onReauthForStructures={doReauthForStructures}
             />
           ))}
           {loadState === 'ready' && sorted.length === 0 && <div className="assets-empty">No assets found.</div>}
@@ -241,6 +281,8 @@ function PilotRow(props: {
   setExpandedLocations: (fn: (current: Set<string>) => Set<string>) => void;
   setExpandedAssets: (fn: (current: Set<number>) => Set<number>) => void;
   onRefresh: (characterId: number) => void;
+  onLabelStructure: (structureId: number, currentName: string) => void;
+  onReauthForStructures: () => void;
 }) {
   const { snapshot } = props;
   const id = snapshot.pilot.characterId;
@@ -281,23 +323,54 @@ function LocationRow(props: {
   expandedAssets: Set<number>;
   setExpandedLocations: (fn: (current: Set<string>) => Set<string>) => void;
   setExpandedAssets: (fn: (current: Set<number>) => Set<number>) => void;
+  onLabelStructure: (structureId: number, currentName: string) => void;
+  onReauthForStructures: () => void;
 }) {
   const key = `${props.pilotId}:${props.location.locationId}`;
   const open = props.expandedLocations.has(key);
+  const unresolvedStructure = props.location.status === 'unresolved' && props.location.rawLocationId >= 1_000_000_000;
+  const toggle = () => props.setExpandedLocations(current => toggled(current, key));
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    toggle();
+  };
   const locationMeta = props.location.status === 'unresolved'
-    ? `${props.location.hint ?? 'Access denied or not visible to this pilot'} · ${props.location.rawLocationId}`
+    ? `${props.location.hint ?? 'Access denied or not visible to any authorized pilot'} · ${props.location.rawLocationId}`
     : props.location.systemName && props.location.systemName !== props.location.name
       ? `${props.location.systemName} · ${props.location.type}`
       : props.location.type;
   return (
     <div className="asset-location">
-      <button className="asset-row asset-location-row" onClick={() => props.setExpandedLocations(current => toggled(current, key))} aria-expanded={open}>
+      <div className="asset-row asset-location-row" role="button" tabIndex={0} onClick={toggle} onKeyDown={onKeyDown} aria-expanded={open}>
         <span className="asset-disclosure">{open ? '▾' : '▸'}</span>
         <strong>{props.location.name}</strong>
         <span>{locationMeta}</span>
         <span>{formatIsk(props.location.totalValue)}</span>
         <span>{props.location.stackCount} stacks</span>
-      </button>
+        {unresolvedStructure && (
+          <span className="asset-location-actions">
+            <button
+              type="button"
+              onClick={event => {
+                event.stopPropagation();
+                props.onLabelStructure(props.location.rawLocationId, props.location.name);
+              }}
+            >
+              Label structure
+            </button>
+            <button
+              type="button"
+              onClick={event => {
+                event.stopPropagation();
+                props.onReauthForStructures();
+              }}
+            >
+              Re-auth for structure names
+            </button>
+          </span>
+        )}
+      </div>
       {open && props.location.assets.map(asset => <AssetRow key={asset.itemId} asset={asset} depth={0} {...props} />)}
     </div>
   );

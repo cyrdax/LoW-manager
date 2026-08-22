@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createUniverseCacheStore } from './universe-cache-store.ts';
 import type { QueryClient } from '../db/migrations.ts';
 
@@ -125,6 +127,17 @@ test('UniverseCacheStore stores and reads corporation cache rows', async () => {
   await store.setCorporation(98_434_315, { name: 'Deepwater Hooligans', ticker: 'BIGAB' });
 
   assert.deepEqual(await store.getCorporation(98_434_315), { name: 'Deepwater Hooligans', ticker: 'BIGAB' });
+});
+
+test('structure name cache is wired as a global fail-open ESI helper', () => {
+  const source = readFileSync(resolve('src/esi/universe.ts'), 'utf8');
+
+  assert.match(source, /STRUCTURE_NAME_CACHE_CATEGORY/);
+  assert.match(source, /STRUCTURE_SYSTEM_ID_CACHE_CATEGORY/);
+  assert.match(source, /const globalHit = await cachedStructureInfo\(id\)/);
+  assert.match(source, /await storeStructureInfo\(id, info\)/);
+  assert.match(source, /async function cachedStructureInfo[\s\S]*catch \{\s*return null;\s*\}/);
+  assert.match(source, /async function storeStructureInfo[\s\S]*catch \{/);
 });
 
 function key(category: string, id: number): string {

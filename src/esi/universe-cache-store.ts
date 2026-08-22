@@ -11,6 +11,9 @@ export interface CorporationInfo {
   ticker: string;
 }
 
+export const STRUCTURE_NAME_CACHE_CATEGORY = 'structure';
+export const STRUCTURE_SYSTEM_ID_CACHE_CATEGORY = 'structure-system-id';
+
 export interface UniverseCacheStore {
   getName(category: string, id: number): Promise<string | null>;
   setName(category: string, id: number, name: string): Promise<void>;

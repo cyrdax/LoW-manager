@@ -11,6 +11,12 @@ import {
 } from '../assets/refresh.ts';
 import { createPostgresAssetSnapshotStore, type AssetSnapshotStore } from '../assets/store.ts';
 import { ASSET_STALE_MS, type AssetPilotStatus, type AssetSnapshot } from '../assets/types.ts';
+import {
+  createUniverseCacheStore,
+  STRUCTURE_NAME_CACHE_CATEGORY,
+  STRUCTURE_SYSTEM_ID_CACHE_CATEGORY,
+  type UniverseCacheStore,
+} from '../esi/universe-cache-store.ts';
 
 const STRUCTURE_SCOPE = 'esi-universe.read_structures.v1';
 const STRUCTURE_SCOPE_HINT = 'Re-auth this pilot with the structure scope esi-universe.read_structures.v1 to resolve player structure names.';
@@ -19,6 +25,7 @@ export interface AssetsRouteDeps {
   currentUser?: CurrentUserResolver;
   characters?: Pick<AsyncCharacterStore, 'listByUser' | 'listUsableByUser' | 'getOwned'>;
   store?: AssetSnapshotStore;
+  structureNames?: Pick<UniverseCacheStore, 'getName' | 'setName'>;
   now?: () => number;
   refreshPilot?: (input: RefreshPilotAssetsInput) => Promise<Awaited<ReturnType<typeof refreshPilotAssets>>>;
   refreshAll?: (input: RefreshAllAssetsInput) => Promise<Awaited<ReturnType<typeof refreshAllAssets>>>;
@@ -28,6 +35,7 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
   const currentUser = deps.currentUser ?? createCurrentUserResolver();
   const characters = deps.characters ?? createPostgresCharacterStore();
   const store = deps.store ?? createPostgresAssetSnapshotStore();
+  const structureNames = deps.structureNames ?? lazyUniverseCacheStore();
   const now = deps.now ?? (() => Date.now());
   const refreshPilot = deps.refreshPilot ?? refreshPilotAssets;
   const refreshAll = deps.refreshAll ?? refreshAllAssets;
@@ -38,8 +46,22 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
 
     const currentTime = now();
     const snapshots = await store.listSnapshots(user.id, currentTime);
-    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime);
+    const pilots = await mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime, structureNames);
     return { dashboard: summarizeAssets(pilots), pilots };
+  });
+
+  app.post<{ Params: { structureId: string }; Body: { name?: unknown } }>('/api/assets/structures/:structureId/label', async (req, reply) => {
+    const user = await currentUser(req);
+    if (!user) return reply.code(401).send({ error: 'authentication_required' });
+
+    const structureId = parseStructureId(req.params.structureId);
+    if (structureId == null) return reply.code(400).send({ error: 'invalid_structure_id' });
+
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (name.length === 0 || name.length > 120) return reply.code(400).send({ error: 'invalid_structure_label' });
+
+    await structureNames.setName(STRUCTURE_NAME_CACHE_CATEGORY, structureId, name);
+    return { ok: true, structureId, name };
   });
 
   app.post('/api/assets/characters/:characterId/refresh', async (req, reply) => {
@@ -56,7 +78,7 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
     const snapshot = await refreshPilot({ userId: user.id, character, characterStore: characters, store, now, structureCharacterIds });
     const currentTime = now();
     const snapshots = await store.listSnapshots(user.id, currentTime);
-    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime);
+    const pilots = await mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime, structureNames);
     return { dashboard: summarizeAssets(pilots), pilots, snapshot };
   });
 
@@ -75,7 +97,7 @@ export function registerAssetsRoutes(app: FastifyInstance, deps: AssetsRouteDeps
     });
     const currentTime = now();
     const snapshots = await store.listSnapshots(user.id, currentTime);
-    const pilots = mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime);
+    const pilots = await mergeAssetRoster(await characters.listByUser(user.id), snapshots, currentTime, structureNames);
     return { dashboard: summarizeAssets(pilots), pilots };
   });
 }
@@ -86,28 +108,77 @@ function parseCharacterId(value: string): number | undefined {
   return Number.isSafeInteger(characterId) && String(characterId) === value ? characterId : undefined;
 }
 
-function mergeAssetRoster(
+function lazyUniverseCacheStore(): Pick<UniverseCacheStore, 'getName' | 'setName'> {
+  let store: UniverseCacheStore | null = null;
+  const getStore = () => {
+    store ??= createUniverseCacheStore();
+    return store;
+  };
+  return {
+    getName: async (category, id) => {
+      try {
+        return await getStore().getName(category, id);
+      } catch {
+        return null;
+      }
+    },
+    setName: (category, id, name) => getStore().setName(category, id, name),
+  };
+}
+
+function parseStructureId(value: string): number | undefined {
+  const id = parseCharacterId(value);
+  return id != null && id >= 1_000_000_000 ? id : undefined;
+}
+
+async function mergeAssetRoster(
   characters: Awaited<ReturnType<AsyncCharacterStore['listByUser']>>,
   snapshots: AssetSnapshot[],
   now: number,
-): AssetSnapshot[] {
+  structureNames: Pick<UniverseCacheStore, 'getName'>,
+): Promise<AssetSnapshot[]> {
   const snapshotsByCharacterId = new Map(snapshots.map(snapshot => [snapshot.pilot.characterId, snapshot]));
-  return characters.map(character => {
+  return Promise.all(characters.map(async character => {
     const snapshot = snapshotsByCharacterId.get(character.character_id);
     const authorizationStatus = currentAuthorizationStatus(character);
     const restoredStatus = snapshot && !authorizationStatus ? restoredAuthorizationStatus(snapshot, now) : undefined;
     if (!snapshot) return emptySnapshotFor(character.character_id, character.character_name, placeholderStatus(character));
 
+    const labeledSnapshot = await withCachedStructureLabels(snapshot, structureNames);
     const merged = {
-        ...snapshot,
-        pilot: {
-          ...snapshot.pilot,
-          characterName: character.character_name,
-          ...(authorizationStatus ? { status: authorizationStatus, error: null } : restoredStatus ? { status: restoredStatus, error: null } : {}),
-        },
-      };
+      ...labeledSnapshot,
+      pilot: {
+        ...labeledSnapshot.pilot,
+        characterName: character.character_name,
+        ...(authorizationStatus ? { status: authorizationStatus, error: null } : restoredStatus ? { status: restoredStatus, error: null } : {}),
+      },
+    };
     return authorizationStatus ? merged : withStructureScopeNotice(merged, character);
-  });
+  }));
+}
+
+async function withCachedStructureLabels(
+  snapshot: AssetSnapshot,
+  structureNames: Pick<UniverseCacheStore, 'getName'>,
+): Promise<AssetSnapshot> {
+  const mappedLocations = await Promise.all(snapshot.locations.map(async location => {
+    if (!isUnresolvedStructure(location)) return location;
+    const label = await structureNames.getName(STRUCTURE_NAME_CACHE_CATEGORY, location.rawLocationId);
+    if (!label) return location;
+    const systemIdText = await structureNames.getName(STRUCTURE_SYSTEM_ID_CACHE_CATEGORY, location.rawLocationId);
+    const systemName = systemIdText && /^\d+$/.test(systemIdText)
+      ? await structureNames.getName('system', Number(systemIdText))
+      : null;
+    return {
+      ...location,
+      name: label,
+      systemName: systemName ?? location.systemName ?? null,
+      status: 'resolved' as const,
+      type: 'structure',
+      hint: null,
+    };
+  }));
+  return { ...snapshot, locations: mappedLocations };
 }
 
 function currentAuthorizationStatus(
