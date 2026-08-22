@@ -76,6 +76,36 @@ test('POST /api/fits/preview returns a draft with unmatched warnings', async () 
   assert.equal(body.warnings.some(w => w.code === 'unmatched-item'), true);
 });
 
+test('GET /api/fits/items returns catalog item suggestions for Fits v2', async () => {
+  const app = Fastify();
+  registerFitRoutes(app, {
+    store: testStore(),
+    searchItems: (q, limit) => {
+      assert.equal(q, 'laser');
+      assert.equal(limit, 30);
+      return [{
+        typeId: 3000,
+        name: 'Mega Pulse Laser II',
+        groupId: 53,
+        groupName: 'Energy Weapon',
+        categoryId: 7,
+        categoryName: 'Module',
+        role: null,
+      }];
+    },
+  });
+
+  const res = await app.inject({ method: 'GET', url: '/api/fits/items?q=laser' });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(JSON.parse(res.body), [{
+    id: 3000,
+    name: 'Mega Pulse Laser II',
+    groupName: 'Energy Weapon',
+    categoryName: 'Module',
+    role: null,
+  }]);
+});
+
 test('raw EFT routes reject oversized imports before parsing', async () => {
   const oversized = `[Naglfar, Oversized]\n${'Hail XL\n'.repeat(9000)}`;
   let previewBuilds = 0;

@@ -1234,6 +1234,13 @@ export interface FitQuote {
 }
 
 export interface FitShipHit { id: number; name: string; groupName: string }
+export interface FitItemHit {
+  id: number;
+  name: string;
+  groupName: string;
+  categoryName: string;
+  role: FitSectionRole | null;
+}
 
 export interface PyfaImageImportRequest {
   imageBase64: string;
@@ -1584,6 +1591,13 @@ export async function copyFitToPrivate(id: number): Promise<SavedFitDetail | { e
 export async function searchFitShips(q: string, signal?: AbortSignal): Promise<FitShipHit[]> {
   if (q.trim().length < 2) return [];
   const res = await fetch(`/api/fits/ships?q=${encodeURIComponent(q)}`, { signal });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function searchFitItems(q: string, signal?: AbortSignal): Promise<FitItemHit[]> {
+  if (q.trim().length < 2) return [];
+  const res = await fetch(`/api/fits/items?q=${encodeURIComponent(q)}`, { signal });
   if (!res.ok) return [];
   return res.json();
 }

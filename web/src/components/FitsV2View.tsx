@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchFit, fetchFits, searchFitShips, type CurrentUser, type FitShipHit, type LibraryVisibility, type SavedFitDetail, type SavedFitSummary } from '../api.ts';
+import { fetchFit, fetchFits, searchFitItems, searchFitShips, type CurrentUser, type FitItemHit, type FitShipHit, type LibraryVisibility, type SavedFitDetail, type SavedFitSummary } from '../api.ts';
 
 interface Props {
   currentUser?: CurrentUser | null;
@@ -15,6 +15,8 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
   const [status, setStatus] = useState<string | null>(null);
   const [hullQuery, setHullQuery] = useState('');
   const [hullHits, setHullHits] = useState<FitShipHit[]>([]);
+  const [itemQuery, setItemQuery] = useState('');
+  const [itemHits, setItemHits] = useState<FitItemHit[]>([]);
 
   useEffect(() => { setSelectedId(routeFitId); }, [routeFitId]);
 
@@ -62,6 +64,17 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
     return () => controller.abort();
   }, [hullQuery]);
 
+  useEffect(() => {
+    const query = itemQuery.trim();
+    if (query.length < 2) {
+      setItemHits([]);
+      return;
+    }
+    const controller = new AbortController();
+    searchFitItems(query, controller.signal).then(setItemHits).catch(() => {});
+    return () => controller.abort();
+  }, [itemQuery]);
+
   const activeFit = useMemo(() => fits.find(fit => fit.id === selectedId) ?? null, [fits, selectedId]);
 
   function openFit(id: number) {
@@ -91,6 +104,22 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
               <button key={hit.id} type="button">
                 <span>{hit.name}</span>
                 <small>{hit.groupName}</small>
+              </button>
+            ))}
+          </div>
+        )}
+        <input
+          className="fits-v2-search"
+          value={itemQuery}
+          onChange={event => setItemQuery(event.target.value)}
+          placeholder="Search modules, drones, cargo"
+        />
+        {itemHits.length > 0 && (
+          <div className="fits-v2-hull-results">
+            {itemHits.slice(0, 8).map(hit => (
+              <button key={hit.id} type="button">
+                <span>{hit.name}</span>
+                <small>{hit.categoryName} / {hit.groupName}{hit.role ? ` / ${hit.role}` : ''}</small>
               </button>
             ))}
           </div>

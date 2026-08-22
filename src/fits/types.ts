@@ -101,6 +101,10 @@ export interface FitShipLayout {
 
 export interface FitShipSearchHit extends FitShip {}
 
+export interface FitItemSearchHit extends FitItem {
+  role: FitSectionRole | null;
+}
+
 export interface AssignedFitItem {
   id: string;
   source: 'fit-line' | 'loaded-charge';

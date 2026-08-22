@@ -20,7 +20,7 @@ import {
 } from '../fits/pyfa-image-import.ts';
 import { type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
 import type { FitDraft, FitsV2EditorDocument } from '../fits/types.ts';
-import { searchFitShips } from '../fits/metadata.ts';
+import { searchFitItems, searchFitShips } from '../fits/metadata.ts';
 import { HUBS, type HubKey } from '../market/pricing.ts';
 
 const MAX_RAW_EFT_CHARS = 64 * 1024;
@@ -34,6 +34,7 @@ export interface FitRouteDeps {
   quoteFit?: (fit: FitDraft, hub: HubKey) => Promise<FitQuote>;
   createFitting?: (characterId: number, payload: EsiFittingCreatePayload) => Promise<number | null>;
   searchShips?: typeof searchFitShips;
+  searchItems?: typeof searchFitItems;
   currentUser?: CurrentUserResolver;
   ownsCharacter?: OwnsCharacter;
   pyfaScreenshotExtractor?: PyfaScreenshotExtractor;
@@ -45,6 +46,7 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   const quote = deps.quoteFit ?? quoteFit;
   const createFitting = deps.createFitting ?? createCharacterFitting;
   const shipSearch = deps.searchShips ?? searchFitShips;
+  const itemSearch = deps.searchItems ?? searchFitItems;
   const currentUser = routeCurrentUser(deps);
   const owns = deps.ownsCharacter;
   const pyfaScreenshotExtractor = deps.pyfaScreenshotExtractor ?? createDefaultPyfaScreenshotExtractor();
@@ -52,6 +54,17 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   app.get('/api/fits/ships', async (req) => {
     const q = String((req.query as { q?: string }).q ?? '');
     return shipSearch(q, 20).map(ship => ({ id: ship.typeId, name: ship.name, groupName: ship.groupName }));
+  });
+
+  app.get('/api/fits/items', async (req) => {
+    const q = String((req.query as { q?: string }).q ?? '');
+    return itemSearch(q, 30).map(item => ({
+      id: item.typeId,
+      name: item.name,
+      groupName: item.groupName,
+      categoryName: item.categoryName,
+      role: item.role,
+    }));
   });
 
   app.post('/api/fits/import-pyfa-image', { bodyLimit: PYFA_IMAGE_IMPORT_REQUEST_BODY_LIMIT_BYTES }, async (req, reply) => {

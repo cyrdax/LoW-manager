@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadMasteryData } from '../skills/mastery-data.ts';
-import type { FitItem, FitSectionRole, FitShip, FitShipLayout, FitShipSearchHit, FitWarning } from './types.ts';
+import type { FitItem, FitItemSearchHit, FitSectionRole, FitShip, FitShipLayout, FitShipSearchHit, FitWarning } from './types.ts';
 
 const SLOT_ATTRS = {
   lowSlots: 12,
@@ -50,6 +50,26 @@ export function searchFitShips(query: string, limit = 20): FitShipSearchHit[] {
     const ap = an.startsWith(q) ? 0 : 1;
     const bp = bn.startsWith(q) ? 0 : 1;
     if (ap !== bp) return ap - bp;
+    return a.name.localeCompare(b.name);
+  });
+  return hits.slice(0, limit);
+}
+
+export function searchFitItems(query: string, limit = 30): FitItemSearchHit[] {
+  const q = normalizeName(query);
+  if (q.length < 2) return [];
+  const hits = [...getCache().itemsById.values()]
+    .filter(item => item.categoryName.toLowerCase() !== 'blueprint')
+    .filter(item => normalizeName(item.name).includes(q))
+    .map(item => ({ ...item, role: classifyFitItem(item) }));
+  hits.sort((a, b) => {
+    const an = normalizeName(a.name);
+    const bn = normalizeName(b.name);
+    const ap = an.startsWith(q) ? 0 : 1;
+    const bp = bn.startsWith(q) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    if (a.categoryName !== b.categoryName) return a.categoryName.localeCompare(b.categoryName);
+    if (a.groupName !== b.groupName) return a.groupName.localeCompare(b.groupName);
     return a.name.localeCompare(b.name);
   });
   return hits.slice(0, limit);
