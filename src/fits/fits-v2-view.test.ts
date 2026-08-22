@@ -24,6 +24,9 @@ test('Fits v2 shell is routed and visible as its own fits mode', () => {
   assert.match(fitsV2View, /sendDraftFit/);
   assert.match(fitsV2View, /Copy EFT/);
   assert.match(fitsV2View, /Send Fit/);
+  assert.match(fitsV2View, /All V/);
+  assert.match(fitsV2View, /updateSkillProfile/);
+  assert.match(fitsV2View, /Dogma engine/);
   assert.match(fitsV2View, /renderEditorToEft/);
   assert.match(fitsV2View, /hasEditorJson/);
 });

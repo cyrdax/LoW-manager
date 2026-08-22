@@ -196,6 +196,27 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
     setSendStatus({ kind: 'idle' });
   }
 
+  function updateSkillProfile(value: string) {
+    if (!editor) return;
+    if (value === 'all-v') {
+      setEditor({
+        ...editor,
+        skillProfile: { kind: 'all-v', characterId: null, name: 'All V' },
+      });
+    } else {
+      const characterId = Number(value.replace('pilot:', ''));
+      const pilot = sortedChars.find(char => char.characterId === characterId);
+      if (!pilot) return;
+      setEditor({
+        ...editor,
+        skillProfile: { kind: 'pilot', characterId: pilot.characterId, name: pilot.name },
+      });
+    }
+    setQuote(null);
+    setQuoteError(null);
+    setSendStatus({ kind: 'idle' });
+  }
+
   async function refreshQuote() {
     if (!editor) {
       setQuoteError('Choose a hull before pricing.');
@@ -406,9 +427,28 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
               <h3>Slots</h3>
               <p>{detail.layout ? `${detail.layout.highSlots} high / ${detail.layout.midSlots} mid / ${detail.layout.lowSlots} low / ${detail.layout.rigSlots} rig` : 'Layout unavailable'}</p>
             </section>
+          </div>
+        )}
+        {editor && (
+          <div className="fits-v2-card-grid">
             <section className="fits-v2-card">
               <h3>Skill profile</h3>
-              <p>{detail.editorJson?.skillProfile.name ?? 'All V default'}</p>
+              <select
+                value={editor.skillProfile.kind === 'all-v' ? 'all-v' : `pilot:${editor.skillProfile.characterId}`}
+                onChange={event => updateSkillProfile(event.target.value)}
+              >
+                <option value="all-v">All V</option>
+                {sortedChars.map(char => <option key={char.characterId} value={`pilot:${char.characterId}`}>{char.name}</option>)}
+              </select>
+              <p>{editor.skillProfile.kind === 'all-v' ? 'Maximum-skill dogma baseline.' : `Use cached skills for ${editor.skillProfile.name}.`}</p>
+            </section>
+            <section className="fits-v2-card">
+              <h3>Dogma engine</h3>
+              <p>Adapter-ready for EVEShipFit WASM stats once the dogma data bundle is vendored.</p>
+            </section>
+            <section className="fits-v2-card">
+              <h3>Fit shape</h3>
+              <p>{editor.items.length} items across {new Set(editor.items.map(item => item.role)).size} groups.</p>
             </section>
           </div>
         )}
