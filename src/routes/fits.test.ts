@@ -106,6 +106,32 @@ test('GET /api/fits/items returns catalog item suggestions for Fits v2', async (
   }]);
 });
 
+test('GET /api/fits/ships returns complete hull metadata for Fits v2', async () => {
+  const app = Fastify();
+  registerFitRoutes(app, {
+    store: testStore(),
+    searchShips: (q, limit) => {
+      assert.equal(q, 'nag');
+      assert.equal(limit, 20);
+      return [{
+        typeId: 19720,
+        name: 'Naglfar',
+        groupId: 485,
+        groupName: 'Dreadnought',
+      }];
+    },
+  });
+
+  const res = await app.inject({ method: 'GET', url: '/api/fits/ships?q=nag' });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(JSON.parse(res.body), [{
+    id: 19720,
+    name: 'Naglfar',
+    groupId: 485,
+    groupName: 'Dreadnought',
+  }]);
+});
+
 test('raw EFT routes reject oversized imports before parsing', async () => {
   const oversized = `[Naglfar, Oversized]\n${'Hail XL\n'.repeat(9000)}`;
   let previewBuilds = 0;

@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchFit, fetchFits, saveFit, searchFitItems, searchFitShips, updateFit, type AssignedFitItem, type CurrentUser, type FitItemHit, type FitSectionRole, type FitShipHit, type FitsV2EditorDocument, type FitsV2EditorItem, type LibraryVisibility, type SavedFitDetail, type SavedFitSummary } from '../api.ts';
+import { fetchFit, fetchFits, quoteDraftFit, saveFit, searchFitItems, searchFitShips, updateFit, type AssignedFitItem, type CurrentUser, type FitHub, type FitItemHit, type FitQuote, type FitSectionRole, type FitShipHit, type FitsV2EditorDocument, type FitsV2EditorItem, type LibraryVisibility, type SavedFitDetail, type SavedFitSummary } from '../api.ts';
+
+const FITS_V2_HUB_KEY = 'fits-v2-hub';
+
+function formatIsk(n: number | null | undefined): string {
+  if (n == null) return '-';
+  if (n >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return n.toFixed(0);
+}
 
 interface Props {
   currentUser?: CurrentUser | null;
@@ -17,12 +28,17 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
   const [status, setStatus] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [hub, setHub] = useState<FitHub>(() => localStorage.getItem(FITS_V2_HUB_KEY) === 'amarr' ? 'amarr' : 'jita');
+  const [quote, setQuote] = useState<FitQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [hullQuery, setHullQuery] = useState('');
   const [hullHits, setHullHits] = useState<FitShipHit[]>([]);
   const [itemQuery, setItemQuery] = useState('');
   const [itemHits, setItemHits] = useState<FitItemHit[]>([]);
 
   useEffect(() => { setSelectedId(routeFitId); }, [routeFitId]);
+  useEffect(() => { localStorage.setItem(FITS_V2_HUB_KEY, hub); }, [hub]);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +70,8 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
         const nextEditor = result.editorJson ?? editorDocumentFromSavedFit(result);
         setEditor(nextEditor);
         setFitName(nextEditor.fitName);
+        setQuote(null);
+        setQuoteError(null);
         setStatus(null);
       }
     });
@@ -92,7 +110,7 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
   function startHull(hit: FitShipHit) {
     const nextEditor: FitsV2EditorDocument = {
       version: 1,
-      hull: { typeId: hit.id, name: hit.name, groupId: 0, groupName: hit.groupName },
+      hull: { typeId: hit.id, name: hit.name, groupId: hit.groupId, groupName: hit.groupName },
       fitName: `${hit.name} fit`,
       notes: '',
       skillProfile: { kind: 'all-v', characterId: null, name: 'All V' },
@@ -102,6 +120,8 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
     setDetail(null);
     setEditor(nextEditor);
     setFitName(nextEditor.fitName);
+    setQuote(null);
+    setQuoteError(null);
     setStatus(null);
     setSaveStatus(null);
   }
@@ -124,12 +144,16 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
       chargeName: null,
     };
     setEditor({ ...editor, items: [...editor.items, nextItem] });
+    setQuote(null);
+    setQuoteError(null);
     setSaveStatus(null);
   }
 
   function removeItem(editorItemId: string) {
     if (!editor) return;
     setEditor({ ...editor, items: editor.items.filter(item => item.editorItemId !== editorItemId) });
+    setQuote(null);
+    setQuoteError(null);
   }
 
   function updateQuantity(editorItemId: string, quantity: number) {
@@ -138,6 +162,27 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
       ...editor,
       items: editor.items.map(item => item.editorItemId === editorItemId ? { ...item, quantity: Math.max(1, Math.floor(quantity) || 1) } : item),
     });
+    setQuote(null);
+    setQuoteError(null);
+  }
+
+  async function refreshQuote() {
+    if (!editor) {
+      setQuoteError('Choose a hull before pricing.');
+      return;
+    }
+    const namedEditor = { ...editor, fitName: fitName.trim() || editor.fitName };
+    const rawEft = renderEditorToEft(namedEditor);
+    setQuoteLoading(true);
+    setQuoteError(null);
+    const result = await quoteDraftFit(rawEft, hub, editor.hull.typeId);
+    setQuoteLoading(false);
+    if ('error' in result) {
+      setQuote(null);
+      setQuoteError(result.error);
+      return;
+    }
+    setQuote(result);
   }
 
   async function saveEditor() {
@@ -241,8 +286,38 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
         {editor && (
           <div className="fits-v2-editor-actions">
             <button onClick={saveEditor} disabled={saving}>{saving ? 'Saving...' : detail ? 'Save changes' : 'Save fit'}</button>
+            <div className="fits-v2-hubs">
+              {(['jita', 'amarr'] as const).map(nextHub => (
+                <button key={nextHub} type="button" className={hub === nextHub ? 'active' : ''} onClick={() => setHub(nextHub)}>
+                  {nextHub === 'jita' ? 'Jita' : 'Amarr'}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={refreshQuote} disabled={quoteLoading}>{quoteLoading ? 'Pricing...' : 'Refresh price'}</button>
             {saveStatus && <span>{saveStatus}</span>}
           </div>
+        )}
+        {editor && (
+          <section className="fits-v2-price-card">
+            <div>
+              <span>Hull</span>
+              <strong>{quote ? `${formatIsk(quote.totals.hull)} ISK` : '-'}</strong>
+            </div>
+            <div>
+              <span>Fitted</span>
+              <strong>{quote ? `${formatIsk(quote.totals.fitted)} ISK` : '-'}</strong>
+            </div>
+            <div>
+              <span>Extras</span>
+              <strong>{quote ? `${formatIsk(quote.totals.extras)} ISK` : '-'}</strong>
+            </div>
+            <div className="total">
+              <span>Grand total</span>
+              <strong>{quote ? `${formatIsk(quote.totals.grand)} ISK` : quoteLoading ? 'Pricing...' : '-'}</strong>
+            </div>
+            {quote && <p>{quote.systemName} - {quote.counts.ok} priced - {quote.counts.noOrders} no sellers</p>}
+            {quoteError && <p className="error">{quoteError}</p>}
+          </section>
         )}
         {detail && (
           <div className="fits-v2-card-grid">

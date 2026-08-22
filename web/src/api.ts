@@ -1233,7 +1233,7 @@ export interface FitQuote {
   fetchedAt: number;
 }
 
-export interface FitShipHit { id: number; name: string; groupName: string }
+export interface FitShipHit { id: number; name: string; groupId: number; groupName: string }
 export interface FitItemHit {
   id: number;
   name: string;

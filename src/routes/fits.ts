@@ -53,7 +53,12 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
 
   app.get('/api/fits/ships', async (req) => {
     const q = String((req.query as { q?: string }).q ?? '');
-    return shipSearch(q, 20).map(ship => ({ id: ship.typeId, name: ship.name, groupName: ship.groupName }));
+    return shipSearch(q, 20).map(ship => ({
+      id: ship.typeId,
+      name: ship.name,
+      groupId: ship.groupId,
+      groupName: ship.groupName,
+    }));
   });
 
   app.get('/api/fits/items', async (req) => {
