@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import Database from 'better-sqlite3';
 import { createFitStore, migrateFitsDb } from './store.ts';
+import type { FitsV2EditorDocument } from './types.ts';
 
 const naglfar = `[Naglfar, Store Test]
 Republic Fleet Gyrostabilizer
@@ -13,6 +14,27 @@ Siege Module II
 Capital Semiconductor Memory Cell I
 
 Hail XL x10`;
+
+const editorJson = {
+  version: 1,
+  hull: { typeId: 19720, name: 'Naglfar', groupId: 485, groupName: 'Dreadnought' },
+  fitName: 'Editor Nag',
+  notes: 'editor notes',
+  skillProfile: { kind: 'all-v', characterId: null, name: 'All V' },
+  items: [
+    {
+      editorItemId: 'high-0',
+      typeId: 3542,
+      name: 'Siege Module II',
+      role: 'high',
+      quantity: 1,
+      slotIndex: 0,
+      state: 'offline',
+      chargeTypeId: null,
+      chargeName: null,
+    },
+  ],
+} satisfies FitsV2EditorDocument;
 
 function memoryDb() {
   const db = new Database(':memory:');
@@ -73,6 +95,35 @@ describe('fit store', () => {
     });
     assert.equal(reparsed?.ship?.name, 'Archon');
     assert.equal(reparsed?.sections.low.items[0].inputName, 'Drone Damage Amplifier II');
+  });
+
+  it('persists Fits v2 editor JSON on create update and copy', () => {
+    const db = memoryDb();
+    const store = createFitStore(db, { now: () => 1000 });
+
+    const saved = store.create({
+      rawEft: naglfar,
+      fitName: 'Editor Backed Fit',
+      ownerUserId: 'user-a',
+      visibility: 'public',
+      editorJson,
+    });
+    assert.equal(saved.editorJson?.fitName, 'Editor Nag');
+    assert.equal(store.list({ visibility: 'public' })[0].hasEditorJson, true);
+
+    const updated = store.update(saved.id, { notes: 'metadata only' });
+    assert.equal(updated?.editorJson?.fitName, 'Editor Nag');
+
+    const cleared = store.update(saved.id, { editorJson: null });
+    assert.equal(cleared?.editorJson, null);
+    assert.equal(store.list({ visibility: 'public' })[0].hasEditorJson, false);
+
+    const restored = store.update(saved.id, { editorJson });
+    assert.equal(restored?.editorJson?.items[0].name, 'Siege Module II');
+
+    const copied = store.copyToPrivate(saved.id, 'user-b');
+    assert.equal(copied?.visibility, 'private');
+    assert.equal(copied?.editorJson?.fitName, 'Editor Nag');
   });
 
   it('deletes saved fits and cascades item rows', () => {

@@ -24,6 +24,27 @@ Capital Semiconductor Memory Cell I
 
 Hail XL x10`;
 
+const editorJson = {
+  version: 1,
+  hull: { typeId: 19720, name: 'Naglfar', groupId: 485, groupName: 'Dreadnought' },
+  fitName: 'Route Editor Fit',
+  notes: '',
+  skillProfile: { kind: 'all-v', characterId: null, name: 'All V' },
+  items: [
+    {
+      editorItemId: 'high-0',
+      typeId: 3542,
+      name: 'Siege Module II',
+      role: 'high',
+      quantity: 1,
+      slotIndex: 0,
+      state: 'offline',
+      chargeTypeId: null,
+      chargeName: null,
+    },
+  ],
+} as const;
+
 function testStore() {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
@@ -255,24 +276,36 @@ test('saved fit CRUD routes create list get update and delete', async () => {
   const created = await app.inject({
     method: 'POST',
     url: '/api/fits',
-    payload: { rawEft: naglfar, fitName: 'Saved Route Fit', notes: 'route note' },
+    payload: { rawEft: naglfar, fitName: 'Saved Route Fit', notes: 'route note', editorJson },
   });
   assert.equal(created.statusCode, 200);
   const saved = JSON.parse(created.body);
   assert.equal(saved.fitName, 'Saved Route Fit');
+  assert.equal(saved.editorJson.fitName, 'Route Editor Fit');
 
   const list = await app.inject({ method: 'GET', url: '/api/fits' });
   assert.equal(JSON.parse(list.body)[0].fitName, 'Saved Route Fit');
+  assert.equal(JSON.parse(list.body)[0].hasEditorJson, true);
 
   const got = await app.inject({ method: 'GET', url: `/api/fits/${saved.id}` });
   assert.equal(JSON.parse(got.body).notes, 'route note');
+  assert.equal(JSON.parse(got.body).editorJson.items[0].name, 'Siege Module II');
 
   const updated = await app.inject({
     method: 'PUT',
     url: `/api/fits/${saved.id}`,
-    payload: { fitName: 'Updated Route Fit', notes: 'updated' },
+    payload: { fitName: 'Updated Route Fit', notes: 'updated', editorJson: { ...editorJson, fitName: 'Updated Editor' } },
   });
   assert.equal(JSON.parse(updated.body).fitName, 'Updated Route Fit');
+  assert.equal(JSON.parse(updated.body).editorJson.fitName, 'Updated Editor');
+
+  const invalid = await app.inject({
+    method: 'PUT',
+    url: `/api/fits/${saved.id}`,
+    payload: { editorJson: { ...editorJson, version: 2 } },
+  });
+  assert.equal(invalid.statusCode, 400);
+  assert.match(JSON.parse(invalid.body).error, /editorJson/i);
 
   const deleted = await app.inject({ method: 'DELETE', url: `/api/fits/${saved.id}` });
   assert.equal(deleted.statusCode, 200);
