@@ -510,6 +510,7 @@ function readDetail(database: SqliteDatabase, fitStore: FitStore, id: number): D
           overSlot: fit.warnings.filter(w => w.code === 'over-slot').length,
           unassignable: fit.warnings.filter(w => w.code === 'unassignable').length,
         },
+        hasEditorJson: fit.editorJson != null,
         sortOrder: link.sort_order,
       } satisfies DoctrineFitMember;
     })
@@ -574,6 +575,7 @@ async function readPostgresDetail(
         overSlot: fit.warnings.filter(w => w.code === 'over-slot').length,
         unassignable: fit.warnings.filter(w => w.code === 'unassignable').length,
       },
+      hasEditorJson: fit.editorJson != null,
       sortOrder: Number(link.sort_order),
     } satisfies DoctrineFitMember;
   }))).filter((fit): fit is DoctrineFitMember => fit != null);

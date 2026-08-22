@@ -293,6 +293,7 @@ export function App() {
           routeFitId={route.view === 'fits' && route.fitId != null ? route.fitId : null}
           routeDoctrineId={route.view === 'fits' && route.doctrineId != null ? route.doctrineId : null}
           onOpenFitRoute={(id) => navigateToRoute({ view: 'fits', mode: 'fits', fitId: id })}
+          onOpenFitV2Route={(id) => navigateToRoute({ view: 'fits', mode: 'fits-v2', fitId: id })}
           onOpenDoctrineRoute={(id) => navigateToRoute({ view: 'fits', mode: 'doctrines', doctrineId: id })}
           onModeRoute={(mode) => navigateToRoute({ view: 'fits', mode })}
         />

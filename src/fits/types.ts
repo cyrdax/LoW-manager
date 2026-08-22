@@ -101,6 +101,10 @@ export interface FitShipLayout {
 
 export interface FitShipSearchHit extends FitShip {}
 
+export interface FitItemSearchHit extends FitItem {
+  role: FitSectionRole | null;
+}
+
 export interface AssignedFitItem {
   id: string;
   source: 'fit-line' | 'loaded-charge';
@@ -134,4 +138,34 @@ export interface FitDraft {
   items: AssignedFitItem[];
   warnings: FitWarning[];
   normalizedEft: string;
+}
+
+export type FitsV2ModuleState = 'offline' | 'online' | 'active' | 'overheated';
+export type FitsV2SkillProfileKind = 'all-v' | 'pilot';
+
+export interface FitsV2SkillProfile {
+  kind: FitsV2SkillProfileKind;
+  characterId: number | null;
+  name: string;
+}
+
+export interface FitsV2EditorItem {
+  editorItemId: string;
+  typeId: number;
+  name: string;
+  role: FitSectionRole;
+  quantity: number;
+  slotIndex: number | null;
+  state: FitsV2ModuleState;
+  chargeTypeId: number | null;
+  chargeName: string | null;
+}
+
+export interface FitsV2EditorDocument {
+  version: 1;
+  hull: FitShip;
+  fitName: string;
+  notes: string;
+  skillProfile: FitsV2SkillProfile;
+  items: FitsV2EditorItem[];
 }

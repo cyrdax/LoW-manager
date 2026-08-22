@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
-import { getShipLayout, parseCsvRows, resolveItemByName, resolveItemByTypeId, resolveShipByName, searchFitShips } from './metadata.ts';
+import { getShipLayout, parseCsvRows, resolveItemByName, resolveItemByTypeId, resolveShipByName, searchFitItems, searchFitShips } from './metadata.ts';
 
 describe('fit metadata', () => {
   it('resolves provided example ships and items', () => {
@@ -44,6 +44,15 @@ describe('fit metadata', () => {
     const tritanium = resolveItemByTypeId(34);
     assert.equal(tritanium?.name, 'Tritanium');
     assert.equal(tritanium?.groupName, 'Mineral');
+  });
+
+  it('searches fit items with prefix matches and slot role hints', () => {
+    const hits = searchFitItems('Siege Module', 5);
+    assert.equal(hits[0]?.name, 'Siege Module I');
+    assert.equal(hits.some(hit => hit.name === 'Siege Module II' && hit.role === null), true);
+
+    const fighters = searchFitItems('Templar II', 5);
+    assert.equal(fighters[0]?.role, 'fighterBay');
   });
 
   it('indexes every published Fuzzwork item ID even when names collide', () => {
