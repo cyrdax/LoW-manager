@@ -3636,6 +3636,48 @@ body {
 .fits-v2-card {
   padding: 14px;
 }
+.fits-v2-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0 0;
+}
+.fits-v2-editor-actions span {
+  color: var(--dim);
+}
+.fits-v2-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 16px;
+}
+.fits-v2-editor-items {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.fits-v2-editor-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 74px auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px;
+  background: #111720;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.fits-v2-editor-item img {
+  width: 36px;
+  height: 36px;
+  border-radius: 5px;
+}
+.fits-v2-editor-item input {
+  min-width: 0;
+}
+.fits-v2-editor-item button {
+  padding: 6px 8px;
+}
 .library-scope-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;

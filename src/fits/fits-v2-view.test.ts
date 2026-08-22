@@ -18,5 +18,7 @@ test('Fits v2 shell is routed and visible as its own fits mode', () => {
   assert.match(fitsV2View, /Dogma editor foundation/);
   assert.match(fitsV2View, /searchFitItems/);
   assert.match(fitsV2View, /Search modules, drones, cargo/);
+  assert.match(fitsV2View, /function saveEditor\(\)/);
+  assert.match(fitsV2View, /renderEditorToEft/);
   assert.match(fitsV2View, /hasEditorJson/);
 });
