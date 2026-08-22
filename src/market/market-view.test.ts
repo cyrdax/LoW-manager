@@ -5,7 +5,7 @@ import test from 'node:test';
 
 test('market view defaults to shopping list and shows it before PLEX', () => {
   const marketView = readFileSync(resolve('web/src/components/MarketView.tsx'), 'utf8');
-  const defaultIndex = marketView.indexOf("useState<MarketTab>('shopping')");
+  const defaultIndex = marketView.indexOf("initialTab = 'shopping'");
   const shoppingButton = marketView.indexOf(">Shopping List</button>");
   const plexButton = marketView.indexOf(">PLEX</button>");
 
@@ -14,7 +14,21 @@ test('market view defaults to shopping list and shows it before PLEX', () => {
   assert.ok(shoppingButton >= 0);
   assert.ok(plexButton >= 0);
   assert.ok(shoppingButton < plexButton);
-  assert.match(marketView, /tab === 'shopping' \? <ShoppingListView chars=\{chars\} \/> : <PlexView \/>/);
+  assert.match(marketView, /tab === 'shopping' \? <ShoppingListView chars=\{chars\} currentUser=\{currentUser\} onLoginRequired=\{onLoginRequired\} \/> : <PlexView \/>/);
+});
+
+test('market view can route directly to the PLEX tab', () => {
+  const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
+  const marketView = readFileSync(resolve('web/src/components/MarketView.tsx'), 'utf8');
+
+  assert.match(marketView, /initialTab\?: MarketTab/);
+  assert.match(marketView, /onTabRoute: \(tab: MarketTab\) => void/);
+  assert.match(marketView, /useState<MarketTab>\(initialTab\)/);
+  assert.match(marketView, /useEffect\(\(\) => setTab\(initialTab\), \[initialTab\]\)/);
+  assert.match(marketView, /onClick=\{\(\) => \{ setTab\('plex'\); onTabRoute\('plex'\); \}\}/);
+
+  assert.match(app, /initialTab=\{route\.view === 'market' && route\.marketTab === 'plex' \? 'plex' : 'shopping'\}/);
+  assert.match(app, /onTabRoute=\{\(tab\) => navigateToRoute\(\{ view: 'market', marketTab: tab \}\)\}/);
 });
 
 test('shopping list result columns are sortable', () => {
@@ -30,4 +44,16 @@ test('shopping list result columns are sortable', () => {
   assert.match(marketView, /<ShoppingSortTh label="Status" sortKey="status"/);
   assert.match(marketView, /aria-sort=\{direction \? \(direction === 'asc' \? 'ascending' : 'descending'\) : 'none'\}/);
   assert.match(styles, /\.mk-shop-sort-btn/);
+});
+
+test('shopping list keeps public pricing while replacing pilot send with login CTA for anonymous users', () => {
+  const marketView = readFileSync(resolve('web/src/components/MarketView.tsx'), 'utf8');
+
+  assert.match(marketView, /chars: CharacterStatus\[\]/);
+  assert.match(marketView, /currentUser\?: CurrentUser \| null/);
+  assert.match(marketView, /onLoginRequired: \(\) => void/);
+  assert.match(marketView, /<ShoppingListView chars=\{chars\} currentUser=\{currentUser\} onLoginRequired=\{onLoginRequired\} \/>/);
+  assert.match(marketView, /currentUser \? \(/);
+  assert.match(marketView, /Log in to send to a pilot/);
+  assert.match(marketView, /onClick=\{onLoginRequired\}/);
 });

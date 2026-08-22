@@ -8,6 +8,7 @@ import {
   searchSystems,
   setWaypointAll,
   type CharacterStatus,
+  type CurrentUser,
   type ContractDetails,
   type ContractSearchResponse,
   type ContractSearchResult,
@@ -39,6 +40,11 @@ const SEARCH_MODE_KEY = 'efd.contracts.searchMode';
 
 type ContractSearchMode = 'ship' | 'jumpCapable';
 
+interface Props {
+  currentUser?: CurrentUser | null;
+  onLoginRequired: () => void;
+}
+
 function readSavedSearchMode(): ContractSearchMode {
   return localStorage.getItem(SEARCH_MODE_KEY) === 'jumpCapable' ? 'jumpCapable' : 'ship';
 }
@@ -61,7 +67,7 @@ function readSavedRadius(): number {
   return Number.isFinite(value) ? Math.max(1, Math.min(100, Math.round(value))) : 30;
 }
 
-export function ContractsView() {
+export function ContractsView({ currentUser, onLoginRequired }: Props) {
   const [searchMode, setSearchMode] = useState<ContractSearchMode>(() => readSavedSearchMode());
   const [shipText, setShipText] = useState(() => localStorage.getItem(SHIP_NAME_KEY) ?? '');
   const [ship, setShip] = useState<ContractShipHit | null>(() => readSavedShip());
@@ -379,7 +385,7 @@ export function ContractsView() {
       )}
 
       {detailRow && (
-        <ContractDetailsModal row={detailRow} onClose={() => setDetailRow(null)} />
+        <ContractDetailsModal row={detailRow} currentUser={currentUser} onLoginRequired={onLoginRequired} onClose={() => setDetailRow(null)} />
       )}
     </main>
   );
@@ -470,7 +476,17 @@ function ContractResultsTable({
   );
 }
 
-function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onClose: () => void }) {
+function ContractDetailsModal({
+  row,
+  currentUser,
+  onLoginRequired,
+  onClose,
+}: {
+  row: ContractSearchResult;
+  currentUser?: CurrentUser | null;
+  onLoginRequired: () => void;
+  onClose: () => void;
+}) {
   const [hub, setHub] = useState<ShoppingHub>('jita');
   const [details, setDetails] = useState<ContractDetails | null>(null);
   const [loading, setLoading] = useState(false);
@@ -486,6 +502,13 @@ function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onC
   });
 
   useEffect(() => {
+    if (!currentUser) {
+      setDestinationPilots([]);
+      setSelectedDestinationPilotId(null);
+      setDestinationStatus(null);
+      setDestinationResults(null);
+      return;
+    }
     let active = true;
     fetchCharacters().then(pilots => {
       if (!active) return;
@@ -498,7 +521,7 @@ function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onC
     return () => {
       active = false;
     };
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -590,33 +613,37 @@ function ContractDetailsModal({ row, onClose }: { row: ContractSearchResult; onC
                 <strong>Set destination</strong>
                 <span>{details.contract.locationName} · {details.contract.systemName ?? 'Unknown system'}</span>
               </div>
-              <div className="ct-destination-controls">
-                <select
-                  value={selectedDestinationPilotId ?? ''}
-                  disabled={destinationBusy || destinationPilots.length === 0}
-                  onChange={event => {
-                    setSelectedDestinationPilotId(event.target.value ? Number(event.target.value) : null);
-                    setDestinationStatus(null);
-                    setDestinationResults(null);
-                  }}
-                >
-                  {destinationPilots.length === 0 ? (
-                    <option value="">No pilots available</option>
-                  ) : destinationPilots.map(pilot => (
-                    <option key={pilot.characterId} value={pilot.characterId}>
-                      {pilot.name}{pilot.online === true ? ' · online' : pilot.online === false ? ' · offline' : ''}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={destinationBusy || !details.contract.locationId || selectedDestinationPilotId == null}
-                  onClick={setContractDestination}
-                >
-                  {destinationBusy ? 'Setting...' : 'Set destination'}
-                </button>
-              </div>
+              {currentUser ? (
+                <div className="ct-destination-controls">
+                  <select
+                    value={selectedDestinationPilotId ?? ''}
+                    disabled={destinationBusy || destinationPilots.length === 0}
+                    onChange={event => {
+                      setSelectedDestinationPilotId(event.target.value ? Number(event.target.value) : null);
+                      setDestinationStatus(null);
+                      setDestinationResults(null);
+                    }}
+                  >
+                    {destinationPilots.length === 0 ? (
+                      <option value="">No pilots available</option>
+                    ) : destinationPilots.map(pilot => (
+                      <option key={pilot.characterId} value={pilot.characterId}>
+                        {pilot.name}{pilot.online === true ? ' · online' : pilot.online === false ? ' · offline' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={destinationBusy || !details.contract.locationId || selectedDestinationPilotId == null}
+                    onClick={setContractDestination}
+                  >
+                    {destinationBusy ? 'Setting...' : 'Set destination'}
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="primary ct-login-cta" onClick={onLoginRequired}>Log in to set destination</button>
+              )}
               {!details.contract.locationId && (
                 <small className="err">This contract location is unresolved, so it cannot be set as a destination.</small>
               )}

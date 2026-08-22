@@ -19,12 +19,17 @@ export function AuthGate({ onAuthenticated }: Props) {
     const params = new URLSearchParams(window.location.search);
     return window.location.pathname === '/auth/password/reset' ? params.get('token') ?? '' : '';
   }, []);
-  const googleStartUrl = useMemo(() => {
-    const returnTo = window.location.pathname.startsWith('/auth/')
-      ? '/'
-      : `${window.location.pathname}${window.location.search}`;
-    return `/auth/google/start?${new URLSearchParams({ returnTo }).toString()}`;
+  const returnTo = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const value = params.get('returnTo');
+    return value && value.startsWith('/') && !value.startsWith('//') ? value : '/';
   }, []);
+  const googleStartUrl = useMemo(() => {
+    const destination = window.location.pathname.startsWith('/auth/')
+      ? returnTo
+      : `${window.location.pathname}${window.location.search}`;
+    return `/auth/google/start?${new URLSearchParams({ returnTo: destination }).toString()}`;
+  }, [returnTo]);
   const [mode, setMode] = useState<Mode>(resetToken ? 'reset' : 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,6 +38,12 @@ export function AuthGate({ onAuthenticated }: Props) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(resetToken ? 'Choose a new password.' : null);
   const [error, setError] = useState<string | null>(null);
+
+  const finishAuthenticated = (user: CurrentUser) => {
+    onAuthenticated(user);
+    window.history.replaceState({}, '', returnTo);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
 
   const submitLogin = async (ev: FormEvent) => {
     ev.preventDefault();
@@ -49,7 +60,7 @@ export function AuthGate({ onAuthenticated }: Props) {
       }
       return;
     }
-    onAuthenticated(res.user);
+    finishAuthenticated(res.user);
   };
 
   const submitSignup = async (ev: FormEvent) => {

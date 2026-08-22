@@ -97,6 +97,13 @@ export function App() {
     navigateToRoute(routeForView(nextView));
   }
 
+  function showLogin() {
+    const returnTo = pathForRoute(route);
+    const nextPath = `/auth/login?${new URLSearchParams({ returnTo }).toString()}`;
+    window.history.pushState({}, '', nextPath);
+    setRoute(routeForView('pilots'));
+  }
+
   useEffect(() => {
     const onPopState = () => setRoute(parseAppRoute(window.location.pathname));
     window.addEventListener('popstate', onPopState);
@@ -189,8 +196,8 @@ export function App() {
     return <div className="auth-page"><div className="auth-panel"><div className="empty">Loading...</div></div></div>;
   }
 
-  const publicFitsRoute = route.view === 'fits';
-  if (!currentUser && !publicFitsRoute) {
+  const publicRoute = ['fits', 'market', 'contracts'].includes(route.view);
+  if (!currentUser && !publicRoute) {
     return <AuthGate onAuthenticated={setCurrentUser} />;
   }
 
@@ -267,9 +274,17 @@ export function App() {
       {view === 'planets' && <PlanetsView chars={list} />}
       {view === 'skills' && <SkillsView chars={list} />}
       {view === 'fleet' && <FleetView chars={list} selection={selection} />}
-      {view === 'market' && <MarketView chars={list} />}
+      {view === 'market' && (
+        <MarketView
+          chars={currentUser ? list : []}
+          currentUser={currentUser}
+          initialTab={route.view === 'market' && route.marketTab === 'plex' ? 'plex' : 'shopping'}
+          onTabRoute={(tab) => navigateToRoute({ view: 'market', marketTab: tab })}
+          onLoginRequired={showLogin}
+        />
+      )}
       {view === 'industry' && <IndustryView chars={list} />}
-      {view === 'contracts' && <ContractsView />}
+      {view === 'contracts' && <ContractsView currentUser={currentUser} onLoginRequired={showLogin} />}
       {view === 'fits' && (
         <FitsView
           chars={currentUser ? list : []}

@@ -52,8 +52,8 @@ test('frontend lets anonymous users view public fit and doctrine routes read-onl
   const fitsView = readFileSync(resolve('web/src/components/FitsView.tsx'), 'utf8');
   const doctrinesView = readFileSync(resolve('web/src/components/DoctrinesView.tsx'), 'utf8');
 
-  assert.match(app, /const publicFitsRoute = route\.view === 'fits'/);
-  assert.match(app, /if \(!currentUser && !publicFitsRoute\)/);
+  assert.match(app, /const publicRoute = \['fits', 'market', 'contracts'\]\.includes\(route\.view\)/);
+  assert.match(app, /if \(!currentUser && !publicRoute\)/);
   assert.match(app, /currentUser=\{currentUser\}/);
   assert.match(app, /chars=\{currentUser \? list : \[\]\}/);
 
@@ -71,6 +71,34 @@ test('frontend lets anonymous users view public fit and doctrine routes read-onl
   assert.match(doctrinesView, /const effectiveVisibility = anonymous \? 'public' : visibility/);
   assert.match(doctrinesView, /currentUser && <button className="fl-refresh"/);
   assert.match(doctrinesView, /const canStartEditing = !!detail && !!currentUser/);
+});
+
+test('frontend lets anonymous users view public market and contracts with auth-only CTAs', () => {
+  const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
+  const authGate = readFileSync(resolve('web/src/components/AuthGate.tsx'), 'utf8');
+  const marketView = readFileSync(resolve('web/src/components/MarketView.tsx'), 'utf8');
+  const contractsView = readFileSync(resolve('web/src/components/ContractsView.tsx'), 'utf8');
+
+  assert.match(app, /const publicRoute = \['fits', 'market', 'contracts'\]\.includes\(route\.view\)/);
+  assert.match(app, /if \(!currentUser && !publicRoute\)/);
+  assert.match(app, /<MarketView[\s\S]*chars=\{currentUser \? list : \[\]\}[\s\S]*currentUser=\{currentUser\}/);
+  assert.match(app, /<ContractsView currentUser=\{currentUser\}/);
+  assert.match(app, /onLoginRequired=\{showLogin\}/);
+  assert.match(app, /function showLogin\(\)/);
+
+  assert.match(authGate, /const value = params\.get\('returnTo'\)/);
+  assert.match(authGate, /value && value\.startsWith\('\/'\) && !value\.startsWith\('\/\/'\)/);
+  assert.match(authGate, /finishAuthenticated\(res\.user\)/);
+
+  assert.match(marketView, /currentUser\?: CurrentUser \| null/);
+  assert.match(marketView, /onLoginRequired: \(\) => void/);
+  assert.match(marketView, /Log in to send to a pilot/);
+  assert.match(marketView, /currentUser \?/);
+
+  assert.match(contractsView, /currentUser\?: CurrentUser \| null/);
+  assert.match(contractsView, /onLoginRequired: \(\) => void/);
+  assert.match(contractsView, /Log in to set destination/);
+  assert.match(contractsView, /currentUser \?/);
 });
 
 test('sidebar main navigation follows the requested workflow order', () => {

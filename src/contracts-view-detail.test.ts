@@ -39,3 +39,13 @@ test('contracts view opens a contract detail modal with itemized market estimate
   assert.match(styles, /\.ct-detail-total/);
   assert.match(styles, /\.ct-destination/);
 });
+
+test('contracts detail keeps public pricing while replacing destination controls with login CTA for anonymous users', () => {
+  const view = readFileSync(resolve('web/src/components/ContractsView.tsx'), 'utf8');
+
+  assert.match(view, /export function ContractsView\(\{ currentUser, onLoginRequired \}: Props\)/);
+  assert.match(view, /<ContractDetailsModal row=\{detailRow\} currentUser=\{currentUser\} onLoginRequired=\{onLoginRequired\}/);
+  assert.match(view, /currentUser \? \(/);
+  assert.match(view, /Log in to set destination/);
+  assert.match(view, /onClick=\{onLoginRequired\}/);
+});

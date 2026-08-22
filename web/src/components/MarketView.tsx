@@ -5,6 +5,7 @@ import {
   quoteShoppingList,
   sendShoppingList,
   type CharacterStatus,
+  type CurrentUser,
   type PlexHistory,
   type PlexHistoryEntry,
   type PlexOrders,
@@ -18,7 +19,13 @@ import {
   type ShoppingListSortKey,
 } from '../market-shopping-sort.ts';
 
-interface Props { chars: CharacterStatus[] }
+interface Props {
+  chars: CharacterStatus[];
+  currentUser?: CurrentUser | null;
+  initialTab?: MarketTab;
+  onTabRoute: (tab: MarketTab) => void;
+  onLoginRequired: () => void;
+}
 
 type Range = '7d' | '30d' | '90d' | '1y' | 'all';
 const RANGES: Array<{ key: Range; label: string; days: number | null }> = [
@@ -49,22 +56,24 @@ function pctChange(from: number, to: number): number {
 
 type MarketTab = 'plex' | 'shopping';
 
-export function MarketView({ chars }: Props) {
-  const [tab, setTab] = useState<MarketTab>('shopping');
+export function MarketView({ chars, currentUser, initialTab = 'shopping', onTabRoute, onLoginRequired }: Props) {
+  const [tab, setTab] = useState<MarketTab>(initialTab);
+
+  useEffect(() => setTab(initialTab), [initialTab]);
 
   return (
     <main className="rows-wrap market-view">
       <div className="mk-tabs">
         <button
           className={`mk-tab${tab === 'shopping' ? ' active' : ''}`}
-          onClick={() => setTab('shopping')}
+          onClick={() => { setTab('shopping'); onTabRoute('shopping'); }}
         >Shopping List</button>
         <button
           className={`mk-tab${tab === 'plex' ? ' active' : ''}`}
-          onClick={() => setTab('plex')}
+          onClick={() => { setTab('plex'); onTabRoute('plex'); }}
         >PLEX</button>
       </div>
-      {tab === 'shopping' ? <ShoppingListView chars={chars} /> : <PlexView />}
+      {tab === 'shopping' ? <ShoppingListView chars={chars} currentUser={currentUser} onLoginRequired={onLoginRequired} /> : <PlexView />}
     </main>
   );
 }
@@ -178,7 +187,7 @@ type SendStatus =
   | { kind: 'sent'; pilotName: string; mailId: number | null }
   | { kind: 'error'; message: string; reauthHint: string | null };
 
-function ShoppingListView({ chars }: { chars: CharacterStatus[] }) {
+function ShoppingListView({ chars, currentUser, onLoginRequired }: { chars: CharacterStatus[]; currentUser?: CurrentUser | null; onLoginRequired: () => void }) {
   const [hub, setHub] = useState<ShoppingHub>(
     () => (localStorage.getItem(SHOPPING_HUB_KEY) as ShoppingHub) || 'jita',
   );
@@ -314,27 +323,33 @@ function ShoppingListView({ chars }: { chars: CharacterStatus[] }) {
       {quote && (
         <>
           <div className="mk-shop-send">
-            <label className="mk-shop-send-label" htmlFor="mk-shop-pilot">Send to pilot</label>
-            <select
-              id="mk-shop-pilot"
-              className="mk-shop-pilot-select"
-              value={pilotId ?? ''}
-              onChange={e => setPilotId(Number(e.target.value) || null)}
-              disabled={sortedChars.length === 0 || sendStatus.kind === 'sending'}
-            >
-              {sortedChars.length === 0 && <option value="">No pilots authed</option>}
-              {sortedChars.map(c => (
-                <option key={c.characterId} value={c.characterId}>
-                  {c.name}{c.needsReauth ? ' (needs re-auth)' : ''}
-                </option>
-              ))}
-            </select>
-            <button
-              className="fl-refresh"
-              onClick={sendToPilot}
-              disabled={pilotId == null || sendStatus.kind === 'sending'}
-              title="Sends the list as an EVEmail to the selected pilot, with each item as a clickable in-game link"
-            >{sendStatus.kind === 'sending' ? 'Sending…' : 'Send as EVEmail'}</button>
+            {currentUser ? (
+              <>
+                <label className="mk-shop-send-label" htmlFor="mk-shop-pilot">Send to pilot</label>
+                <select
+                  id="mk-shop-pilot"
+                  className="mk-shop-pilot-select"
+                  value={pilotId ?? ''}
+                  onChange={e => setPilotId(Number(e.target.value) || null)}
+                  disabled={sortedChars.length === 0 || sendStatus.kind === 'sending'}
+                >
+                  {sortedChars.length === 0 && <option value="">No pilots authed</option>}
+                  {sortedChars.map(c => (
+                    <option key={c.characterId} value={c.characterId}>
+                      {c.name}{c.needsReauth ? ' (needs re-auth)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="fl-refresh"
+                  onClick={sendToPilot}
+                  disabled={pilotId == null || sendStatus.kind === 'sending'}
+                  title="Sends the list as an EVEmail to the selected pilot, with each item as a clickable in-game link"
+                >{sendStatus.kind === 'sending' ? 'Sending…' : 'Send as EVEmail'}</button>
+              </>
+            ) : (
+              <button className="fl-refresh" type="button" onClick={onLoginRequired}>Log in to send to a pilot</button>
+            )}
             {sendStatus.kind === 'sent' && (
               <span className="mk-shop-send-ok">
                 Sent to {sendStatus.pilotName}{sendStatus.mailId != null ? ` (mail #${sendStatus.mailId})` : ''}. Check their in-game mail tab.
