@@ -1,4 +1,4 @@
-import type { FitSectionRole, FitsV2EditorDocument, FitsV2EditorItem, FitsV2ModuleState } from './types.ts';
+import type { AssignedFitItem, FitDraft, FitSectionRole, FitsV2EditorDocument, FitsV2EditorItem, FitsV2ModuleState } from './types.ts';
 
 const EDITOR_ROLES = new Set<FitSectionRole>([
   'low',
@@ -14,6 +14,7 @@ const EDITOR_ROLES = new Set<FitSectionRole>([
 ]);
 
 const MODULE_STATES = new Set<FitsV2ModuleState>(['offline', 'online', 'active', 'overheated']);
+const EFT_ROLE_ORDER: FitSectionRole[] = ['low', 'mid', 'high', 'rig', 'service', 'subsystem', 'droneBay', 'fighterBay', 'extras', 'unmatched'];
 
 export function parseFitsV2EditorDocument(value: unknown): FitsV2EditorDocument | null {
   if (!isRecord(value)) return null;
@@ -75,6 +76,55 @@ export function parseSerializedFitsV2EditorDocument(value: unknown): FitsV2Edito
   }
 }
 
+export function editorDocumentFromFitDraft(draft: FitDraft): FitsV2EditorDocument {
+  if (!draft.ship) throw new Error('Cannot create Fits v2 editor data without a resolved ship.');
+  const chargeByLine = new Map<string, AssignedFitItem>();
+  for (const item of draft.items) {
+    if (item.source === 'loaded-charge') chargeByLine.set(lineKey(item), item);
+  }
+  const roleCursor = new Map<FitSectionRole, number>();
+  const items = draft.items
+    .filter(item => item.source === 'fit-line' && item.typeId != null)
+    .map(item => {
+      const charge = chargeByLine.get(lineKey(item));
+      const slotIndex = slotIndexForEditorItem(item, roleCursor);
+      return {
+        editorItemId: `${item.role}-${item.lineIndex}-${item.typeId}`,
+        typeId: item.typeId!,
+        name: item.resolvedName ?? item.inputName,
+        role: item.role,
+        quantity: item.quantity,
+        slotIndex,
+        state: 'offline' as const,
+        chargeTypeId: charge?.typeId ?? null,
+        chargeName: charge?.resolvedName ?? charge?.inputName ?? null,
+      };
+    });
+
+  return {
+    version: 1,
+    hull: draft.ship,
+    fitName: draft.fitName,
+    notes: '',
+    skillProfile: { kind: 'all-v', characterId: null, name: 'All V' },
+    items,
+  };
+}
+
+export function renderFitsV2EditorDocumentToEft(document: FitsV2EditorDocument): string {
+  const lines: string[] = [`[${document.hull.name}, ${document.fitName}]`];
+  for (const role of EFT_ROLE_ORDER) {
+    const roleItems = document.items.filter(item => item.role === role);
+    if (roleItems.length === 0) continue;
+    lines.push('');
+    for (const item of roleItems) {
+      const base = item.chargeName ? `${item.name}, ${item.chargeName}` : item.name;
+      lines.push(item.quantity === 1 ? base : `${base} x${item.quantity}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 function parseEditorItem(value: unknown): FitsV2EditorItem | null {
   if (!isRecord(value)) return null;
   const role = value.role;
@@ -97,6 +147,20 @@ function parseEditorItem(value: unknown): FitsV2EditorItem | null {
     chargeTypeId: value.chargeTypeId == null ? null : positiveInteger(value.chargeTypeId),
     chargeName: value.chargeName == null ? null : cleanString(value.chargeName),
   };
+}
+
+function lineKey(item: Pick<AssignedFitItem, 'sectionIndex' | 'lineIndex'>): string {
+  return `${item.sectionIndex}:${item.lineIndex}`;
+}
+
+function slotIndexForEditorItem(
+  item: AssignedFitItem,
+  roleCursor: Map<FitSectionRole, number>,
+): number | null {
+  if (item.role === 'droneBay' || item.role === 'fighterBay' || item.role === 'extras' || item.role === 'unmatched') return null;
+  const next = roleCursor.get(item.role) ?? 0;
+  roleCursor.set(item.role, next + 1);
+  return next;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

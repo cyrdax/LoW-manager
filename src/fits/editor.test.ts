@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertFitsV2EditorDocument, parseFitsV2EditorDocument, parseSerializedFitsV2EditorDocument } from './editor.ts';
+import { buildFitDraft } from './assignment.ts';
+import { assertFitsV2EditorDocument, editorDocumentFromFitDraft, parseFitsV2EditorDocument, parseSerializedFitsV2EditorDocument, renderFitsV2EditorDocumentToEft } from './editor.ts';
 
 const document = {
   version: 1,
@@ -39,4 +40,29 @@ test('serialized Fits v2 editor document round trips through JSON', () => {
   const parsed = parseSerializedFitsV2EditorDocument(JSON.stringify(document));
   assert.equal(parsed?.fitName, 'Rail Rokh');
   assert.equal(parsed?.items[0].chargeName, 'Spike L');
+});
+
+test('Fits v2 editor document converts from legacy EFT drafts and exports EFT', () => {
+  const draft = buildFitDraft([
+    '[Archon, Fabricator]',
+    'Drone Damage Amplifier II',
+    '',
+    'Omnidirectional Tracking Link II, Optimal Range Script',
+    '',
+    'Integrated Sensor Array',
+    '',
+    'Capital Auxiliary Nano Pump I',
+    '',
+    'Equite II x12',
+  ].join('\n'));
+
+  const converted = editorDocumentFromFitDraft(draft);
+  assert.equal(converted.hull.name, 'Archon');
+  assert.equal(converted.items.some(item => item.name === 'Omnidirectional Tracking Link II' && item.chargeName === 'Optimal Range Script'), true);
+  assert.equal(converted.items.find(item => item.name === 'Equite II')?.quantity, 12);
+
+  const eft = renderFitsV2EditorDocumentToEft(converted);
+  assert.match(eft, /^\[Archon, Fabricator\]/);
+  assert.match(eft, /Omnidirectional Tracking Link II, Optimal Range Script/);
+  assert.match(eft, /Equite II x12/);
 });
