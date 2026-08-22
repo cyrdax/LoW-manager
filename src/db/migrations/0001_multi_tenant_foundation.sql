@@ -162,7 +162,6 @@ CREATE TABLE IF NOT EXISTS saved_fits (
   fit_name text NOT NULL,
   notes text NOT NULL DEFAULT '',
   raw_eft text NOT NULL,
-  editor_json jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   archived_at timestamptz
