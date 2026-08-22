@@ -157,12 +157,14 @@ body {
 .view-nav-6,
 .view-nav-7,
 .view-nav-8,
-.view-nav-9 { grid-template-columns: 1fr; }
+.view-nav-9,
+.view-nav-10 { grid-template-columns: 1fr; }
 .view-nav-5 .nav-btn,
 .view-nav-6 .nav-btn,
 .view-nav-7 .nav-btn,
 .view-nav-8 .nav-btn,
-.view-nav-9 .nav-btn { padding: 8px 12px; text-align: left; }
+.view-nav-9 .nav-btn,
+.view-nav-10 .nav-btn { padding: 8px 12px; text-align: left; }
 
 .sidebar {
   background: var(--panel);
@@ -4526,5 +4528,590 @@ body {
 @media (max-width: 640px) {
   .ct-detail-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* EVEShip-style Fits v2 workbench. This overrides the prototype Fits v2
+   styles without touching the original Fits page. */
+.fits-v2-view.eveship-shell {
+  display: grid;
+  grid-template-columns: 420px minmax(520px, 1fr) 320px;
+  grid-template-rows: 58px minmax(0, 1fr);
+  gap: 0;
+  min-height: calc(100vh - 32px);
+  margin: 16px;
+  padding: 0;
+  overflow: hidden;
+  color: #d7d7d7;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03), transparent 18%, transparent 82%, rgba(255, 255, 255, 0.025)),
+    #111;
+  border: 1px solid #4f5257;
+  border-radius: 18px 18px 0 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 18px 50px rgba(0, 0, 0, 0.42);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.eveship-titlebar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #111;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  background: linear-gradient(#efefef, #bfbfbf 48%, #979797 49%, #d8d8d8);
+  border-bottom: 1px solid #585858;
+  text-shadow: 0 1px rgba(255, 255, 255, 0.65);
+}
+
+.eveship-left,
+.eveship-right {
+  min-width: 0;
+  overflow: auto;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 120px),
+    #191a1c;
+}
+
+.eveship-left {
+  border-right: 1px solid #4a4d51;
+}
+
+.eveship-right {
+  border-left: 1px solid #4a4d51;
+}
+
+.eveship-center {
+  display: grid;
+  grid-template-rows: auto minmax(380px, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at center 46%, rgba(80, 82, 84, 0.45), transparent 34%),
+    radial-gradient(circle at center, #27292b 0, #171819 55%, #0d0d0e 100%);
+}
+
+.eveship-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 12px 12px 8px;
+  gap: 4px;
+}
+
+.eveship-tabs button,
+.eveship-actions button,
+.eveship-send button {
+  border: 1px solid #565a61;
+  background: linear-gradient(#3d3f43, #202226);
+  color: #dcdcdc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.eveship-tabs button {
+  min-height: 42px;
+  border-radius: 3px 3px 12px 12px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.eveship-tabs button.active {
+  color: #111;
+  background: linear-gradient(#e1e1e1, #9c9c9c 52%, #737373 53%, #c9c9c9);
+  text-shadow: 0 1px rgba(255, 255, 255, 0.65);
+}
+
+.eveship-search,
+.eveship-character,
+.eveship-fit-name input,
+.eveship-send select {
+  width: calc(100% - 24px);
+  margin: 0 12px 10px;
+  padding: 9px 10px;
+  color: #f0f0f0;
+  background: #08090a;
+  border: 1px solid #5d6067;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.75);
+}
+
+.eveship-fit-name {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 18px 28px 0;
+}
+
+.eveship-fit-name label {
+  color: #d8d8d8;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.eveship-fit-name input {
+  width: 100%;
+  margin: 0;
+  color: #f4f4f4;
+  font-size: 18px;
+  text-align: center;
+  background: rgba(7, 8, 9, 0.74);
+}
+
+.eveship-fit-name strong {
+  display: block;
+  overflow: hidden;
+  color: #f1f1f1;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eveship-icon-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  padding: 0 12px 12px;
+}
+
+.eveship-icon-row span {
+  display: grid;
+  place-items: center;
+  min-height: 40px;
+  color: #cfcfcf;
+  background: linear-gradient(#3b3e42, #17191c);
+  border: 1px solid #484c52;
+  border-radius: 3px;
+}
+
+.eveship-tree {
+  height: calc(100vh - 292px);
+  min-height: 360px;
+  overflow: auto;
+  padding: 0 12px 12px;
+}
+
+.eveship-group summary,
+.eveship-tree-row,
+.eveship-hardware-row,
+.eveship-slot-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.eveship-group summary {
+  padding: 8px 4px;
+  color: #ebebeb;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.eveship-tree-row,
+.eveship-hardware-row {
+  gap: 9px;
+  padding: 7px 8px;
+  color: #d7d7d7;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.eveship-tree-row:hover,
+.eveship-hardware-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.eveship-tree-row.active {
+  color: #111;
+  background: linear-gradient(#dedede, #8d8d8d);
+}
+
+.eveship-tree-row img,
+.eveship-hardware-row img,
+.eveship-slot-row img,
+.ring-slot img {
+  width: 38px;
+  height: 38px;
+  object-fit: cover;
+  border: 1px solid #444951;
+  border-radius: 5px;
+  background: #050505;
+}
+
+.eveship-row-title {
+  display: block;
+  overflow: hidden;
+  color: inherit;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eveship-row-subtitle {
+  display: block;
+  overflow: hidden;
+  color: #9ca0a8;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eveship-hardware-results {
+  height: calc(100vh - 316px);
+  min-height: 360px;
+  overflow: auto;
+  padding: 0 12px 12px;
+}
+
+.eveship-muted {
+  padding: 14px 12px;
+  color: #9298a2;
+}
+
+.eveship-actions,
+.eveship-send {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid #32363c;
+}
+
+.eveship-actions button,
+.eveship-send button {
+  min-height: 36px;
+  border-radius: 3px;
+  font-weight: 700;
+}
+
+.eveship-actions button:first-child {
+  color: #ffd9cf;
+  background: linear-gradient(#5a251d, #24100d);
+  border-color: #853c31;
+}
+
+.eveship-actions button:disabled,
+.eveship-send button:disabled {
+  opacity: 0.48;
+}
+
+.fitting-ring {
+  position: relative;
+  align-self: center;
+  justify-self: center;
+  width: min(68vh, 720px);
+  min-width: 470px;
+  aspect-ratio: 1;
+  margin: 18px;
+  --ring-radius: min(31vh, 312px);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, rgba(0, 0, 0, 0) 0 28%, rgba(255, 255, 255, 0.11) 29%, rgba(255, 255, 255, 0.02) 31%, transparent 32%),
+    radial-gradient(circle at center, transparent 0 47%, rgba(255, 255, 255, 0.09) 48%, rgba(255, 255, 255, 0.02) 50%, transparent 51%),
+    radial-gradient(circle at center, #1b1d1f 0 38%, #090909 39% 62%, #232527 63% 100%);
+  box-shadow:
+    inset 0 0 70px rgba(0, 0, 0, 0.92),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.09),
+    0 0 60px rgba(0, 0, 0, 0.45);
+}
+
+.ring-markers {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 2deg, rgba(205, 209, 211, 0.42) 0deg 1deg, transparent 1deg 12deg);
+  mask: radial-gradient(circle, transparent 0 65%, #000 66% 69%, transparent 70%);
+  pointer-events: none;
+}
+
+.ring-ship {
+  position: absolute;
+  inset: 27%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: radial-gradient(circle, #2c2e30 0, #090909 70%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+}
+
+.ring-ship img {
+  width: 118%;
+  height: 118%;
+  object-fit: cover;
+  opacity: 0.88;
+  filter: contrast(1.08) saturate(0.78);
+}
+
+.fitting-ship {
+  position: absolute;
+  inset: 27%;
+  width: 46%;
+  height: 46%;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  opacity: 0.88;
+  filter: contrast(1.08) saturate(0.78);
+}
+
+.fitting-ring p {
+  position: absolute;
+  left: 50%;
+  top: 14%;
+  width: min(420px, 70%);
+  margin: 0;
+  color: #e6e6e6;
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.ring-ship span {
+  padding: 16px;
+  color: #aeb3bb;
+  text-align: center;
+}
+
+.ring-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  padding: 4px;
+  transform: translate(-50%, -50%) rotate(var(--slot-angle)) translateY(calc(-1 * var(--ring-radius)));
+  background: linear-gradient(#262a2f, #08090a);
+  border: 1px solid #5b6068;
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.ring-slot img {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+}
+
+.ring-slot.empty {
+  border-style: dashed;
+  opacity: 0.48;
+}
+
+.ring-slot.high,
+.ring-slot-high { border-color: #b06534; }
+.ring-slot.mid,
+.ring-slot-mid { border-color: #4d89c8; }
+.ring-slot.low,
+.ring-slot-low { border-color: #b79a4c; }
+.ring-slot.rig,
+.ring-slot-rig { border-color: #60a071; }
+.ring-slot.subsystem,
+.ring-slot-subsystem { border-color: #8f6cc8; }
+
+.ring-slot-qty {
+  position: absolute;
+  right: -2px;
+  bottom: -3px;
+  min-width: 18px;
+  padding: 1px 4px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid #737780;
+  border-radius: 9px;
+}
+
+.eveship-center-bottom {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1.2fr);
+  gap: 12px;
+  padding: 0 18px 16px;
+}
+
+.eveship-capacity,
+.eveship-history,
+.eveship-stat-panel,
+.eveship-slot-list {
+  background: rgba(8, 9, 10, 0.72);
+  border: 1px solid #444951;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.eveship-capacity {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 10px;
+}
+
+.eveship-capacity strong,
+.eveship-stat-panel strong {
+  display: block;
+  color: #f0f0f0;
+}
+
+.eveship-capacity span,
+.eveship-stat-panel span {
+  display: block;
+  color: #9ca0a8;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.eveship-history {
+  padding: 10px;
+}
+
+.eveship-history h3,
+.eveship-stat-panel h3 {
+  margin: 0 0 8px;
+  color: #efefef;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.eveship-history ul,
+.eveship-stat-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.eveship-history li,
+.eveship-stat-panel li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  color: #d5d7da;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.eveship-right {
+  padding: 12px;
+}
+
+.eveship-character,
+.eveship-send select {
+  width: 100%;
+  margin: 0 0 10px;
+}
+
+.eveship-stats-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.eveship-stat-panel {
+  padding: 10px;
+}
+
+.eveship-send {
+  padding: 12px 0;
+  border-top: 0;
+}
+
+.eveship-status {
+  margin: 8px 0;
+  padding: 8px;
+  color: #d9e6f7;
+  background: rgba(74, 103, 140, 0.22);
+  border: 1px solid rgba(121, 159, 205, 0.36);
+  border-radius: 3px;
+}
+
+.eveship-status.ok {
+  color: #66f098;
+  border-color: rgba(102, 240, 152, 0.38);
+}
+
+.eveship-status.warn {
+  color: #ffd760;
+  border-color: rgba(255, 215, 96, 0.38);
+}
+
+.eveship-status.err {
+  color: #ff8a8a;
+  border-color: rgba(255, 138, 138, 0.38);
+}
+
+.eveship-slot-list {
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.eveship-slot-list h3 {
+  margin: 0;
+  padding: 10px;
+  color: #f0f0f0;
+  font-size: 13px;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.035);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.eveship-slot-row {
+  gap: 8px;
+  padding: 7px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.eveship-slot-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1320px) {
+  .fits-v2-view.eveship-shell {
+    grid-template-columns: 360px minmax(460px, 1fr) 290px;
+  }
+
+  .fitting-ring {
+    width: min(62vh, 620px);
+    min-width: 420px;
+    --ring-radius: min(28vh, 270px);
+  }
+}
+
+@media (max-width: 1040px) {
+  .fits-v2-view.eveship-shell {
+    display: block;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .eveship-titlebar {
+    min-height: 54px;
+  }
+
+  .eveship-left,
+  .eveship-right,
+  .eveship-center {
+    border: 0;
+  }
+
+  .eveship-tree,
+  .eveship-hardware-results {
+    height: auto;
+    max-height: 420px;
+  }
+
+  .fitting-ring {
+    width: min(86vw, 640px);
+    min-width: 320px;
+    --ring-radius: min(38vw, 270px);
   }
 }

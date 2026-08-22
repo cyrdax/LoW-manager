@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { fetchFit, fetchFits, quoteDraftFit, saveFit, searchFitItems, searchFitShips, sendDraftFit, type AssignedFitItem, type CharacterStatus, type CurrentUser, type FitHub, type FitItemHit, type FitQuote, type FitSectionRole, type FitShipHit, type FitsV2EditorDocument, type FitsV2EditorItem, type LibraryVisibility, type SavedFitDetail, type SavedFitSummary, updateFit } from '../api.ts';
 
 const FITS_V2_HUB_KEY = 'fits-v2-hub';
@@ -289,40 +289,65 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
     setFits(rows);
   }
 
+  const activeShipTypeId = editor?.hull.typeId ?? activeFit?.shipTypeId ?? detail?.ship?.typeId ?? null;
+  const activeShipName = editor?.hull.name ?? detail?.ship?.name ?? activeFit?.shipName ?? 'No hull selected';
+  const fitTitle = fitName.trim() || editor?.fitName || detail?.fitName || 'Unsaved fit';
+  const shipRender = activeShipTypeId != null ? `https://images.evetech.net/types/${activeShipTypeId}/render?size=512` : null;
+  const roleItems = (role: FitSectionRole) => editor?.items.filter(item => item.role === role) ?? [];
+  const fittedItemCount = editor?.items.filter(item => ['high', 'mid', 'low', 'rig', 'subsystem', 'service'].includes(item.role)).length ?? 0;
+  const cargoItemCount = editor?.items.filter(item => ['droneBay', 'fighterBay', 'extras'].includes(item.role)).reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+  const fitGroups = Array.from(new Set(fits.map(fit => fit.shipName))).sort((a, b) => a.localeCompare(b));
+  const statPrice = quote ? `${formatIsk(quote.totals.grand)} ISK` : quoteLoading ? 'Pricing...' : '-';
+
   return (
-    <section className="fits-v2-view">
-      <aside className="fits-v2-sidebar">
-        <div className="fits-v2-panel-head">
-          <div>
-            <h2>Fits v2</h2>
-            <p>{visibility === 'public' ? 'Public library' : 'Private library'}</p>
-          </div>
-          {!currentUser && <span className="fit-pill">Public</span>}
+    <section className="fits-v2-view eveship-shell">
+      <header className="eveship-titlebar">EVEShip.fit - View, Create, and Share your EVE Online ship fits online</header>
+
+      <aside className="eveship-left">
+        <div className="eveship-tabs" role="tablist" aria-label="Fits v2 library">
+          <button type="button" className="active">Hull &amp; Fits</button>
+          <button type="button">Hardware</button>
         </div>
         <input
-          className="fits-v2-search"
+          className="eveship-search"
           value={hullQuery}
           onChange={event => setHullQuery(event.target.value)}
           placeholder="Search hulls to start"
         />
-        {hullHits.length > 0 && (
-          <div className="fits-v2-hull-results">
-            {hullHits.slice(0, 6).map(hit => (
-              <button key={hit.id} type="button" onClick={() => startHull(hit)}>
-                <span>{hit.name}</span>
-                <small>{hit.groupName}</small>
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="eveship-icon-row" aria-hidden="true">
+          <span>▰</span><span>●</span><span>✪</span><span>✣</span><span>♜</span>
+        </div>
+        <div className="eveship-tree">
+          {hullHits.length > 0 ? hullHits.slice(0, 12).map(hit => (
+            <button key={hit.id} type="button" className="eveship-tree-row" onClick={() => startHull(hit)}>
+              <span className="twisty">▸</span>
+              <span>{hit.name}</span>
+              <small>{hit.groupName}</small>
+            </button>
+          )) : fitGroups.length > 0 ? fitGroups.map(group => (
+            <details key={group} open={group === activeShipName}>
+              <summary>{group}</summary>
+              {fits.filter(fit => fit.shipName === group).map(fit => (
+                <button key={fit.id} className={fit.id === selectedId ? 'active' : ''} type="button" onClick={() => openFit(fit.id)}>
+                  <img src={`https://images.evetech.net/types/${fit.shipTypeId}/icon?size=32`} alt="" />
+                  <span>{fit.fitName}</span>
+                  {fit.hasEditorJson && <em>v2</em>}
+                </button>
+              ))}
+            </details>
+          )) : (
+            <div className="empty">Search for a hull to begin.</div>
+          )}
+        </div>
+
         <input
-          className="fits-v2-search"
+          className="eveship-search hardware-search"
           value={itemQuery}
           onChange={event => setItemQuery(event.target.value)}
           placeholder="Search modules, drones, cargo"
         />
         {itemHits.length > 0 && (
-          <div className="fits-v2-hull-results">
+          <div className="eveship-hardware-results">
             {itemHits.slice(0, 8).map(hit => (
               <button key={hit.id} type="button" onClick={() => addItem(hit)}>
                 <span>{hit.name}</span>
@@ -331,161 +356,140 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
             ))}
           </div>
         )}
-        <div className="fits-v2-list">
-          {fits.map(fit => (
-            <button key={fit.id} className={fit.id === selectedId ? 'active' : ''} type="button" onClick={() => openFit(fit.id)}>
-              <img src={`https://images.evetech.net/types/${fit.shipTypeId}/icon?size=64`} alt="" />
-              <span>
-                <strong>{fit.shipName}</strong>
-                <small>{fit.fitName}</small>
-              </span>
-              {fit.hasEditorJson && <em>v2</em>}
-            </button>
-          ))}
-          {fits.length === 0 && <div className="empty">No saved fits in this library yet.</div>}
+
+        <div className="eveship-actions">
+          <button type="button" onClick={saveEditor} disabled={!editor || saving}>{saving ? 'Saving...' : detail ? 'Save changes' : 'Save'}</button>
+          <button type="button" onClick={copyEft} disabled={!editor}>Copy EFT</button>
+          <button type="button" onClick={refreshQuote} disabled={!editor || quoteLoading}>{quoteLoading ? 'Pricing...' : 'Refresh price'}</button>
+          <button type="button" disabled={!editor}>Rename</button>
         </div>
       </aside>
-      <div className="fits-v2-workbench">
-        <div className="fits-v2-hero">
-          {(editor || activeFit) && <img src={`https://images.evetech.net/types/${editor?.hull.typeId ?? activeFit?.shipTypeId}/render?size=256`} alt="" />}
-          <div>
-            <p className="eyebrow">Dogma editor foundation</p>
-            <h1>{editor?.hull.name ?? detail?.ship?.name ?? activeFit?.shipName ?? 'Choose a hull'}</h1>
-            {editor
-              ? <input value={fitName} onChange={event => setFitName(event.target.value)} aria-label="Fit name" />
-              : <p>Search for a ship or choose a saved fit to begin.</p>}
+
+      <main className="eveship-center">
+        <div className="eveship-fit-name">
+          <label>Name</label>
+          {editor
+            ? <input value={fitName} onChange={event => setFitName(event.target.value)} aria-label="Fit name" />
+            : <strong>{fitTitle}</strong>}
+        </div>
+
+        <div className="fitting-ring" aria-label="Fitting slots">
+          {shipRender && <img className="fitting-ship" src={shipRender} alt="" />}
+          {!editor && <p>To start, select a hull on the left.</p>}
+          {editor && RING_ROLE_ORDER.map((role, roleIndex) => roleItems(role).slice(0, 8).map((item, index, arr) => {
+            const angle = ringAngle(roleIndex, index, arr.length);
+            return (
+              <button
+                key={item.editorItemId}
+                type="button"
+                className={`ring-slot ring-slot-${role}`}
+                style={{ '--slot-angle': `${angle}deg` } as CSSProperties}
+                title={item.name}
+                onClick={() => removeItem(item.editorItemId)}
+              >
+                <img src={`https://images.evetech.net/types/${item.typeId}/icon?size=64`} alt="" />
+              </button>
+            );
+          }))}
+          <div className="ring-markers" aria-hidden="true" />
+        </div>
+
+        <div className="eveship-center-bottom">
+          <div className="eveship-capacity">
+            <span>▰ {fittedItemCount.toFixed(1)}</span>
+            <span>/ 0.0 m3</span>
+            <span>◇ {cargoItemCount.toFixed(1)}</span>
+            <span>/ 0.0 m3</span>
+          </div>
+          <div className="eveship-history">
+            <h3>Simulation History</h3>
+            <ul>
+              <li><span>Dogma engine</span><strong>{editor ? 'Ready' : 'Waiting for hull'}</strong></li>
+              <li><span>Skill profile</span><strong>{editor?.skillProfile.name ?? 'All V'}</strong></li>
+              <li><span>Market quote</span><strong>{statPrice}</strong></li>
+            </ul>
           </div>
         </div>
-        {status && <div className="banner warn">{status}</div>}
-        {editor && (
-          <div className="fits-v2-editor-actions">
-            <button onClick={saveEditor} disabled={saving}>{saving ? 'Saving...' : detail ? 'Save changes' : 'Save fit'}</button>
-            <button type="button" onClick={copyEft}>Copy EFT</button>
-            <div className="fits-v2-hubs">
-              {(['jita', 'amarr'] as const).map(nextHub => (
-                <button key={nextHub} type="button" className={hub === nextHub ? 'active' : ''} onClick={() => setHub(nextHub)}>
-                  {nextHub === 'jita' ? 'Jita' : 'Amarr'}
-                </button>
-              ))}
-            </div>
-            <button type="button" onClick={refreshQuote} disabled={quoteLoading}>{quoteLoading ? 'Pricing...' : 'Refresh price'}</button>
-            {saveStatus && <span>{saveStatus}</span>}
-          </div>
-        )}
-        {editor && (
-          <div className="fits-v2-send-controls">
-            {currentUser ? (
-              <>
-                <select value={pilotId ?? ''} onChange={event => setPilotId(Number(event.target.value) || null)}>
-                  {sortedChars.length === 0 && <option value="">No pilots</option>}
-                  {sortedChars.map(char => (
-                    <option key={char.characterId} value={char.characterId}>
-                      {char.name}{char.needsReauth ? ' (needs re-auth)' : ''}
-                    </option>
-                  ))}
-                </select>
-                <button type="button" onClick={sendToPilot} disabled={pilotId == null || sendStatus.kind === 'sending'}>
-                  {sendStatus.kind === 'sending' ? 'Sending...' : 'Send Fit'}
-                </button>
-              </>
-            ) : (
-              <button type="button" onClick={() => window.open('/auth/login', '_blank', 'width=560,height=720')}>Log in to send to a pilot</button>
-            )}
-            {sendStatus.kind === 'sent' && <span className="ok">Fitting #{sendStatus.fittingId ?? 'created'} - {sendStatus.excludedCount} excluded</span>}
-            {sendStatus.kind === 'error' && <span className="err">{sendStatus.message}{sendStatus.reauthHint ? ` - ${sendStatus.reauthHint}` : ''}</span>}
-          </div>
-        )}
-        {editor && (
-          <section className="fits-v2-price-card">
-            <div>
-              <span>Hull</span>
-              <strong>{quote ? `${formatIsk(quote.totals.hull)} ISK` : '-'}</strong>
-            </div>
-            <div>
-              <span>Fitted</span>
-              <strong>{quote ? `${formatIsk(quote.totals.fitted)} ISK` : '-'}</strong>
-            </div>
-            <div>
-              <span>Extras</span>
-              <strong>{quote ? `${formatIsk(quote.totals.extras)} ISK` : '-'}</strong>
-            </div>
-            <div className="total">
-              <span>Grand total</span>
-              <strong>{quote ? `${formatIsk(quote.totals.grand)} ISK` : quoteLoading ? 'Pricing...' : '-'}</strong>
-            </div>
-            {quote && <p>{quote.systemName} - {quote.counts.ok} priced - {quote.counts.noOrders} no sellers</p>}
-            {quoteError && <p className="error">{quoteError}</p>}
-          </section>
-        )}
-        {detail && (
-          <div className="fits-v2-card-grid">
-            <section className="fits-v2-card">
-              <h3>Editor payload</h3>
-              <p>{detail.editorJson ? 'Stored Fits v2 state is attached to this fit.' : 'This legacy fit will be converted from EFT when opened in the full editor.'}</p>
-            </section>
-            <section className="fits-v2-card">
-              <h3>Slots</h3>
-              <p>{detail.layout ? `${detail.layout.highSlots} high / ${detail.layout.midSlots} mid / ${detail.layout.lowSlots} low / ${detail.layout.rigSlots} rig` : 'Layout unavailable'}</p>
-            </section>
-          </div>
-        )}
-        {editor && (
-          <div className="fits-v2-card-grid">
-            <section className="fits-v2-card">
-              <h3>Skill profile</h3>
-              <select
-                value={editor.skillProfile.kind === 'all-v' ? 'all-v' : `pilot:${editor.skillProfile.characterId}`}
-                onChange={event => updateSkillProfile(event.target.value)}
-              >
-                <option value="all-v">All V</option>
-                {sortedChars.map(char => <option key={char.characterId} value={`pilot:${char.characterId}`}>{char.name}</option>)}
+      </main>
+
+      <aside className="eveship-right">
+        <select
+          className="eveship-character"
+          value={editor?.skillProfile.kind === 'all-v' ? 'all-v' : `pilot:${editor?.skillProfile.characterId}`}
+          onChange={event => updateSkillProfile(event.target.value)}
+          disabled={!editor}
+        >
+          <option value="all-v">Default character - All Skills L5</option>
+          {sortedChars.map(char => <option key={char.characterId} value={`pilot:${char.characterId}`}>{char.name}</option>)}
+        </select>
+
+        <StatPanel title="Capacitor" rows={[['0.0 GJ / 0.00 s', ''], ['Δ 0.0 GJ/s (0.0%)', '']]} />
+        <StatPanel title="Offense" rows={[[`${fittedItemCount.toFixed(1)} dps`, ''], ['0 HP', '']]} />
+        <StatPanel title="Defense" rows={[['No Module', ''], ['0 hp', '100 %'], ['0 hp', '100 %'], ['0 hp', '100 %']]} />
+        <StatPanel title="Targeting" rows={[['0.00 points', ''], ['0 m', '']]} />
+        <StatPanel title="Navigation" rows={[['0.00 t', ''], ['0.00 AU/s', '']]} />
+        <StatPanel title="Drones" rows={[[`${roleItems('droneBay').length}/${roleItems('fighterBay').length} Mbit/sec`, ''], ['0 Active', '']]} />
+        <StatPanel title="Price" rows={[[statPrice, quote?.systemName ?? hub.toUpperCase()], [`${quote?.counts.ok ?? 0} priced`, `${quote?.counts.noOrders ?? 0} no sellers`]]} />
+
+        <div className="eveship-send">
+          {currentUser ? (
+            <>
+              <select value={pilotId ?? ''} onChange={event => setPilotId(Number(event.target.value) || null)}>
+                {sortedChars.length === 0 && <option value="">No pilots</option>}
+                {sortedChars.map(char => (
+                  <option key={char.characterId} value={char.characterId}>
+                    {char.name}{char.needsReauth ? ' (needs re-auth)' : ''}
+                  </option>
+                ))}
               </select>
-              <p>{editor.skillProfile.kind === 'all-v' ? 'Maximum-skill dogma baseline.' : `Use cached skills for ${editor.skillProfile.name}.`}</p>
-            </section>
-            <section className="fits-v2-card">
-              <h3>Dogma engine</h3>
-              <p>Adapter-ready for EVEShipFit WASM stats once the dogma data bundle is vendored.</p>
-            </section>
-            <section className="fits-v2-card">
-              <h3>Fit shape</h3>
-              <p>{editor.items.length} items across {new Set(editor.items.map(item => item.role)).size} groups.</p>
-            </section>
-          </div>
-        )}
+              <button type="button" onClick={sendToPilot} disabled={!editor || pilotId == null || sendStatus.kind === 'sending'}>
+                {sendStatus.kind === 'sending' ? 'Sending...' : 'Send Fit'}
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => window.open('/auth/login', '_blank', 'width=560,height=720')}>Log in to send to a pilot</button>
+          )}
+        </div>
+
+        {status && <div className="eveship-status warn">{status}</div>}
+        {saveStatus && <div className="eveship-status">{saveStatus}</div>}
+        {quoteError && <div className="eveship-status err">{quoteError}</div>}
+        {sendStatus.kind === 'sent' && <div className="eveship-status ok">Fitting #{sendStatus.fittingId ?? 'created'} - {sendStatus.excludedCount} excluded</div>}
+        {sendStatus.kind === 'error' && <div className="eveship-status err">{sendStatus.message}{sendStatus.reauthHint ? ` - ${sendStatus.reauthHint}` : ''}</div>}
+
         {editor && (
-          <div className="fits-v2-editor-grid">
+          <div className="eveship-slot-list">
             {EDITOR_ROLE_ORDER.map(role => (
-              <section key={role} className="fits-v2-card">
+              <section key={role}>
                 <h3>{ROLE_LABELS[role]}</h3>
-                <div className="fits-v2-editor-items">
-                  {editor.items.filter(item => item.role === role).map(item => (
-                    <div key={item.editorItemId} className="fits-v2-editor-item">
-                      <img src={`https://images.evetech.net/types/${item.typeId}/icon?size=64`} alt="" />
-                      <span>{item.name}</span>
-                      {(role === 'extras' || role === 'droneBay' || role === 'fighterBay') && (
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={event => updateQuantity(item.editorItemId, Number(event.target.value))}
-                          aria-label={`${item.name} quantity`}
-                        />
-                      )}
-                      <button type="button" onClick={() => removeItem(item.editorItemId)}>Remove</button>
-                    </div>
-                  ))}
-                  {editor.items.filter(item => item.role === role).length === 0 && <p>Empty</p>}
-                </div>
+                {roleItems(role).map(item => (
+                  <div key={item.editorItemId} className="eveship-slot-row">
+                    <img src={`https://images.evetech.net/types/${item.typeId}/icon?size=32`} alt="" />
+                    <span>{item.name}</span>
+                    {(role === 'extras' || role === 'droneBay' || role === 'fighterBay') && (
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={event => updateQuantity(item.editorItemId, Number(event.target.value))}
+                        aria-label={`${item.name} quantity`}
+                      />
+                    )}
+                    <button type="button" onClick={() => removeItem(item.editorItemId)}>×</button>
+                  </div>
+                ))}
+                {roleItems(role).length === 0 && <p>No Module</p>}
               </section>
             ))}
           </div>
         )}
-      </div>
+      </aside>
     </section>
   );
 }
 
 const EDITOR_ROLE_ORDER: FitSectionRole[] = ['high', 'mid', 'low', 'rig', 'subsystem', 'service', 'droneBay', 'fighterBay', 'extras'];
+const RING_ROLE_ORDER: FitSectionRole[] = ['high', 'mid', 'low', 'rig', 'subsystem'];
 const ROLE_LABELS: Record<FitSectionRole, string> = {
   high: 'High Slots',
   mid: 'Mid Slots',
@@ -498,6 +502,34 @@ const ROLE_LABELS: Record<FitSectionRole, string> = {
   extras: 'Cargo / Extras',
   unmatched: 'Unmatched',
 };
+
+function ringAngle(roleIndex: number, itemIndex: number, itemCount: number): number {
+  const arcs = [
+    { start: 218, end: 318 },
+    { start: 322, end: 52 },
+    { start: 56, end: 138 },
+    { start: 142, end: 214 },
+    { start: 20, end: 160 },
+  ];
+  const arc = arcs[roleIndex % arcs.length];
+  const span = arc.end >= arc.start ? arc.end - arc.start : (360 - arc.start) + arc.end;
+  const step = itemCount <= 1 ? span / 2 : span / Math.max(1, itemCount - 1);
+  return (arc.start + step * itemIndex) % 360;
+}
+
+function StatPanel({ title, rows }: { title: string; rows: [string, string][] }) {
+  return (
+    <section className="eveship-stat-panel">
+      <h3>{title}</h3>
+      {rows.map(([label, value], index) => (
+        <div key={`${title}-${index}`}>
+          <span>{label}</span>
+          {value && <strong>{value}</strong>}
+        </div>
+      ))}
+    </section>
+  );
+}
 
 function editorDocumentFromSavedFit(fit: SavedFitDetail): FitsV2EditorDocument {
   const lineCharges = new Map<string, AssignedFitItem>();

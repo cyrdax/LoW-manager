@@ -37,7 +37,6 @@ import {
 } from '../api.ts';
 import { DoctrinesView } from './DoctrinesView.tsx';
 import { FitModeSwitch, type FitMode } from './FitModeSwitch.tsx';
-import { FitsV2View } from './FitsV2View.tsx';
 import { LibraryScopeSwitch } from './LibraryScopeSwitch.tsx';
 import type { AppRoute } from '../app-routes.ts';
 
@@ -48,7 +47,6 @@ interface Props {
   routeFitId: number | null;
   routeDoctrineId: number | null;
   onOpenFitRoute: (id: number) => void;
-  onOpenFitV2Route: (id: number) => void;
   onOpenDoctrineRoute: (id: number) => void;
   onModeRoute: (mode: FitMode) => void;
 }
@@ -96,17 +94,22 @@ function iconUrl(typeId: number): string {
   return `https://images.evetech.net/types/${typeId}/icon?size=64`;
 }
 
-export function FitsView({ chars, currentUser, route, routeFitId, routeDoctrineId, onOpenFitRoute, onOpenFitV2Route, onOpenDoctrineRoute, onModeRoute }: Props) {
+function storedFitMode(): FitMode {
+  const value = localStorage.getItem(FITS_MODE_KEY);
+  return value === 'doctrines' ? 'doctrines' : 'fits';
+}
+
+export function FitsView({ chars, currentUser, route, routeFitId, routeDoctrineId, onOpenFitRoute, onOpenDoctrineRoute, onModeRoute }: Props) {
   const anonymous = !currentUser;
   const routeMode = route.view === 'fits' ? route.mode : undefined;
-  const [mode, setMode] = useState<FitMode>(() => routeMode ?? ((localStorage.getItem(FITS_MODE_KEY) as FitMode) || 'fits'));
+  const [mode, setMode] = useState<FitMode>(() => routeMode ?? storedFitMode());
   const [visibility, setVisibility] = useState<LibraryVisibility>(() => (localStorage.getItem(FITS_VISIBILITY_KEY) as LibraryVisibility) || 'private');
   const effectiveVisibility = anonymous ? 'public' : visibility;
   useEffect(() => { localStorage.setItem(FITS_MODE_KEY, mode); }, [mode]);
   useEffect(() => { localStorage.setItem(FITS_VISIBILITY_KEY, visibility); }, [visibility]);
   useEffect(() => { if (anonymous && visibility !== 'public') setVisibility('public'); }, [anonymous, visibility]);
   useEffect(() => {
-    if (routeFitId != null) setMode(routeMode === 'fits-v2' ? 'fits-v2' : 'fits');
+    if (routeFitId != null) setMode('fits');
     else if (routeDoctrineId != null) setMode('doctrines');
     else if (routeMode != null) setMode(routeMode);
   }, [routeFitId, routeDoctrineId, routeMode]);
@@ -135,7 +138,6 @@ export function FitsView({ chars, currentUser, route, routeFitId, routeDoctrineI
         {currentUser ? <LibraryScopeSwitch value={visibility} onChange={setVisibility} /> : <div className="fits-public-viewer">Public viewer</div>}
       </div>
       {mode === 'doctrines' && <DoctrinesView currentUser={currentUser} visibility={effectiveVisibility} setVisibility={setVisibility} onOpenFit={openDoctrineFit} routeDoctrineId={routeDoctrineId} onOpenDoctrineRoute={onOpenDoctrineRoute} onModeRoute={onModeRoute} />}
-      {mode === 'fits-v2' && <FitsV2View chars={chars} currentUser={currentUser} visibility={effectiveVisibility} routeFitId={routeFitId} onOpenFitRoute={onOpenFitV2Route} />}
       {mode === 'fits' && <SavedFitsView chars={chars} currentUser={currentUser} visibility={effectiveVisibility} setVisibility={setVisibility} routeFitId={routeFitId} onOpenFitRoute={onOpenFitRoute} onModeRoute={onModeRoute} onOpenDoctrine={openFitDoctrine} />}
     </main>
   );

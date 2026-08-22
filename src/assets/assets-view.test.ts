@@ -229,7 +229,7 @@ test('assets view is wired into navigation between fits and market', () => {
   assert.match(app, /import \{ AssetsView \}/);
   assert.match(app, /view === 'assets'/);
   assert.match(panel, /type View = .*'assets'/s);
-  assert.match(panel, />Fits<\/button>[\s\S]*view === 'assets'[\s\S]*>Assets<\/button>[\s\S]*>Market<\/button>/);
+  assert.match(panel, />Fits<\/button>[\s\S]*>Fits v2<\/button>[\s\S]*view === 'assets'[\s\S]*>Assets<\/button>[\s\S]*>Market<\/button>/);
   assert.match(panel, />Market<\/button>[\s\S]*>Contracts<\/button>[\s\S]*>Industry<\/button>/);
 });
 

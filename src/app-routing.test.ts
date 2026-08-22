@@ -13,20 +13,22 @@ test('app routes parse top-level shareable pages', () => {
   assert.deepEqual(parseAppRoute('/contracts'), { view: 'contracts' });
   assert.deepEqual(parseAppRoute('/industry'), { view: 'industry' });
   assert.deepEqual(parseAppRoute('/planets'), { view: 'planets' });
+  assert.deepEqual(parseAppRoute('/fits-v2'), { view: 'fitsV2' });
 });
 
 test('app routes parse and format fit and doctrine deep links', () => {
   assert.deepEqual(parseAppRoute('/fits'), { view: 'fits', mode: 'fits' });
-  assert.deepEqual(parseAppRoute('/fits/v2'), { view: 'fits', mode: 'fits-v2' });
   assert.deepEqual(parseAppRoute('/fit/42'), { view: 'fits', mode: 'fits', fitId: 42 });
-  assert.deepEqual(parseAppRoute('/fit/v2/42'), { view: 'fits', mode: 'fits-v2', fitId: 42 });
+  assert.deepEqual(parseAppRoute('/fit-v2/42'), { view: 'fitsV2', fitId: 42 });
+  assert.deepEqual(parseAppRoute('/fits/v2'), { view: 'fitsV2' });
+  assert.deepEqual(parseAppRoute('/fit/v2/42'), { view: 'fitsV2', fitId: 42 });
   assert.deepEqual(parseAppRoute('/doctrines'), { view: 'fits', mode: 'doctrines' });
   assert.deepEqual(parseAppRoute('/doctrine/7'), { view: 'fits', mode: 'doctrines', doctrineId: 7 });
   assert.deepEqual(parseAppRoute('/fit/nope'), { view: 'pilots' });
 
   assert.equal(pathForRoute({ view: 'fits', mode: 'fits', fitId: 42 }), '/fit/42');
-  assert.equal(pathForRoute({ view: 'fits', mode: 'fits-v2', fitId: 42 }), '/fit/v2/42');
-  assert.equal(pathForRoute({ view: 'fits', mode: 'fits-v2' }), '/fits/v2');
+  assert.equal(pathForRoute({ view: 'fitsV2', fitId: 42 }), '/fit-v2/42');
+  assert.equal(pathForRoute({ view: 'fitsV2' }), '/fits-v2');
   assert.equal(pathForRoute({ view: 'fits', mode: 'doctrines', doctrineId: 7 }), '/doctrine/7');
   assert.equal(pathForRoute({ view: 'fits', mode: 'doctrines' }), '/doctrines');
   assert.equal(pathForRoute({ view: 'market', marketTab: 'plex' }), '/market/plex');
