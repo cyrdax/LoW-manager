@@ -21,6 +21,9 @@ test('Fits v2 shell is routed and visible as its own fits mode', () => {
   assert.match(fitsV2View, /function saveEditor\(\)/);
   assert.match(fitsV2View, /quoteDraftFit/);
   assert.match(fitsV2View, /Refresh price/);
+  assert.match(fitsV2View, /sendDraftFit/);
+  assert.match(fitsV2View, /Copy EFT/);
+  assert.match(fitsV2View, /Send Fit/);
   assert.match(fitsV2View, /renderEditorToEft/);
   assert.match(fitsV2View, /hasEditorJson/);
 });

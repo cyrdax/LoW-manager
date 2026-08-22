@@ -135,7 +135,7 @@ export function FitsView({ chars, currentUser, route, routeFitId, routeDoctrineI
         {currentUser ? <LibraryScopeSwitch value={visibility} onChange={setVisibility} /> : <div className="fits-public-viewer">Public viewer</div>}
       </div>
       {mode === 'doctrines' && <DoctrinesView currentUser={currentUser} visibility={effectiveVisibility} setVisibility={setVisibility} onOpenFit={openDoctrineFit} routeDoctrineId={routeDoctrineId} onOpenDoctrineRoute={onOpenDoctrineRoute} onModeRoute={onModeRoute} />}
-      {mode === 'fits-v2' && <FitsV2View currentUser={currentUser} visibility={effectiveVisibility} routeFitId={routeFitId} onOpenFitRoute={onOpenFitV2Route} />}
+      {mode === 'fits-v2' && <FitsV2View chars={chars} currentUser={currentUser} visibility={effectiveVisibility} routeFitId={routeFitId} onOpenFitRoute={onOpenFitV2Route} />}
       {mode === 'fits' && <SavedFitsView chars={chars} currentUser={currentUser} visibility={effectiveVisibility} setVisibility={setVisibility} routeFitId={routeFitId} onOpenFitRoute={onOpenFitRoute} onModeRoute={onModeRoute} onOpenDoctrine={openFitDoctrine} />}
     </main>
   );

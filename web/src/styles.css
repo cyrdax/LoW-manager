@@ -3709,6 +3709,22 @@ body {
 .fits-v2-price-card p.error {
   color: #ff7a7a;
 }
+.fits-v2-send-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 360px) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+}
+.fits-v2-send-controls select {
+  min-width: 0;
+}
+.fits-v2-send-controls .ok {
+  color: #4ee887;
+}
+.fits-v2-send-controls .err {
+  color: #ff7a7a;
+}
 .fits-v2-editor-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

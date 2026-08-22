@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchFit, fetchFits, quoteDraftFit, saveFit, searchFitItems, searchFitShips, updateFit, type AssignedFitItem, type CurrentUser, type FitHub, type FitItemHit, type FitQuote, type FitSectionRole, type FitShipHit, type FitsV2EditorDocument, type FitsV2EditorItem, type LibraryVisibility, type SavedFitDetail, type SavedFitSummary } from '../api.ts';
+import { fetchFit, fetchFits, quoteDraftFit, saveFit, searchFitItems, searchFitShips, sendDraftFit, type AssignedFitItem, type CharacterStatus, type CurrentUser, type FitHub, type FitItemHit, type FitQuote, type FitSectionRole, type FitShipHit, type FitsV2EditorDocument, type FitsV2EditorItem, type LibraryVisibility, type SavedFitDetail, type SavedFitSummary, updateFit } from '../api.ts';
 
 const FITS_V2_HUB_KEY = 'fits-v2-hub';
+const FITS_V2_PILOT_KEY = 'fits-v2-pilot';
 
 function formatIsk(n: number | null | undefined): string {
   if (n == null) return '-';
@@ -13,13 +14,20 @@ function formatIsk(n: number | null | undefined): string {
 }
 
 interface Props {
+  chars: CharacterStatus[];
   currentUser?: CurrentUser | null;
   visibility: LibraryVisibility;
   routeFitId: number | null;
   onOpenFitRoute: (id: number) => void;
 }
 
-export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute }: Props) {
+type SendStatus =
+  | { kind: 'idle' }
+  | { kind: 'sending' }
+  | { kind: 'sent'; fittingId: number | null; excludedCount: number }
+  | { kind: 'error'; message: string; reauthHint?: string | null };
+
+export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenFitRoute }: Props) {
   const [fits, setFits] = useState<SavedFitSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(routeFitId);
   const [detail, setDetail] = useState<SavedFitDetail | null>(null);
@@ -32,13 +40,30 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
   const [quote, setQuote] = useState<FitQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [sendStatus, setSendStatus] = useState<SendStatus>({ kind: 'idle' });
+  const [pilotId, setPilotId] = useState<number | null>(() => {
+    const raw = localStorage.getItem(FITS_V2_PILOT_KEY);
+    const parsed = raw == null ? NaN : Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  });
   const [hullQuery, setHullQuery] = useState('');
   const [hullHits, setHullHits] = useState<FitShipHit[]>([]);
   const [itemQuery, setItemQuery] = useState('');
   const [itemHits, setItemHits] = useState<FitItemHit[]>([]);
 
+  const sortedChars = useMemo(() => [...chars].sort((a, b) => a.name.localeCompare(b.name)), [chars]);
+
   useEffect(() => { setSelectedId(routeFitId); }, [routeFitId]);
   useEffect(() => { localStorage.setItem(FITS_V2_HUB_KEY, hub); }, [hub]);
+  useEffect(() => {
+    if (pilotId != null) localStorage.setItem(FITS_V2_PILOT_KEY, String(pilotId));
+  }, [pilotId]);
+  useEffect(() => {
+    if (sortedChars.length === 0) return;
+    if (pilotId == null || !sortedChars.some(char => char.characterId === pilotId)) {
+      setPilotId(sortedChars[0].characterId);
+    }
+  }, [sortedChars, pilotId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,6 +97,7 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
         setFitName(nextEditor.fitName);
         setQuote(null);
         setQuoteError(null);
+        setSendStatus({ kind: 'idle' });
         setStatus(null);
       }
     });
@@ -122,6 +148,7 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
     setFitName(nextEditor.fitName);
     setQuote(null);
     setQuoteError(null);
+    setSendStatus({ kind: 'idle' });
     setStatus(null);
     setSaveStatus(null);
   }
@@ -146,6 +173,7 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
     setEditor({ ...editor, items: [...editor.items, nextItem] });
     setQuote(null);
     setQuoteError(null);
+    setSendStatus({ kind: 'idle' });
     setSaveStatus(null);
   }
 
@@ -154,6 +182,7 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
     setEditor({ ...editor, items: editor.items.filter(item => item.editorItemId !== editorItemId) });
     setQuote(null);
     setQuoteError(null);
+    setSendStatus({ kind: 'idle' });
   }
 
   function updateQuantity(editorItemId: string, quantity: number) {
@@ -164,6 +193,7 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
     });
     setQuote(null);
     setQuoteError(null);
+    setSendStatus({ kind: 'idle' });
   }
 
   async function refreshQuote() {
@@ -183,6 +213,29 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
       return;
     }
     setQuote(result);
+  }
+
+  async function copyEft() {
+    if (!editor) return;
+    const namedEditor = { ...editor, fitName: fitName.trim() || editor.fitName };
+    await navigator.clipboard.writeText(renderEditorToEft(namedEditor));
+    setSaveStatus('Copied EFT.');
+  }
+
+  async function sendToPilot() {
+    if (!editor || pilotId == null) return;
+    const namedEditor = { ...editor, fitName: fitName.trim() || editor.fitName };
+    setSendStatus({ kind: 'sending' });
+    const result = await sendDraftFit(renderEditorToEft(namedEditor), pilotId, {
+      shipTypeId: editor.hull.typeId,
+      fitName: namedEditor.fitName,
+      notes: namedEditor.notes,
+    });
+    if ('error' in result) {
+      setSendStatus({ kind: 'error', message: result.error, reauthHint: result.reauthHint });
+      return;
+    }
+    setSendStatus({ kind: 'sent', fittingId: result.fittingId, excludedCount: result.excludedCount });
   }
 
   async function saveEditor() {
@@ -286,6 +339,7 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
         {editor && (
           <div className="fits-v2-editor-actions">
             <button onClick={saveEditor} disabled={saving}>{saving ? 'Saving...' : detail ? 'Save changes' : 'Save fit'}</button>
+            <button type="button" onClick={copyEft}>Copy EFT</button>
             <div className="fits-v2-hubs">
               {(['jita', 'amarr'] as const).map(nextHub => (
                 <button key={nextHub} type="button" className={hub === nextHub ? 'active' : ''} onClick={() => setHub(nextHub)}>
@@ -295,6 +349,29 @@ export function FitsV2View({ currentUser, visibility, routeFitId, onOpenFitRoute
             </div>
             <button type="button" onClick={refreshQuote} disabled={quoteLoading}>{quoteLoading ? 'Pricing...' : 'Refresh price'}</button>
             {saveStatus && <span>{saveStatus}</span>}
+          </div>
+        )}
+        {editor && (
+          <div className="fits-v2-send-controls">
+            {currentUser ? (
+              <>
+                <select value={pilotId ?? ''} onChange={event => setPilotId(Number(event.target.value) || null)}>
+                  {sortedChars.length === 0 && <option value="">No pilots</option>}
+                  {sortedChars.map(char => (
+                    <option key={char.characterId} value={char.characterId}>
+                      {char.name}{char.needsReauth ? ' (needs re-auth)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" onClick={sendToPilot} disabled={pilotId == null || sendStatus.kind === 'sending'}>
+                  {sendStatus.kind === 'sending' ? 'Sending...' : 'Send Fit'}
+                </button>
+              </>
+            ) : (
+              <button type="button" onClick={() => window.open('/auth/login', '_blank', 'width=560,height=720')}>Log in to send to a pilot</button>
+            )}
+            {sendStatus.kind === 'sent' && <span className="ok">Fitting #{sendStatus.fittingId ?? 'created'} - {sendStatus.excludedCount} excluded</span>}
+            {sendStatus.kind === 'error' && <span className="err">{sendStatus.message}{sendStatus.reauthHint ? ` - ${sendStatus.reauthHint}` : ''}</span>}
           </div>
         )}
         {editor && (
