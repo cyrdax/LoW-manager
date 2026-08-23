@@ -40,3 +40,16 @@ test('Fits v2 shell is routed and visible as a standalone app view', () => {
   assert.match(fitsV2View, /renderEditorToEft/);
   assert.match(fitsV2View, /hasEditorJson/);
 });
+
+test('Fits v2 left panel controls are wired to fitting actions', () => {
+  const fitsV2View = readFileSync(resolve('web/src/components/FitsV2View.tsx'), 'utf8');
+
+  assert.match(fitsV2View, /leftTab, setLeftTab/);
+  assert.match(fitsV2View, /setLeftTab\('hulls'\)/);
+  assert.match(fitsV2View, /setLeftTab\('hardware'\)/);
+  assert.match(fitsV2View, /hardwareRole, setHardwareRole/);
+  assert.match(fitsV2View, /setHardwareRole\(button\.role\)/);
+  assert.match(fitsV2View, /className=\{`eveship-hardware-button/);
+  assert.match(fitsV2View, /const role = hardwareRole \?\? hit\.role \?\? firstAvailableSlotRole\(editor\)/);
+  assert.match(fitsV2View, /aria-label=\{`Add \$\{hit\.name\} to fit`\}/);
+});

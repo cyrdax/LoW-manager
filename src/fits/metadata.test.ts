@@ -49,10 +49,18 @@ describe('fit metadata', () => {
   it('searches fit items with prefix matches and slot role hints', () => {
     const hits = searchFitItems('Siege Module', 5);
     assert.equal(hits[0]?.name, 'Siege Module I');
-    assert.equal(hits.some(hit => hit.name === 'Siege Module II' && hit.role === null), true);
+    assert.equal(hits.some(hit => hit.name === 'Siege Module II' && hit.role === 'high'), true);
 
     const fighters = searchFitItems('Templar II', 5);
     assert.equal(fighters[0]?.role, 'fighterBay');
+  });
+
+  it('infers fitted module slot roles from common module groups', () => {
+    assert.equal(searchFitItems('Drone Damage Amplifier II', 1)[0]?.role, 'low');
+    assert.equal(searchFitItems('Capital Cap Battery II', 1)[0]?.role, 'mid');
+    assert.equal(searchFitItems('Tracking Computer II', 1)[0]?.role, 'mid');
+    assert.equal(searchFitItems('Heavy Assault Missile Launcher II', 1)[0]?.role, 'high');
+    assert.equal(searchFitItems('Capital Capacitor Control Circuit I', 1)[0]?.role, 'rig');
   });
 
   it('indexes every published Fuzzwork item ID even when names collide', () => {

@@ -108,7 +108,86 @@ export function classifyFitItem(item: FitItem | null): FitSectionRole | null {
   if (group.includes('subsystem')) return 'subsystem';
   if (group.includes('service module') || group.includes('structure service')) return 'service';
   if (category === 'charge' || category === 'implant' || group === 'booster') return 'extras';
+  if (category === 'module') {
+    if (group.startsWith('rig ') || group === 'rig') return 'rig';
+    if (isHighSlotGroup(group)) return 'high';
+    if (isMidSlotGroup(group)) return 'mid';
+    if (isLowSlotGroup(group)) return 'low';
+  }
   return null;
+}
+
+function isHighSlotGroup(group: string): boolean {
+  return [
+    'bomb launcher',
+    'cloaking device',
+    'command burst',
+    'energy neutralizer',
+    'energy nosferatu',
+    'fighter support unit',
+    'festival launcher',
+    'integrated sensor array',
+    'missile launcher',
+    'probe launcher',
+    'siege module',
+    'smart bomb',
+    'super weapon',
+    'turret',
+    'weapon disruption burst projector',
+  ].some(token => group.includes(token));
+}
+
+function isMidSlotGroup(group: string): boolean {
+  return [
+    'afterburner',
+    'capacitor battery',
+    'capacitor booster',
+    'capacitor recharger',
+    'ecm',
+    'micro jump drive',
+    'microwarpdrive',
+    'propulsion module',
+    'remote sensor booster',
+    'scan acquisition array',
+    'scan pinpointing array',
+    'scan rangefinding array',
+    'sensor booster',
+    'shield booster',
+    'shield extender',
+    'shield hardener',
+    'shield resistance amplifier',
+    'stasis web',
+    'target painter',
+    'tracking computer',
+    'warp disrupt',
+    'warp scrambler',
+  ].some(token => group.includes(token));
+}
+
+function isLowSlotGroup(group: string): boolean {
+  return [
+    'armor hardener',
+    'armor repair',
+    'capacitor flux coil',
+    'capacitor power relay',
+    'co-processor',
+    'damage control',
+    'drone damage modules',
+    'energized armor',
+    'gyrostabilizer',
+    'heat sink',
+    'inertial stabilizer',
+    'magnetic field stabilizer',
+    'nanofiber',
+    'power diagnostic',
+    'reactive armor hardener',
+    'reactor control',
+    'reinforced bulkhead',
+    'shield power relay',
+    'signal amplifier',
+    'tracking enhancer',
+    'warp core stabilizer',
+  ].some(token => group.includes(token));
 }
 
 function getCache(): MetadataCache {

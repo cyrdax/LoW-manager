@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { fetchFit, fetchFits, quoteDraftFit, saveFit, searchFitItems, searchFitShips, sendDraftFit, type AssignedFitItem, type CharacterStatus, type CurrentUser, type FitHub, type FitItemHit, type FitQuote, type FitSectionRole, type FitShipHit, type FitsV2EditorDocument, type FitsV2EditorItem, type LibraryVisibility, type SavedFitDetail, type SavedFitSummary, updateFit } from '../api.ts';
 
 const FITS_V2_HUB_KEY = 'fits-v2-hub';
@@ -27,11 +27,15 @@ type SendStatus =
   | { kind: 'sent'; fittingId: number | null; excludedCount: number }
   | { kind: 'error'; message: string; reauthHint?: string | null };
 
+type LeftTab = 'hulls' | 'hardware';
+
 export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenFitRoute }: Props) {
+  const fitNameInputRef = useRef<HTMLInputElement | null>(null);
   const [fits, setFits] = useState<SavedFitSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(routeFitId);
   const [detail, setDetail] = useState<SavedFitDetail | null>(null);
   const [editor, setEditor] = useState<FitsV2EditorDocument | null>(null);
+  const [leftTab, setLeftTab] = useState<LeftTab>('hulls');
   const [fitName, setFitName] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
@@ -50,6 +54,7 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
   const [hullHits, setHullHits] = useState<FitShipHit[]>([]);
   const [itemQuery, setItemQuery] = useState('');
   const [itemHits, setItemHits] = useState<FitItemHit[]>([]);
+  const [hardwareRole, setHardwareRole] = useState<FitSectionRole | null>(null);
 
   const sortedChars = useMemo(() => [...chars].sort((a, b) => a.name.localeCompare(b.name)), [chars]);
 
@@ -131,6 +136,7 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
   function openFit(id: number) {
     setSelectedId(id);
     onOpenFitRoute(id);
+    setLeftTab('hardware');
   }
 
   function startHull(hit: FitShipHit) {
@@ -151,6 +157,9 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
     setSendStatus({ kind: 'idle' });
     setStatus(null);
     setSaveStatus(null);
+    setLeftTab('hardware');
+    setItemQuery('');
+    setItemHits([]);
   }
 
   function addItem(hit: FitItemHit) {
@@ -158,7 +167,7 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
       setSaveStatus('Choose a hull before adding items.');
       return;
     }
-    const role = hit.role ?? firstAvailableSlotRole(editor);
+    const role = hardwareRole ?? hit.role ?? firstAvailableSlotRole(editor);
     const nextItem: FitsV2EditorItem = {
       editorItemId: `${Date.now()}-${hit.id}`,
       typeId: hit.id,
@@ -175,6 +184,11 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
     setQuoteError(null);
     setSendStatus({ kind: 'idle' });
     setSaveStatus(null);
+  }
+
+  function focusFitName() {
+    fitNameInputRef.current?.focus();
+    fitNameInputRef.current?.select();
   }
 
   function removeItem(editorItemId: string) {
@@ -305,63 +319,84 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
 
       <aside className="eveship-left">
         <div className="eveship-tabs" role="tablist" aria-label="Fits v2 library">
-          <button type="button" className="active">Hull &amp; Fits</button>
-          <button type="button">Hardware</button>
+          <button type="button" className={leftTab === 'hulls' ? 'active' : ''} onClick={() => setLeftTab('hulls')}>Hull &amp; Fits</button>
+          <button type="button" className={leftTab === 'hardware' ? 'active' : ''} onClick={() => setLeftTab('hardware')}>Hardware</button>
         </div>
-        <input
-          className="eveship-search"
-          value={hullQuery}
-          onChange={event => setHullQuery(event.target.value)}
-          placeholder="Search hulls to start"
-        />
-        <div className="eveship-icon-row" aria-hidden="true">
-          <span>▰</span><span>●</span><span>✪</span><span>✣</span><span>♜</span>
-        </div>
-        <div className="eveship-tree">
-          {hullHits.length > 0 ? hullHits.slice(0, 12).map(hit => (
-            <button key={hit.id} type="button" className="eveship-tree-row" onClick={() => startHull(hit)}>
-              <span className="twisty">▸</span>
-              <span>{hit.name}</span>
-              <small>{hit.groupName}</small>
-            </button>
-          )) : fitGroups.length > 0 ? fitGroups.map(group => (
-            <details key={group} open={group === activeShipName}>
-              <summary>{group}</summary>
-              {fits.filter(fit => fit.shipName === group).map(fit => (
-                <button key={fit.id} className={fit.id === selectedId ? 'active' : ''} type="button" onClick={() => openFit(fit.id)}>
-                  <img src={`https://images.evetech.net/types/${fit.shipTypeId}/icon?size=32`} alt="" />
-                  <span>{fit.fitName}</span>
-                  {fit.hasEditorJson && <em>v2</em>}
+        {leftTab === 'hulls' ? (
+          <>
+            <input
+              className="eveship-search"
+              value={hullQuery}
+              onChange={event => setHullQuery(event.target.value)}
+              placeholder="Search hulls to start"
+            />
+            <div className="eveship-tree">
+              {hullHits.length > 0 ? hullHits.slice(0, 12).map(hit => (
+                <button key={hit.id} type="button" className="eveship-tree-row" onClick={() => startHull(hit)}>
+                  <span className="twisty">▸</span>
+                  <span>{hit.name}</span>
+                  <small>{hit.groupName}</small>
+                </button>
+              )) : fitGroups.length > 0 ? fitGroups.map(group => (
+                <details key={group} open={group === activeShipName}>
+                  <summary>{group}</summary>
+                  {fits.filter(fit => fit.shipName === group).map(fit => (
+                    <button key={fit.id} className={fit.id === selectedId ? 'active' : ''} type="button" onClick={() => openFit(fit.id)}>
+                      <img src={`https://images.evetech.net/types/${fit.shipTypeId}/icon?size=32`} alt="" />
+                      <span>{fit.fitName}</span>
+                      {fit.hasEditorJson && <em>v2</em>}
+                    </button>
+                  ))}
+                </details>
+              )) : (
+                <div className="empty">Search for a hull to begin.</div>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="eveship-icon-row" aria-label="Hardware slot target">
+              {HARDWARE_BUTTONS.map(button => (
+                <button
+                  key={button.label}
+                  type="button"
+                  className={`eveship-hardware-button${hardwareRole === button.role ? ' active' : ''}`}
+                  title={button.title}
+                  onClick={() => setHardwareRole(button.role)}
+                >
+                  <span aria-hidden="true">{button.symbol}</span>
+                  <small>{button.label}</small>
                 </button>
               ))}
-            </details>
-          )) : (
-            <div className="empty">Search for a hull to begin.</div>
-          )}
-        </div>
-
-        <input
-          className="eveship-search hardware-search"
-          value={itemQuery}
-          onChange={event => setItemQuery(event.target.value)}
-          placeholder="Search modules, drones, cargo"
-        />
-        {itemHits.length > 0 && (
+            </div>
+            <input
+              className="eveship-search hardware-search"
+              value={itemQuery}
+              onChange={event => setItemQuery(event.target.value)}
+              placeholder="Search modules, drones, cargo"
+            />
           <div className="eveship-hardware-results">
-            {itemHits.slice(0, 8).map(hit => (
-              <button key={hit.id} type="button" onClick={() => addItem(hit)}>
-                <span>{hit.name}</span>
-                <small>{hit.categoryName} / {hit.groupName}{hit.role ? ` / ${hit.role}` : ''}</small>
-              </button>
-            ))}
+              {!editor ? (
+                <div className="empty">Choose a hull before adding hardware.</div>
+              ) : itemQuery.trim().length < 2 ? (
+                <div className="empty">Search for modules, drones, cargo, or charges.</div>
+              ) : itemHits.length > 0 ? itemHits.slice(0, 16).map(hit => (
+                <button key={hit.id} type="button" aria-label={`Add ${hit.name} to fit`} onClick={() => addItem(hit)}>
+                  <span>{hit.name}</span>
+                  <small>{hit.categoryName} / {hit.groupName}{hit.role ? ` / ${ROLE_LABELS[hit.role]}` : ''}</small>
+                </button>
+              )) : (
+                <div className="empty">No matching hardware found.</div>
+              )}
           </div>
+          </>
         )}
 
         <div className="eveship-actions">
           <button type="button" onClick={saveEditor} disabled={!editor || saving}>{saving ? 'Saving...' : detail ? 'Save changes' : 'Save'}</button>
           <button type="button" onClick={copyEft} disabled={!editor}>Copy EFT</button>
           <button type="button" onClick={refreshQuote} disabled={!editor || quoteLoading}>{quoteLoading ? 'Pricing...' : 'Refresh price'}</button>
-          <button type="button" disabled={!editor}>Rename</button>
+          <button type="button" onClick={focusFitName} disabled={!editor}>Rename</button>
         </div>
       </aside>
 
@@ -369,7 +404,7 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
         <div className="eveship-fit-name">
           <label>Name</label>
           {editor
-            ? <input value={fitName} onChange={event => setFitName(event.target.value)} aria-label="Fit name" />
+            ? <input ref={fitNameInputRef} value={fitName} onChange={event => setFitName(event.target.value)} aria-label="Fit name" />
             : <strong>{fitTitle}</strong>}
         </div>
 
@@ -490,6 +525,14 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
 
 const EDITOR_ROLE_ORDER: FitSectionRole[] = ['high', 'mid', 'low', 'rig', 'subsystem', 'service', 'droneBay', 'fighterBay', 'extras'];
 const RING_ROLE_ORDER: FitSectionRole[] = ['high', 'mid', 'low', 'rig', 'subsystem'];
+const HARDWARE_BUTTONS: { label: string; symbol: string; role: FitSectionRole | null; title: string }[] = [
+  { label: 'All', symbol: '◆', role: null, title: 'Add items to their detected slot' },
+  { label: 'High', symbol: '▰', role: 'high', title: 'Add search results as high-slot modules' },
+  { label: 'Mid', symbol: '●', role: 'mid', title: 'Add search results as mid-slot modules' },
+  { label: 'Low', symbol: '✪', role: 'low', title: 'Add search results as low-slot modules' },
+  { label: 'Rig', symbol: '✣', role: 'rig', title: 'Add search results as rigs' },
+  { label: 'Cargo', symbol: '♜', role: 'extras', title: 'Add search results to cargo and extras' },
+];
 const ROLE_LABELS: Record<FitSectionRole, string> = {
   high: 'High Slots',
   mid: 'Mid Slots',
