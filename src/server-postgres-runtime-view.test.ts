@@ -11,12 +11,17 @@ test('server wires Postgres stores into runtime pilot and skill-plan paths', () 
   assert.match(server, /createPostgresFitStore/);
   assert.match(server, /createPostgresAssetSnapshotStore/);
   assert.match(server, /createPostgresSavedSkillPlanStore/);
+  assert.match(server, /const userStore = createUserStore\(\)/);
+  assert.match(server, /const sessionStore = createSessionStore\(\)/);
+  assert.match(server, /const oauthStateStore = createOAuthStateStore\(\)/);
+  assert.match(server, /const eveAccountAuth = createEveAccountAuthService\(\)/);
   assert.match(server, /serverListenOptionsFromEnv/);
   assert.match(server, /cookieSecretFromEnv/);
   assert.match(server, /secureCookiesFromEnv/);
   assert.match(server, /setPilotAccessCharacterStore\(characterStore\)/);
   assert.match(server, /setAccessTokenCharacterStore\(characterStore\)/);
-  assert.match(server, /registerSsoRoutes\(app, \{ characters: characterStore \}\)/);
+  assert.match(server, /registerAppAuthRoutes\(app, \{[\s\S]*users: userStore,[\s\S]*sessions: sessionStore/);
+  assert.match(server, /registerSsoRoutes\(app, \{[\s\S]*characters: characterStore,[\s\S]*users: userStore,[\s\S]*sessions: sessionStore,[\s\S]*oauthStates: oauthStateStore,[\s\S]*eveAccounts: eveAccountAuth/);
   assert.match(server, /registerCharacterRoutes\(app, \{ characters: characterStore \}\)/);
   assert.match(server, /registerStreamRoute\(app, \{ characters: characterStore \}\)/);
   assert.match(server, /registerSkillsRoutes\(app, \{ savedPlans: savedSkillPlans \}\)/);

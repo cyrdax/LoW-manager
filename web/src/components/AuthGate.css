@@ -1,0 +1,55 @@
+.auth-provider-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-provider-actions .google-auth-button,
+.auth-provider-actions .eve-auth-button {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: center;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.eve-auth-button {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #2d7891;
+  border-radius: 4px;
+  background: linear-gradient(105deg, #0d1b25 0%, #102d3a 70%, #143b49 100%);
+  color: #dcf8ff;
+  letter-spacing: 0.025em;
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.eve-auth-button::before {
+  content: '';
+  position: absolute;
+  inset: 7px auto 7px 0;
+  width: 2px;
+  background: #55d9f3;
+  box-shadow: 0 0 10px rgba(85, 217, 243, 0.55);
+}
+
+.eve-auth-button:hover {
+  border-color: #65dff5;
+  background: linear-gradient(105deg, #102430 0%, #153746 70%, #194858 100%);
+  color: #ffffff;
+}
+
+.auth-provider-actions a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eve-auth-button {
+    transition: none;
+  }
+}

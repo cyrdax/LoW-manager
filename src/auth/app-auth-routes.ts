@@ -1,15 +1,19 @@
-import { createHash } from 'node:crypto';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { z } from 'zod';
 import { createAppTokenStore, type AppTokenStore } from './app-token-store.ts';
 import { readSessionToken, SESSION_COOKIE } from './current-user.ts';
 import { createAuthMailerFromEnv } from './mailer.ts';
 import { hashPassword as hashPasswordDefault, verifyPassword as verifyPasswordDefault } from './password.ts';
+import {
+  clearSessionCookie,
+  safeLocalReturnTo,
+  sessionMetadataForRequest,
+  setSessionCookie,
+} from './session-http.ts';
 import { createSessionStore, type SessionStore } from './session-store.ts';
 import { createUserStore, type AppUser, type UserStore } from './user-store.ts';
 
-const SESSION_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 const GOOGLE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -105,13 +109,10 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
     if (found.user.status !== 'active') return reply.code(403).send({ error: 'account_not_active' });
     if (!found.user.emailVerifiedAt) return reply.code(403).send({ error: 'email_not_verified' });
 
-    const issued = await sessions.create(found.user.id, {
-      ipHash: hashOptional(req.ip),
-      userAgentHash: hashOptional(req.headers['user-agent']),
-    });
+    const issued = await sessions.create(found.user.id, sessionMetadataForRequest(req));
     if (!issued) return reply.code(403).send({ error: 'account_not_active' });
 
-    setSessionCookie(reply, cookieName, issued.token, secureCookies);
+    setSessionCookie(reply, issued.token, { cookieName, secure: secureCookies });
     await users.markActive(found.user.id);
     return { user: publicUser(found.user) };
   });
@@ -154,13 +155,10 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
     });
     if (user.status !== 'active') return reply.code(403).send({ error: 'account_not_active' });
 
-    const issued = await sessions.create(user.id, {
-      ipHash: hashOptional(req.ip),
-      userAgentHash: hashOptional(req.headers['user-agent']),
-    });
+    const issued = await sessions.create(user.id, sessionMetadataForRequest(req));
     if (!issued) return reply.code(403).send({ error: 'account_not_active' });
 
-    setSessionCookie(reply, cookieName, issued.token, secureCookies);
+    setSessionCookie(reply, issued.token, { cookieName, secure: secureCookies });
     await users.markActive(user.id);
     return reply.redirect(safeLocalReturnTo(consumed.metadata.returnTo));
   });
@@ -168,7 +166,7 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
   app.post('/api/auth/logout', async (req, reply) => {
     const token = readSessionToken(req, cookieName);
     if (token) await sessions.revoke(token);
-    clearSessionCookie(reply, cookieName, secureCookies);
+    clearSessionCookie(reply, { cookieName, secure: secureCookies });
     return { ok: true };
   });
 
@@ -178,7 +176,7 @@ export function registerAppAuthRoutes(app: FastifyInstance, deps: AppAuthRouteDe
 
     const found = await sessions.findByToken(token);
     if (!found) {
-      clearSessionCookie(reply, cookieName, secureCookies);
+      clearSessionCookie(reply, { cookieName, secure: secureCookies });
       return { user: null };
     }
 
@@ -330,49 +328,8 @@ function publicUser(user: AppUser) {
   };
 }
 
-function setSessionCookie(reply: FastifyReply, cookieName: string, token: string, secure: boolean): void {
-  reply.setCookie(cookieName, token, {
-    path: '/',
-    httpOnly: true,
-    sameSite: 'lax',
-    secure,
-    signed: true,
-    maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
-  });
-}
-
-function clearSessionCookie(reply: FastifyReply, cookieName: string, secure: boolean): void {
-  reply.clearCookie(cookieName, {
-    path: '/',
-    httpOnly: true,
-    sameSite: 'lax',
-    secure,
-  });
-}
-
-function hashOptional(value: string | string[] | undefined): string | null {
-  if (!value) return null;
-  const normalized = Array.isArray(value) ? value.join(',') : value;
-  return createHash('sha256').update(normalized).digest('hex');
-}
-
 function defaultAppBaseUrl(): string {
   return process.env.APP_BASE_URL ?? `http://localhost:${process.env.PORT ?? 3100}`;
-}
-
-function safeLocalReturnTo(value: unknown): string {
-  if (typeof value !== 'string') return '/';
-  const trimmed = value.trim();
-  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return '/';
-
-  try {
-    const base = 'https://outfit.local';
-    const url = new URL(trimmed, base);
-    if (url.origin !== base || url.pathname.startsWith('/auth/')) return '/';
-    return `${url.pathname}${url.search}${url.hash}` || '/';
-  } catch {
-    return '/';
-  }
 }
 
 function isUniqueViolation(err: unknown): boolean {

@@ -6,9 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { registerAppAuthRoutes } from './auth/app-auth-routes.ts';
+import { createEveAccountAuthService } from './auth/eve-account-auth.ts';
+import { createOAuthStateStore } from './auth/oauth-state-store.ts';
 import { setPilotAccessCharacterStore } from './auth/pilot-access.ts';
+import { createSessionStore } from './auth/session-store.ts';
 import { registerSsoRoutes } from './auth/sso.ts';
 import { setAccessTokenCharacterStore } from './auth/tokens.ts';
+import { createUserStore } from './auth/user-store.ts';
 import { createPostgresCharacterStore } from './characters/store.ts';
 import { registerCharacterRoutes } from './routes/characters.ts';
 import { registerFleetRoutes } from './routes/fleet.ts';
@@ -45,14 +49,30 @@ const savedSkillPlans = createPostgresSavedSkillPlanStore();
 const fitStore = createPostgresFitStore();
 const doctrineStore = createPostgresDoctrineStore(undefined, { fitStore });
 const assetSnapshotStore = createPostgresAssetSnapshotStore();
+const userStore = createUserStore();
+const sessionStore = createSessionStore();
+const oauthStateStore = createOAuthStateStore();
+const eveAccountAuth = createEveAccountAuthService();
+const secureCookies = secureCookiesFromEnv();
 
 setPilotAccessCharacterStore(characterStore);
 setAccessTokenCharacterStore(characterStore);
 
 await app.register(cookie, { secret: cookieSecretFromEnv() });
 
-registerAppAuthRoutes(app, { secureCookies: secureCookiesFromEnv() });
-registerSsoRoutes(app, { characters: characterStore });
+registerAppAuthRoutes(app, {
+  users: userStore,
+  sessions: sessionStore,
+  secureCookies,
+});
+registerSsoRoutes(app, {
+  characters: characterStore,
+  users: userStore,
+  sessions: sessionStore,
+  oauthStates: oauthStateStore,
+  eveAccounts: eveAccountAuth,
+  secureCookies,
+});
 registerCharacterRoutes(app, { characters: characterStore });
 registerFleetRoutes(app);
 registerStreamRoute(app, { characters: characterStore });

@@ -215,7 +215,7 @@ test('PostgresCharacterStore updates refreshed tokens and marks reauth state', a
   assert.equal(await store.markNeedsReauth(999), false);
 });
 
-test('PostgresCharacterStore deletes snapshots before changing character ownership', async () => {
+test('PostgresCharacterStore rejects cross-account and changed-owner authorization', async () => {
   const client = new FakeClient();
   const store = createPostgresCharacterStore(client, {
     now: () => new Date('2026-07-11T12:00:00Z'),
@@ -233,13 +233,23 @@ test('PostgresCharacterStore deletes snapshots before changing character ownersh
 
   await store.upsertAuthorized({ ...authorization, userId: 'user-a' });
   client.queries = [];
-  await store.upsertAuthorized({ ...authorization, userId: 'user-b' });
+  await assert.rejects(
+    store.upsertAuthorized({ ...authorization, userId: 'user-b' }),
+    /character_linked_elsewhere/,
+  );
+  await assert.rejects(
+    store.upsertAuthorized({ ...authorization, userId: 'user-a', ownerHash: 'owner-b' }),
+    /eve_owner_mismatch/,
+  );
 
-  const deleteIndex = client.queries.findIndex(query => query.text.includes('DELETE FROM asset_snapshots'));
-  const upsertIndex = client.queries.findIndex(query => query.text.includes('INSERT INTO characters'));
-  assert.ok(deleteIndex >= 0);
-  assert.ok(upsertIndex > deleteIndex);
-  assert.deepEqual(client.queries[deleteIndex].params, [101, 'user-b']);
+  assert.equal(client.rows.get(101)?.user_id, 'user-a');
+  assert.equal(client.rows.get(101)?.owner_hash, 'owner-a');
+  const conflictSql = client.queries
+    .filter(query => query.text.includes('INSERT INTO characters'))
+    .map(query => query.text)
+    .join('\n');
+  assert.doesNotMatch(conflictSql, /user_id\s*=\s*excluded\.user_id/);
+  assert.doesNotMatch(conflictSql, /owner_hash\s*=\s*excluded\.owner_hash/);
 });
 
 interface PgCharacterRow {

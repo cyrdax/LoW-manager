@@ -109,7 +109,7 @@ test('CharacterStore updates refreshed tokens and marks reauth state', () => {
   assert.equal(store.markNeedsReauth(999), false);
 });
 
-test('CharacterStore deletes private snapshots before transferring character ownership', () => {
+test('CharacterStore rejects cross-account and changed-owner authorization', () => {
   const db = memoryDb();
   migrateAssetSnapshotsDb(db);
   const characters = createSqliteCharacterStore(db, { now: () => 1000 });
@@ -127,9 +127,17 @@ test('CharacterStore deletes private snapshots before transferring character own
   characters.upsertAuthorized({ ...authorization, userId: 'user-a' });
   assets.recordPilotStatus('user-a', 101, 'Alpha', 'Missing asset scope', null, 1000);
 
-  const reassigned = characters.upsertAuthorized({ ...authorization, userId: 'user-b' });
+  assert.throws(
+    () => characters.upsertAuthorized({ ...authorization, userId: 'user-b' }),
+    /character_linked_elsewhere/,
+  );
+  assert.throws(
+    () => characters.upsertAuthorized({ ...authorization, userId: 'user-a', ownerHash: 'owner-b' }),
+    /eve_owner_mismatch/,
+  );
 
-  assert.equal(reassigned.user_id, 'user-b');
-  assert.deepEqual(assets.listSnapshots('user-a'), []);
+  assert.equal(characters.getById(101)?.user_id, 'user-a');
+  assert.equal(characters.getById(101)?.owner_hash, 'owner-a');
+  assert.equal((assets.listSnapshots('user-a') as Array<unknown>).length, 1);
   assert.deepEqual(assets.listSnapshots('user-b'), []);
 });

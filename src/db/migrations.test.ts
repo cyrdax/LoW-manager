@@ -120,6 +120,19 @@ test('saved fit editor json migration adds optional Fits v2 payload storage', ()
   assert.match(sql, /ADD COLUMN IF NOT EXISTS editor_json jsonb/);
 });
 
+test('EVE account identity migration keeps login identity separate from pilots', () => {
+  const sql = readFileSync(resolve('src/db/migrations/0006_user_eve_accounts.sql'), 'utf8');
+  const block = tableBlock(sql, 'user_eve_accounts');
+
+  assert.match(block, /character_id\s+bigint PRIMARY KEY/);
+  assert.match(block, /user_id\s+uuid NOT NULL REFERENCES app_users\(id\) ON DELETE CASCADE/);
+  assert.match(block, /owner_hash\s+text NOT NULL/);
+  assert.match(block, /linked_at\s+timestamptz NOT NULL/);
+  assert.match(block, /last_login_at\s+timestamptz NOT NULL/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS user_eve_accounts_user_id_idx\s+ON user_eve_accounts\(user_id\)/);
+  assert.doesNotMatch(block, /REFERENCES characters/);
+});
+
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }

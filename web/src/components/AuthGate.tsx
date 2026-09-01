@@ -7,6 +7,7 @@ import {
   signup,
   type CurrentUser,
 } from '../api.ts';
+import './AuthGate.css';
 
 type Mode = 'login' | 'signup' | 'reset';
 
@@ -24,12 +25,25 @@ export function AuthGate({ onAuthenticated }: Props) {
     const value = params.get('returnTo');
     return value && value.startsWith('/') && !value.startsWith('//') ? value : '/';
   }, []);
-  const googleStartUrl = useMemo(() => {
-    const destination = window.location.pathname.startsWith('/auth/')
-      ? returnTo
-      : `${window.location.pathname}${window.location.search}`;
-    return `/auth/google/start?${new URLSearchParams({ returnTo: destination }).toString()}`;
+  const callbackError = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('auth_error');
+    return code ? labelOAuthError(code) : null;
+  }, []);
+  const destination = useMemo(() => {
+    if (window.location.pathname.startsWith('/auth/')) return returnTo;
+    const destinationParams = new URLSearchParams(window.location.search);
+    destinationParams.delete('auth_error');
+    const query = destinationParams.toString();
+    return `${window.location.pathname}${query ? `?${query}` : ''}`;
   }, [returnTo]);
+  const googleStartUrl = useMemo(() => {
+    return `/auth/google/start?${new URLSearchParams({ returnTo: destination }).toString()}`;
+  }, [destination]);
+  const eveStartUrl = useMemo(() => `/auth/eve/start?${new URLSearchParams({
+    intent: 'account',
+    returnTo: destination,
+  }).toString()}`, [destination]);
   const [mode, setMode] = useState<Mode>(resetToken ? 'reset' : 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,7 +51,7 @@ export function AuthGate({ onAuthenticated }: Props) {
   const [token, setToken] = useState(resetToken);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(resetToken ? 'Choose a new password.' : null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(callbackError);
 
   const finishAuthenticated = (user: CurrentUser) => {
     onAuthenticated(user);
@@ -120,7 +134,10 @@ export function AuthGate({ onAuthenticated }: Props) {
         {message && <div className="auth-note">{message}</div>}
         {error && <div className="auth-error">{error}</div>}
 
-        <a className="google-auth-button" href={googleStartUrl}>Continue with Google</a>
+        <div className="auth-provider-actions" aria-label="Account providers">
+          <a className="eve-auth-button" href={eveStartUrl}>Continue with EVE</a>
+          <a className="google-auth-button" href={googleStartUrl}>Continue with Google</a>
+        </div>
 
         {mode === 'login' && (
           <form className="auth-form" onSubmit={submitLogin}>
@@ -167,5 +184,20 @@ function labelError(error: string): string {
     case 'invalid_or_expired_token': return 'That link is invalid or expired.';
     case 'account_not_active': return 'That account is not active.';
     default: return error.replaceAll('_', ' ');
+  }
+}
+
+function labelOAuthError(error: string): string {
+  switch (error) {
+    case 'eve_owner_mismatch':
+      return 'This EVE character no longer matches the account owner. Contact support to recover access.';
+    case 'character_linked_elsewhere':
+      return 'This EVE character is already linked to another account.';
+    case 'account_not_active':
+      return 'That account is not active.';
+    case 'eve_auth_failed':
+      return 'EVE authentication could not be completed. Please try again.';
+    default:
+      return 'EVE authentication could not be completed. Please try again.';
   }
 }

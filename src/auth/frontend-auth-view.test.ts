@@ -12,6 +12,7 @@ test('frontend exposes auth api helpers and gates the dashboard behind login', (
   const charsHook = readFileSync(resolve('web/src/hooks/useCharacters.ts'), 'utf8');
   const server = readFileSync(resolve('src/server.ts'), 'utf8');
   const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
+  const authGateStyles = readFileSync(resolve('web/src/components/AuthGate.css'), 'utf8');
 
   assert.match(api, /export interface CurrentUser/);
   assert.match(api, /export async function fetchCurrentUser/);
@@ -37,12 +38,21 @@ test('frontend exposes auth api helpers and gates the dashboard behind login', (
   assert.match(authGate, /Sign in/);
   assert.match(authGate, /Continue with Google/);
   assert.match(authGate, /googleStartUrl/);
+  assert.match(authGate, /const eveStartUrl = useMemo/);
+  assert.match(authGate, /\/auth\/eve\/start/);
+  assert.match(authGate, /intent: 'account'/);
+  assert.match(authGate, />Continue with EVE</);
+  assert.match(authGate, /eve_owner_mismatch/);
+  assert.match(authGate, /eve_auth_failed/);
   assert.match(authGate, /returnTo/);
   assert.match(authGate, /Forgot password\?/);
   assert.doesNotMatch(authGate, />Reset password<\/button>/);
   assert.match(authGate, /requestPasswordReset/);
   assert.match(authGate, /completePasswordReset/);
   assert.match(styles, /grid-template-columns: repeat\(2, 1fr\)/);
+  assert.match(authGateStyles, /\.auth-provider-actions/);
+  assert.match(authGateStyles, /\.eve-auth-button/);
+  assert.match(authGateStyles, /:focus-visible/);
 
   assert.match(server, /\/auth\/password\/reset/);
 });

@@ -10,9 +10,12 @@ test('pilot authorization and realtime character routes are scoped to the curren
   const stream = readFileSync(resolve('src/routes/stream.ts'), 'utf8');
 
   assert.match(db, /user_id\s+TEXT/);
-  assert.match(sso, /issue\(\{ userId: user\.id \}\)/);
+  assert.match(
+    sso,
+    /issue\(\{\s*provider: 'eve',\s*intent: 'add_pilot',\s*userId: user\.id\s*\}\)/,
+  );
   assert.match(sso, /type AsyncCharacterStore/);
-  assert.match(sso, /await characterStore\(\)\.upsertAuthorized/);
+  assert.match(sso, /await characters\(\)\.upsertAuthorized/);
 
   assert.match(characters, /createSqliteCharacterStore/);
   assert.match(characters, /type AsyncCharacterStore/);
