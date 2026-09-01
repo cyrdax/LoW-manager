@@ -1,6 +1,7 @@
 import type { ParsedFitLine, ParsedFitSection, ParsedFitText, RenderEftInput } from './types.ts';
 
 const HEADER_RE = /^\s*\[(.+)\]\s*$/;
+const EMPTY_SLOT_RE = /^\s*\[Empty (?:Low|Med|High|Rig|Service|Subsystem) slot\]\s*$/i;
 const QUANTITY_RE = /\s+x([\d,]+)\s*$/i;
 
 export function parseEftFit(rawEft: string): ParsedFitText {
@@ -10,7 +11,7 @@ export function parseEftFit(rawEft: string): ParsedFitText {
   const rawLines = normalized.split('\n');
   const headerIndexes = rawLines
     .map((line, index) => ({ line, index }))
-    .filter(({ line }) => HEADER_RE.test(line));
+    .filter(({ line }) => HEADER_RE.test(line) && !EMPTY_SLOT_RE.test(line));
   if (headerIndexes.length === 0) throw new Error('EFT fit header is required.');
   if (headerIndexes.length > 1) throw new Error('Import one fit at a time.');
 
@@ -33,7 +34,7 @@ export function parseEftFit(rawEft: string): ParsedFitText {
       current = null;
       continue;
     }
-    if (HEADER_RE.test(trimmed)) throw new Error('Import one fit at a time.');
+    if (HEADER_RE.test(trimmed) && !EMPTY_SLOT_RE.test(trimmed)) throw new Error('Import one fit at a time.');
 
     if (!current) {
       current = {

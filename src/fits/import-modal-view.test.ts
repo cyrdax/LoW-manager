@@ -31,7 +31,7 @@ test('fit import preview remains clickable and gives feedback while previewing',
   assert.match(styles, /\.fits-modal-actions \{[\s\S]*?flex: 0 0 auto;/);
 });
 
-test('fit import modal supports pyfa screenshot extraction into existing preview flow', () => {
+test('fit import modal supports Pyfa and in-game screenshot extraction into existing preview flow', () => {
   const fitsView = readFileSync(resolve('web/src/components/FitsView.tsx'), 'utf8');
   const api = readFileSync(resolve('web/src/api.ts'), 'utf8');
 
@@ -41,7 +41,9 @@ test('fit import modal supports pyfa screenshot extraction into existing preview
   assert.match(fitsView, /type ImportMode = 'eft' \| 'pyfa-image' \| 'discord'/);
   assert.match(fitsView, /const \[importMode, setImportMode\] = useState<ImportMode>\('eft'\)/);
   assert.match(fitsView, />Paste EFT</);
-  assert.match(fitsView, />pyfa Screenshot</);
+  assert.match(fitsView, />Fit Screenshot</);
+  assert.match(fitsView, /Drop a Pyfa or in-game fitting screenshot/);
+  assert.match(fitsView, /Failed to extract fit screenshot\./);
   assert.match(fitsView, /setImportText\(res\.rawEft\)/);
   assert.match(fitsView, /setImportMode\('eft'\)/);
   assert.match(fitsView, /pyfaWarnings\.map/);

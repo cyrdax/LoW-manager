@@ -1118,6 +1118,7 @@ export interface FitsV2EditorItem {
 export interface FitsV2EditorDocument {
   version: 1;
   hull: FitShip;
+  layout?: FitShipLayout | null;
   fitName: string;
   notes: string;
   skillProfile: FitsV2SkillProfile;
@@ -1210,7 +1211,18 @@ export interface FitQuote {
   fetchedAt: number;
 }
 
-export interface FitShipHit { id: number; name: string; groupId: number; groupName: string }
+export interface FitShipHit {
+  id: number;
+  name: string;
+  groupId: number;
+  groupName: string;
+  highSlots: number;
+  midSlots: number;
+  lowSlots: number;
+  rigSlots: number;
+  serviceSlots: number;
+  subsystemSlots: number;
+}
 export interface FitItemHit {
   id: number;
   name: string;

@@ -6,6 +6,17 @@ import { assertFitsV2EditorDocument, editorDocumentFromFitDraft, parseFitsV2Edit
 const document = {
   version: 1,
   hull: { typeId: 24688, name: 'Rokh', groupId: 27, groupName: 'Battleship' },
+  layout: {
+    shipTypeId: 24688,
+    shipName: 'Rokh',
+    highSlots: 8,
+    midSlots: 7,
+    lowSlots: 5,
+    rigSlots: 3,
+    serviceSlots: 0,
+    subsystemSlots: 0,
+    warnings: [],
+  },
   fitName: 'Rail Rokh',
   notes: 'line member fit',
   skillProfile: { kind: 'all-v', characterId: null, name: 'All V' },
@@ -28,12 +39,17 @@ test('Fits v2 editor document accepts the versioned editor payload', () => {
   const parsed = assertFitsV2EditorDocument(document);
   assert.equal(parsed.version, 1);
   assert.equal(parsed.hull.name, 'Rokh');
+  assert.equal(parsed.layout?.highSlots, 8);
   assert.equal(parsed.items[0].state, 'active');
 });
 
 test('Fits v2 editor document rejects invalid roles and unknown versions', () => {
   assert.equal(parseFitsV2EditorDocument({ ...document, version: 2 }), null);
   assert.equal(parseFitsV2EditorDocument({ ...document, items: [{ ...document.items[0], role: 'made-up' }] }), null);
+  assert.equal(parseFitsV2EditorDocument({
+    ...document,
+    layout: { ...document.layout, shipTypeId: 999 },
+  })?.layout, null);
 });
 
 test('serialized Fits v2 editor document round trips through JSON', () => {

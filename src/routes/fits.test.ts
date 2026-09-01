@@ -129,6 +129,12 @@ test('GET /api/fits/ships returns complete hull metadata for Fits v2', async () 
     name: 'Naglfar',
     groupId: 485,
     groupName: 'Dreadnought',
+    highSlots: 5,
+    midSlots: 4,
+    lowSlots: 8,
+    rigSlots: 3,
+    serviceSlots: 0,
+    subsystemSlots: 0,
   }]);
 });
 
@@ -236,7 +242,13 @@ test('pyfa image import route returns generated EFT text and warnings', async ()
     rawEft: [
       '[Paladin, Fabricator]',
       '',
+      '[Empty Low slot]',
+      '',
+      '[Empty Med slot]',
+      '',
       'Mega Pulse Laser II, Conflagration L',
+      '',
+      '[Empty Rig slot]',
     ].join('\n'),
     warnings: ['Visible additions may be incomplete.'],
   });

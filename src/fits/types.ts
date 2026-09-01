@@ -164,6 +164,7 @@ export interface FitsV2EditorItem {
 export interface FitsV2EditorDocument {
   version: 1;
   hull: FitShip;
+  layout?: FitShipLayout | null;
   fitName: string;
   notes: string;
   skillProfile: FitsV2SkillProfile;

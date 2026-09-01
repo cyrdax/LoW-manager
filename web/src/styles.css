@@ -4542,9 +4542,12 @@ body {
    styles without touching the original Fits page. */
 .fits-v2-view.eveship-shell {
   display: grid;
-  grid-template-columns: 420px minmax(520px, 1fr) 320px;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr) minmax(300px, 320px);
   grid-template-rows: 58px minmax(0, 1fr);
   gap: 0;
+  box-sizing: border-box;
+  width: calc(100% - 32px);
+  max-width: calc(100vw - 32px);
   min-height: calc(100vh - 32px);
   margin: 16px;
   padding: 0;
@@ -4855,11 +4858,11 @@ body {
   position: relative;
   align-self: center;
   justify-self: center;
-  width: min(68vh, 720px);
-  min-width: 470px;
+  width: min(68vh, calc(100% - 36px), 720px);
+  min-width: 0;
   aspect-ratio: 1;
   margin: 18px;
-  --ring-radius: min(31vh, 312px);
+  --ring-radius: min(31vh, 32vw, 312px);
   border-radius: 50%;
   background:
     radial-gradient(circle at center, rgba(0, 0, 0, 0) 0 28%, rgba(255, 255, 255, 0.11) 29%, rgba(255, 255, 255, 0.02) 31%, transparent 32%),
@@ -4955,6 +4958,13 @@ body {
   opacity: 0.48;
 }
 
+.ring-slot-empty span {
+  color: #bfc4ca;
+  font-size: 12px;
+  font-weight: 700;
+  transform: rotate(calc(-1 * var(--slot-angle)));
+}
+
 .ring-slot.high,
 .ring-slot-high { border-color: #b06534; }
 .ring-slot.mid,
@@ -4983,7 +4993,7 @@ body {
 
 .eveship-center-bottom {
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1.2fr);
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
   gap: 12px;
   padding: 0 18px 16px;
 }
@@ -4992,6 +5002,7 @@ body {
 .eveship-history,
 .eveship-stat-panel,
 .eveship-slot-list {
+  min-width: 0;
   background: rgba(8, 9, 10, 0.72);
   border: 1px solid #444951;
   border-radius: 3px;
@@ -5125,13 +5136,13 @@ body {
 
 @media (max-width: 1320px) {
   .fits-v2-view.eveship-shell {
-    grid-template-columns: 360px minmax(460px, 1fr) 290px;
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr) minmax(270px, 290px);
   }
 
   .fitting-ring {
-    width: min(62vh, 620px);
-    min-width: 420px;
-    --ring-radius: min(28vh, 270px);
+    width: min(62vh, calc(100% - 36px), 620px);
+    min-width: 0;
+    --ring-radius: min(28vh, 30vw, 270px);
   }
 }
 

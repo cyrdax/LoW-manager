@@ -3,7 +3,16 @@ export const DEFAULT_PYFA_IMAGE_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 export const PYFA_IMAGE_IMPORT_REQUEST_BODY_LIMIT_BYTES = 12 * 1024 * 1024;
 
 const SUPPORTED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
-const SECTION_ORDER: PyfaScreenshotSection['role'][] = ['high', 'mid', 'low', 'rig', 'service', 'subsystem', 'extras'];
+const SECTION_ORDER: PyfaCanonicalSectionRole[] = ['low', 'mid', 'high', 'rig', 'service', 'subsystem', 'extras'];
+const EFT_SLOT_SECTION_ROLES = ['low', 'mid', 'high', 'rig'] as const satisfies readonly PyfaCanonicalSectionRole[];
+const EFT_POST_RIG_SECTION_ROLES = ['service', 'subsystem', 'extras'] as const satisfies readonly PyfaCanonicalSectionRole[];
+const EMPTY_SLOT_MARKERS: Record<(typeof EFT_SLOT_SECTION_ROLES)[number], string> = {
+  low: '[Empty Low slot]',
+  mid: '[Empty Med slot]',
+  high: '[Empty High slot]',
+  rig: '[Empty Rig slot]',
+};
+const IN_GAME_EXTRA_SECTION_ROLES: PyfaScreenshotSectionRole[] = ['charges', 'implantsBoosters', 'cargoModules', 'otherItems'];
 
 export type PyfaImageMimeType = typeof SUPPORTED_MIME_TYPES[number];
 
@@ -20,8 +29,16 @@ export interface PyfaScreenshotItem {
   confidence?: number;
 }
 
+export type PyfaCanonicalSectionRole = 'high' | 'mid' | 'low' | 'rig' | 'service' | 'subsystem' | 'extras';
+export type PyfaScreenshotSectionRole =
+  | PyfaCanonicalSectionRole
+  | 'charges'
+  | 'implantsBoosters'
+  | 'cargoModules'
+  | 'otherItems';
+
 export interface PyfaScreenshotSection {
-  role: 'high' | 'mid' | 'low' | 'rig' | 'service' | 'subsystem' | 'extras';
+  role: PyfaScreenshotSectionRole;
   items: PyfaScreenshotItem[];
 }
 
@@ -54,28 +71,52 @@ export function validatePyfaImageInput(input: unknown, maxBytes = configuredMaxB
 
 export function renderPyfaExtractionToEft(extraction: PyfaScreenshotExtraction): { rawEft: string; warnings: string[] } {
   const shipName = cleanText(extraction.shipName ?? '');
-  const fitName = cleanText(extraction.fitName ?? '');
   if (!shipName) throw new Error('Could not find a ship name in the screenshot.');
-  if (!fitName) throw new Error('Could not find a fit name in the screenshot.');
+  const extractedFitName = cleanText(extraction.fitName ?? '');
+  const fitName = extractedFitName || `${shipName} screenshot import`;
+  const warnings = [...(extraction.warnings ?? [])];
+  if (!extractedFitName) warnings.push(`Fit name was not readable; using "${fitName}".`);
 
   const lines: string[] = [`[${shipName}, ${fitName}]`];
-  const sections = [...extraction.sections]
-    .filter(section => section.items.some(item => cleanText(item.name)))
-    .sort((a, b) => SECTION_ORDER.indexOf(a.role) - SECTION_ORDER.indexOf(b.role));
+  const itemsByRole = new Map<PyfaCanonicalSectionRole, PyfaScreenshotItem[]>();
+  for (const section of extraction.sections) {
+    const role = canonicalSectionRole(section.role);
+    if (!role) continue;
+    const items = section.items.filter(item => cleanText(item.name));
+    if (items.length === 0) continue;
+    itemsByRole.set(role, [...(itemsByRole.get(role) ?? []), ...items]);
+  }
+  if (itemsByRole.size === 0) throw new Error('Could not find visible fit items in the screenshot.');
 
-  if (sections.length === 0) throw new Error('Could not find visible fit items in the screenshot.');
-
-  for (const section of sections) {
+  for (const role of EFT_SLOT_SECTION_ROLES) {
     lines.push('');
-    for (const item of section.items) {
-      const rendered = renderItemLine(item);
-      if (rendered) lines.push(rendered);
+    const items = itemsByRole.get(role) ?? [];
+    if (items.length === 0) {
+      lines.push(EMPTY_SLOT_MARKERS[role]);
+      continue;
+    }
+    for (const item of items) {
+      lines.push(...renderFittedItemLines(item));
+    }
+  }
+
+  for (const role of EFT_POST_RIG_SECTION_ROLES) {
+    const items = itemsByRole.get(role) ?? [];
+    if (items.length === 0) continue;
+    lines.push('');
+    for (const item of items) {
+      if (role === 'extras') {
+        const rendered = renderItemLine(item);
+        if (rendered) lines.push(rendered);
+      } else {
+        lines.push(...renderFittedItemLines(item));
+      }
     }
   }
 
   return {
     rawEft: lines.join('\n'),
-    warnings: [...(extraction.warnings ?? [])],
+    warnings,
   };
 }
 
@@ -121,12 +162,15 @@ export function createDefaultPyfaScreenshotExtractor(): PyfaScreenshotExtractor 
 }
 
 const PYFA_IMAGE_IMPORT_PROMPT = [
-  'Extract only visible pyfa EVE fitting information from this screenshot.',
+  'Extract only visible EVE fitting information from a Pyfa or in-game fitting screenshot.',
   'Return strict JSON matching the provided schema.',
-  'Use the tab title like "Paladin: Fabricator" for shipName and fitName when visible.',
+  'For Pyfa, use the tab title like "Paladin: Fabricator" for shipName and fitName when visible.',
+  'For an in-game window headed "Ship Fitting: <ship>", use <ship> as shipName and the Fitting Name field as fitName when readable; return null when the fitting name is blank or unreadable.',
   'Import fitted rows from visible High, Med, Low, Rig, Service, and Subsystem sections.',
+  'For in-game screenshots, return Charges, Implants & Boosters, Modules, and Other Items with roles charges, implantsBoosters, cargoModules, and otherItems; preserve their visible quantities.',
   'Ignore numeric stats, prices, DPS, resources, resistances, and right-side panels.',
   'If a fitted row has a visible loaded charge, put it in loadedCharge without counts or cycle text.',
+  'Treat rows under the in-game Charges heading as cargo items, not loadedCharge values.',
   'Import only the currently visible additions tab as extras; do not guess hidden tabs.',
   'Add warnings for cropped or uncertain rows instead of inventing item names.',
 ].join(' ');
@@ -144,7 +188,7 @@ const PYFA_EXTRACTION_SCHEMA = {
         type: 'object',
         additionalProperties: false,
         properties: {
-          role: { type: 'string', enum: ['high', 'mid', 'low', 'rig', 'service', 'subsystem', 'extras'] },
+          role: { type: 'string', enum: ['high', 'mid', 'low', 'rig', 'service', 'subsystem', 'extras', 'charges', 'implantsBoosters', 'cargoModules', 'otherItems'] },
           items: {
             type: 'array',
             items: {
@@ -245,6 +289,17 @@ function renderItemLine(item: PyfaScreenshotItem): string | null {
   return loadedCharge ? `${itemName}, ${loadedCharge}${quantity}` : `${itemName}${quantity}`;
 }
 
+function renderFittedItemLines(item: PyfaScreenshotItem): string[] {
+  const itemName = cleanText(item.name);
+  if (!itemName) return [];
+  const loadedCharge = cleanLoadedCharge(item.loadedCharge);
+  const line = loadedCharge ? `${itemName}, ${loadedCharge}` : itemName;
+  const quantity = Number.isFinite(item.quantity) && item.quantity != null && item.quantity > 1
+    ? Math.floor(item.quantity)
+    : 1;
+  return Array.from({ length: quantity }, () => line);
+}
+
 function cleanLoadedCharge(value: string | null | undefined): string | null {
   const cleaned = cleanText(value ?? '').replace(/\s+\([^)]*\)\s*$/, '').trim();
   return cleaned || null;
@@ -270,5 +325,13 @@ function isSupportedMimeType(value: unknown): value is PyfaImageMimeType {
 }
 
 function isKnownSectionRole(value: unknown): value is PyfaScreenshotSection['role'] {
-  return typeof value === 'string' && SECTION_ORDER.includes(value as PyfaScreenshotSection['role']);
+  return typeof value === 'string'
+    && (SECTION_ORDER.includes(value as PyfaCanonicalSectionRole)
+      || IN_GAME_EXTRA_SECTION_ROLES.includes(value as PyfaScreenshotSectionRole));
+}
+
+function canonicalSectionRole(role: PyfaScreenshotSectionRole): PyfaCanonicalSectionRole | null {
+  if (SECTION_ORDER.includes(role as PyfaCanonicalSectionRole)) return role as PyfaCanonicalSectionRole;
+  if (IN_GAME_EXTRA_SECTION_ROLES.includes(role)) return 'extras';
+  return null;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { fetchFit, fetchFits, quoteDraftFit, saveFit, searchFitItems, searchFitShips, sendDraftFit, type AssignedFitItem, type CharacterStatus, type CurrentUser, type FitHub, type FitItemHit, type FitQuote, type FitSectionRole, type FitShipHit, type FitsV2EditorDocument, type FitsV2EditorItem, type LibraryVisibility, type SavedFitDetail, type SavedFitSummary, updateFit } from '../api.ts';
+import { fetchFit, fetchFits, quoteDraftFit, saveFit, searchFitItems, searchFitShips, sendDraftFit, type AssignedFitItem, type CharacterStatus, type CurrentUser, type FitHub, type FitItemHit, type FitQuote, type FitSectionRole, type FitShipHit, type FitShipLayout, type FitsV2EditorDocument, type FitsV2EditorItem, type LibraryVisibility, type SavedFitDetail, type SavedFitSummary, updateFit } from '../api.ts';
 
 const FITS_V2_HUB_KEY = 'fits-v2-hub';
 const FITS_V2_PILOT_KEY = 'fits-v2-pilot';
@@ -28,6 +28,13 @@ type SendStatus =
   | { kind: 'error'; message: string; reauthHint?: string | null };
 
 type LeftTab = 'hulls' | 'hardware';
+type RingSlot = {
+  role: FitSectionRole;
+  roleIndex: number;
+  slotIndex: number;
+  slotCount: number;
+  item: FitsV2EditorItem | null;
+};
 
 export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenFitRoute }: Props) {
   const fitNameInputRef = useRef<HTMLInputElement | null>(null);
@@ -97,7 +104,7 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
         setStatus(result.error);
       } else {
         setDetail(result);
-        const nextEditor = result.editorJson ?? editorDocumentFromSavedFit(result);
+        const nextEditor = withEditorLayout(result.editorJson ?? editorDocumentFromSavedFit(result), result.layout);
         setEditor(nextEditor);
         setFitName(nextEditor.fitName);
         setQuote(null);
@@ -143,6 +150,7 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
     const nextEditor: FitsV2EditorDocument = {
       version: 1,
       hull: { typeId: hit.id, name: hit.name, groupId: hit.groupId, groupName: hit.groupName },
+      layout: layoutFromShipHit(hit),
       fitName: `${hit.name} fit`,
       notes: '',
       skillProfile: { kind: 'all-v', characterId: null, name: 'All V' },
@@ -295,7 +303,7 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
       return;
     }
     setDetail(result);
-    setEditor(result.editorJson);
+    setEditor(result.editorJson ? withEditorLayout(result.editorJson, result.layout) : null);
     setFitName(result.fitName);
     setSaveStatus('Saved.');
     onOpenFitRoute(result.id);
@@ -308,6 +316,7 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
   const fitTitle = fitName.trim() || editor?.fitName || detail?.fitName || 'Unsaved fit';
   const shipRender = activeShipTypeId != null ? `https://images.evetech.net/types/${activeShipTypeId}/render?size=512` : null;
   const roleItems = (role: FitSectionRole) => editor?.items.filter(item => item.role === role) ?? [];
+  const ringSlots = editor ? buildRingSlots(editor) : [];
   const fittedItemCount = editor?.items.filter(item => ['high', 'mid', 'low', 'rig', 'subsystem', 'service'].includes(item.role)).length ?? 0;
   const cargoItemCount = editor?.items.filter(item => ['droneBay', 'fighterBay', 'extras'].includes(item.role)).reduce((sum, item) => sum + item.quantity, 0) ?? 0;
   const fitGroups = Array.from(new Set(fits.map(fit => fit.shipName))).sort((a, b) => a.localeCompare(b));
@@ -411,21 +420,31 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
         <div className="fitting-ring" aria-label="Fitting slots">
           {shipRender && <img className="fitting-ship" src={shipRender} alt="" />}
           {!editor && <p>To start, select a hull on the left.</p>}
-          {editor && RING_ROLE_ORDER.map((role, roleIndex) => roleItems(role).slice(0, 8).map((item, index, arr) => {
-            const angle = ringAngle(roleIndex, index, arr.length);
-            return (
+          {editor && ringSlots.map(slot => {
+            const angle = ringAngle(slot.roleIndex, slot.slotIndex, slot.slotCount);
+            return slot.item ? (
               <button
-                key={item.editorItemId}
+                key={slot.item.editorItemId}
                 type="button"
-                className={`ring-slot ring-slot-${role}`}
+                className={`ring-slot ring-slot-${slot.role}`}
                 style={{ '--slot-angle': `${angle}deg` } as CSSProperties}
-                title={item.name}
-                onClick={() => removeItem(item.editorItemId)}
+                title={slot.item.name}
+                onClick={() => removeItem(slot.item!.editorItemId)}
               >
-                <img src={`https://images.evetech.net/types/${item.typeId}/icon?size=64`} alt="" />
+                <img src={`https://images.evetech.net/types/${slot.item.typeId}/icon?size=64`} alt="" />
               </button>
+            ) : (
+              <div
+                key={`${slot.role}-${slot.slotIndex}`}
+                className={`ring-slot ring-slot-${slot.role} ring-slot-empty empty`}
+                style={{ '--slot-angle': `${angle}deg` } as CSSProperties}
+                title={`${ROLE_LABELS[slot.role]} ${slot.slotIndex + 1}`}
+                aria-hidden="true"
+              >
+                <span>{slot.slotIndex + 1}</span>
+              </div>
             );
-          }))}
+          })}
           <div className="ring-markers" aria-hidden="true" />
         </div>
 
@@ -546,6 +565,60 @@ const ROLE_LABELS: Record<FitSectionRole, string> = {
   unmatched: 'Unmatched',
 };
 
+function layoutFromShipHit(hit: FitShipHit): FitShipLayout {
+  return {
+    shipTypeId: hit.id,
+    shipName: hit.name,
+    highSlots: hit.highSlots,
+    midSlots: hit.midSlots,
+    lowSlots: hit.lowSlots,
+    rigSlots: hit.rigSlots,
+    serviceSlots: hit.serviceSlots,
+    subsystemSlots: hit.subsystemSlots,
+    warnings: [],
+  };
+}
+
+function withEditorLayout(
+  editor: FitsV2EditorDocument,
+  layout: FitShipLayout | null | undefined,
+): FitsV2EditorDocument {
+  if (editor.layout) return editor;
+  if (!layout || layout.shipTypeId !== editor.hull.typeId) return editor;
+  return { ...editor, layout };
+}
+
+function buildRingSlots(editor: FitsV2EditorDocument): RingSlot[] {
+  return RING_ROLE_ORDER.flatMap((role, roleIndex) => {
+    const items = editor.items
+      .filter(item => item.role === role)
+      .sort((a, b) => (a.slotIndex ?? 999) - (b.slotIndex ?? 999));
+    const slotCount = Math.min(8, Math.max(slotCountForRole(editor, role), items.length));
+    const itemBySlot = new Map<number, FitsV2EditorItem>();
+    items.forEach((item, index) => {
+      itemBySlot.set(item.slotIndex ?? index, item);
+    });
+    return Array.from({ length: slotCount }, (_, slotIndex) => ({
+      role,
+      roleIndex,
+      slotIndex,
+      slotCount,
+      item: itemBySlot.get(slotIndex) ?? null,
+    }));
+  });
+}
+
+function slotCountForRole(editor: FitsV2EditorDocument, role: FitSectionRole): number {
+  if (!editor.layout) return editor.items.filter(item => item.role === role).length;
+  if (role === 'high') return editor.layout.highSlots;
+  if (role === 'mid') return editor.layout.midSlots;
+  if (role === 'low') return editor.layout.lowSlots;
+  if (role === 'rig') return editor.layout.rigSlots;
+  if (role === 'service') return editor.layout.serviceSlots;
+  if (role === 'subsystem') return editor.layout.subsystemSlots;
+  return editor.items.filter(item => item.role === role).length;
+}
+
 function ringAngle(roleIndex: number, itemIndex: number, itemCount: number): number {
   const arcs = [
     { start: 218, end: 318 },
@@ -580,6 +653,7 @@ function editorDocumentFromSavedFit(fit: SavedFitDetail): FitsV2EditorDocument {
   return {
     version: 1,
     hull: fit.ship ?? { typeId: 0, name: fit.headerShipName, groupId: 0, groupName: 'Unknown' },
+    layout: fit.layout,
     fitName: fit.fitName,
     notes: fit.notes,
     skillProfile: { kind: 'all-v', characterId: null, name: 'All V' },

@@ -53,3 +53,19 @@ test('Fits v2 left panel controls are wired to fitting actions', () => {
   assert.match(fitsV2View, /const role = hardwareRole \?\? hit\.role \?\? firstAvailableSlotRole\(editor\)/);
   assert.match(fitsV2View, /aria-label=\{`Add \$\{hit\.name\} to fit`\}/);
 });
+
+test('Fits v2 center ring renders hull slot placeholders inside a bounded layout', () => {
+  const fitsV2View = readFileSync(resolve('web/src/components/FitsV2View.tsx'), 'utf8');
+  const api = readFileSync(resolve('web/src/api.ts'), 'utf8');
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
+
+  assert.match(api, /export interface FitShipHit[\s\S]*highSlots: number/);
+  assert.match(api, /export interface FitShipHit[\s\S]*subsystemSlots: number/);
+  assert.match(fitsV2View, /layoutFromShipHit/);
+  assert.match(fitsV2View, /slotCountForRole/);
+  assert.match(fitsV2View, /ringSlots/);
+  assert.match(fitsV2View, /ring-slot-empty/);
+  assert.match(styles, /grid-template-columns: minmax\(320px, 420px\) minmax\(0, 1fr\) minmax\(300px, 320px\)/);
+  assert.match(styles, /width: min\(68vh, calc\(100% - 36px\), 720px\)/);
+  assert.doesNotMatch(styles, /grid-template-columns: 420px minmax\(520px, 1fr\) 320px/);
+});

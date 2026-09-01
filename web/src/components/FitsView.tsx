@@ -424,9 +424,9 @@ function SavedFitsView({
       setPyfaNotice('Generated from screenshot. Review before preview.');
       setImportMode('eft');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to extract pyfa screenshot.';
+      const message = err instanceof Error ? err.message : 'Failed to extract fit screenshot.';
       setImportError(message === 'Failed to fetch'
-        ? 'Failed to upload pyfa screenshot. Try a smaller crop, or choose the saved image file instead.'
+        ? 'Failed to upload fit screenshot. Try a smaller crop, or choose the saved image file instead.'
         : message);
     } finally {
       setPyfaBusy(false);
@@ -759,7 +759,7 @@ function SavedFitsView({
         <Modal title="Import Fit" className="fits-import-modal" bodyClassName="fits-import-modal-body" onClose={() => setImportOpen(false)}>
           <div className="fits-import-tabs">
             <button type="button" className={importMode === 'eft' ? 'active' : ''} onClick={() => setImportMode('eft')} disabled={importBusy || pyfaBusy}>Paste EFT</button>
-            <button type="button" className={importMode === 'pyfa-image' ? 'active' : ''} onClick={() => setImportMode('pyfa-image')} disabled={importBusy || pyfaBusy}>pyfa Screenshot</button>
+            <button type="button" className={importMode === 'pyfa-image' ? 'active' : ''} onClick={() => setImportMode('pyfa-image')} disabled={importBusy || pyfaBusy}>Fit Screenshot</button>
             <button type="button" className={importMode === 'discord' ? 'active' : ''} onClick={() => setImportMode('discord')} disabled={importBusy || pyfaBusy || discordScanning || discordApplying}>Discord</button>
           </div>
 
@@ -789,8 +789,8 @@ function SavedFitsView({
               onDrop={handlePyfaDrop}
               onPaste={handlePyfaPaste}
             >
-              <strong>{pyfaImage ? pyfaImage.name : 'Drop a pyfa screenshot'}</strong>
-              <span>Drop, choose, or press Ctrl+V / Cmd+V. Only visible rows are extracted.</span>
+              <strong>{pyfaImage ? pyfaImage.name : 'Drop a Pyfa or in-game fitting screenshot'}</strong>
+              <span>Drop, choose, or press Ctrl+V / Cmd+V. Visible fitted and cargo rows are extracted.</span>
               <button type="button" className="fits-import-file" onClick={pastePyfaImageFromClipboard} disabled={pyfaBusy}>Paste from Clipboard</button>
               <label className="fits-import-file">
                 Choose image
@@ -860,7 +860,7 @@ function SavedFitsView({
                     </details>
                   )}
                   <div className="fits-discord-review">
-                    {discordScanResult.groups.length === 0 && <div className="fits-empty">No EFT blocks or pyfa screenshots found.</div>}
+                    {discordScanResult.groups.length === 0 && <div className="fits-empty">No EFT blocks or fit screenshots found.</div>}
                     {discordScanResult.groups.map(group => (
                       <div className="fits-discord-group" key={group.message.id}>
                         <div className="fits-discord-source">
@@ -878,7 +878,7 @@ function SavedFitsView({
                               <div>
                                 <strong>{candidate.shipName}</strong>
                                 <span>{candidate.fitName}</span>
-                                <small>{candidate.sourceType === 'pyfa-image' ? 'pyfa screenshot' : 'EFT text'}</small>
+                                <small>{candidate.sourceType === 'pyfa-image' ? 'fit screenshot' : 'EFT text'}</small>
                                 {candidate.warnings.map(warning => <em key={warning}>{warning}</em>)}
                               </div>
                               <select

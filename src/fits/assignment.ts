@@ -28,6 +28,7 @@ const DISPLAY_ROLES: FitSectionRole[] = [
 ];
 
 const SECTION_ROLES: FitSectionRole[] = ['low', 'mid', 'high', 'rig'];
+const EMPTY_SLOT_MARKER_RE = /^\[Empty (?:Low|Med|High|Rig|Service|Subsystem) slot\]$/i;
 
 const ROLE_LABELS: Record<FitSectionRole, string> = {
   low: 'Low Slots',
@@ -83,6 +84,7 @@ export function assignFitRows(
   const items: AssignedFitItem[] = [];
 
   for (const line of parsed.lines) {
+    if (EMPTY_SLOT_MARKER_RE.test(line.itemName)) continue;
     const item = resolveItemByName(line.itemName);
     const row = buildItemRow({
       source: 'fit-line',
@@ -174,6 +176,11 @@ function buildItemRow(input: {
 
 function chooseRole(line: ParsedFitLine, item: FitItem | null): FitSectionRole {
   const classified = classifyFitItem(item);
+  if (line.sectionIndex >= SECTION_ROLES.length
+    && classified !== 'service'
+    && classified !== 'subsystem'
+    && classified !== 'droneBay'
+    && classified !== 'fighterBay') return 'extras';
   if (classified) return classified;
   return SECTION_ROLES[line.sectionIndex] ?? 'extras';
 }

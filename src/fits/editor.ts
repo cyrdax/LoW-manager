@@ -1,4 +1,4 @@
-import type { AssignedFitItem, FitDraft, FitSectionRole, FitsV2EditorDocument, FitsV2EditorItem, FitsV2ModuleState } from './types.ts';
+import type { AssignedFitItem, FitDraft, FitSectionRole, FitShipLayout, FitsV2EditorDocument, FitsV2EditorItem, FitsV2ModuleState } from './types.ts';
 
 const EDITOR_ROLES = new Set<FitSectionRole>([
   'low',
@@ -44,10 +44,12 @@ export function parseFitsV2EditorDocument(value: unknown): FitsV2EditorDocument 
       }
     : { kind: 'all-v' as const, characterId: null, name: 'All V' };
   if (skillProfile.kind === 'pilot' && !skillProfile.characterId) return null;
+  const layout = parseEditorLayout(value.layout, hull.typeId, hull.name);
 
   return {
     version: 1,
     hull,
+    layout,
     fitName: cleanString(value.fitName) || hull.name,
     notes: cleanString(value.notes),
     skillProfile,
@@ -104,6 +106,7 @@ export function editorDocumentFromFitDraft(draft: FitDraft): FitsV2EditorDocumen
   return {
     version: 1,
     hull: draft.ship,
+    layout: draft.layout,
     fitName: draft.fitName,
     notes: '',
     skillProfile: { kind: 'all-v', characterId: null, name: 'All V' },
@@ -123,6 +126,32 @@ export function renderFitsV2EditorDocumentToEft(document: FitsV2EditorDocument):
     }
   }
   return lines.join('\n');
+}
+
+function parseEditorLayout(value: unknown, shipTypeId: number, shipName: string): FitShipLayout | null {
+  if (!isRecord(value)) return null;
+  const layout = {
+    shipTypeId: positiveInteger(value.shipTypeId),
+    shipName: cleanString(value.shipName),
+    highSlots: nonNegativeInteger(value.highSlots),
+    midSlots: nonNegativeInteger(value.midSlots),
+    lowSlots: nonNegativeInteger(value.lowSlots),
+    rigSlots: nonNegativeInteger(value.rigSlots),
+    serviceSlots: nonNegativeInteger(value.serviceSlots),
+    subsystemSlots: nonNegativeInteger(value.subsystemSlots),
+    warnings: [],
+  };
+  if (layout.shipTypeId !== shipTypeId) return null;
+  if (!layout.shipName) layout.shipName = shipName;
+  if (
+    layout.highSlots == null ||
+    layout.midSlots == null ||
+    layout.lowSlots == null ||
+    layout.rigSlots == null ||
+    layout.serviceSlots == null ||
+    layout.subsystemSlots == null
+  ) return null;
+  return layout as FitShipLayout;
 }
 
 function parseEditorItem(value: unknown): FitsV2EditorItem | null {

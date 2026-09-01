@@ -20,7 +20,7 @@ import {
 } from '../fits/pyfa-image-import.ts';
 import { type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
 import type { FitDraft, FitsV2EditorDocument } from '../fits/types.ts';
-import { searchFitItems, searchFitShips } from '../fits/metadata.ts';
+import { getShipLayout, searchFitItems, searchFitShips } from '../fits/metadata.ts';
 import { HUBS, type HubKey } from '../market/pricing.ts';
 
 const MAX_RAW_EFT_CHARS = 64 * 1024;
@@ -53,12 +53,21 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
 
   app.get('/api/fits/ships', async (req) => {
     const q = String((req.query as { q?: string }).q ?? '');
-    return shipSearch(q, 20).map(ship => ({
-      id: ship.typeId,
-      name: ship.name,
-      groupId: ship.groupId,
-      groupName: ship.groupName,
-    }));
+    return shipSearch(q, 20).map(ship => {
+      const layout = getShipLayout(ship.typeId);
+      return {
+        id: ship.typeId,
+        name: ship.name,
+        groupId: ship.groupId,
+        groupName: ship.groupName,
+        highSlots: layout.highSlots,
+        midSlots: layout.midSlots,
+        lowSlots: layout.lowSlots,
+        rigSlots: layout.rigSlots,
+        serviceSlots: layout.serviceSlots,
+        subsystemSlots: layout.subsystemSlots,
+      };
+    });
   });
 
   app.get('/api/fits/items', async (req) => {
