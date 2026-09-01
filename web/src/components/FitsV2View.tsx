@@ -30,7 +30,6 @@ type SendStatus =
 type LeftTab = 'hulls' | 'hardware';
 type RingSlot = {
   role: FitSectionRole;
-  roleIndex: number;
   slotIndex: number;
   slotCount: number;
   item: FitsV2EditorItem | null;
@@ -420,8 +419,8 @@ export function FitsV2View({ chars, currentUser, visibility, routeFitId, onOpenF
         <div className="fitting-ring" aria-label="Fitting slots">
           {shipRender && <img className="fitting-ship" src={shipRender} alt="" />}
           {!editor && <p>To start, select a hull on the left.</p>}
-          {editor && ringSlots.map(slot => {
-            const angle = ringAngle(slot.roleIndex, slot.slotIndex, slot.slotCount);
+          {editor && ringSlots.map((slot, ringIndex) => {
+            const angle = ringAngle(ringIndex, ringSlots.length);
             return slot.item ? (
               <button
                 key={slot.item.editorItemId}
@@ -589,7 +588,7 @@ function withEditorLayout(
 }
 
 function buildRingSlots(editor: FitsV2EditorDocument): RingSlot[] {
-  return RING_ROLE_ORDER.flatMap((role, roleIndex) => {
+  return RING_ROLE_ORDER.flatMap(role => {
     const items = editor.items
       .filter(item => item.role === role)
       .sort((a, b) => (a.slotIndex ?? 999) - (b.slotIndex ?? 999));
@@ -600,7 +599,6 @@ function buildRingSlots(editor: FitsV2EditorDocument): RingSlot[] {
     });
     return Array.from({ length: slotCount }, (_, slotIndex) => ({
       role,
-      roleIndex,
       slotIndex,
       slotCount,
       item: itemBySlot.get(slotIndex) ?? null,
@@ -619,18 +617,9 @@ function slotCountForRole(editor: FitsV2EditorDocument, role: FitSectionRole): n
   return editor.items.filter(item => item.role === role).length;
 }
 
-function ringAngle(roleIndex: number, itemIndex: number, itemCount: number): number {
-  const arcs = [
-    { start: 218, end: 318 },
-    { start: 322, end: 52 },
-    { start: 56, end: 138 },
-    { start: 142, end: 214 },
-    { start: 20, end: 160 },
-  ];
-  const arc = arcs[roleIndex % arcs.length];
-  const span = arc.end >= arc.start ? arc.end - arc.start : (360 - arc.start) + arc.end;
-  const step = itemCount <= 1 ? span / 2 : span / Math.max(1, itemCount - 1);
-  return (arc.start + step * itemIndex) % 360;
+function ringAngle(itemIndex: number, itemCount: number): number {
+  if (itemCount <= 0) return 0;
+  return (210 + (360 / itemCount) * itemIndex) % 360;
 }
 
 function StatPanel({ title, rows }: { title: string; rows: [string, string][] }) {

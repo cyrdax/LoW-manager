@@ -4596,6 +4596,7 @@ body {
 .eveship-center {
   display: grid;
   grid-template-rows: auto minmax(380px, 1fr) auto;
+  container-type: inline-size;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -4862,7 +4863,7 @@ body {
   min-width: 0;
   aspect-ratio: 1;
   margin: 18px;
-  --ring-radius: min(31vh, 32vw, 312px);
+  --ring-radius: min(31vh, calc(50cqw - 36px), 308px);
   border-radius: 50%;
   background:
     radial-gradient(circle at center, rgba(0, 0, 0, 0) 0 28%, rgba(255, 255, 255, 0.11) 29%, rgba(255, 255, 255, 0.02) 31%, transparent 32%),
@@ -4937,8 +4938,8 @@ body {
   top: 50%;
   display: grid;
   place-items: center;
-  width: 58px;
-  height: 58px;
+  width: clamp(32px, 8cqw, 58px);
+  height: clamp(32px, 8cqw, 58px);
   padding: 4px;
   transform: translate(-50%, -50%) rotate(var(--slot-angle)) translateY(calc(-1 * var(--ring-radius)));
   background: linear-gradient(#262a2f, #08090a);
@@ -4948,8 +4949,8 @@ body {
 }
 
 .ring-slot img {
-  width: 46px;
-  height: 46px;
+  width: clamp(24px, 6.4cqw, 46px);
+  height: clamp(24px, 6.4cqw, 46px);
   border-radius: 50%;
 }
 
@@ -4960,7 +4961,7 @@ body {
 
 .ring-slot-empty span {
   color: #bfc4ca;
-  font-size: 12px;
+  font-size: clamp(9px, 2.5cqw, 12px);
   font-weight: 700;
   transform: rotate(calc(-1 * var(--slot-angle)));
 }
@@ -5142,7 +5143,7 @@ body {
   .fitting-ring {
     width: min(62vh, calc(100% - 36px), 620px);
     min-width: 0;
-    --ring-radius: min(28vh, 30vw, 270px);
+    --ring-radius: min(28vh, calc(50cqw - 36px), 270px);
   }
 }
 
@@ -5173,6 +5174,6 @@ body {
   .fitting-ring {
     width: min(86vw, 640px);
     min-width: 320px;
-    --ring-radius: min(38vw, 270px);
+    --ring-radius: min(38vw, calc(50cqw - 36px), 270px);
   }
 }
