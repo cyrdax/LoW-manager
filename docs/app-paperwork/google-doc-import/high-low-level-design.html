@@ -1,0 +1,75 @@
+<!doctype html><html><head><meta charset="utf-8"><title>LoW Manager - High and Low Level Design</title><style>
+body{font-family:Arial,sans-serif;color:#202124;line-height:1.45;max-width:860px;margin:48px auto;padding:0 24px}h1{font-size:30px;margin:0 0 10px}h2{font-size:20px;margin:26px 0 8px;border-bottom:1px solid #dadce0;padding-bottom:4px}h3{font-size:16px;margin:18px 0 6px}h4{font-size:14px;margin:14px 0 4px}p{margin:8px 0}ul{margin:8px 0 14px 22px;padding:0}table{border-collapse:collapse;width:100%;margin:12px 0 18px;font-size:13px}th{background:#f1f3f4;font-weight:700;text-align:left}td,th{border:1px solid #dadce0;padding:7px 9px;vertical-align:top}code{font-family:Consolas,monospace;background:#f1f3f4;padding:1px 3px;border-radius:3px}pre{background:#f8f9fa;border:1px solid #dadce0;padding:10px;overflow:auto}.meta{color:#5f6368;font-size:12px;margin-bottom:22px}
+</style></head><body><h1>High-Level and Low-Level Design</h1>
+<p>Project: LoW Manager / Outfit420 Version: 0.2 draft Date: 2026-09-01 Status: Informal technical design artifact</p>
+<h2>1. High-Level Design</h2>
+<p>LoW Manager is a multi-user EVE Online operations dashboard. It combines authenticated pilot data from ESI with global public data such as market metadata, ship/item reference data, public fits, and doctrines.</p>
+<p>The system is split into four primary layers:</p>
+<ul><li>Browser frontend</li><li>Node/Fastify application server</li><li>PostgreSQL persistence layer</li><li>External integrations</li></ul>
+<h2>2. Architecture Overview</h2>
+<pre>flowchart LR
+  User["Browser User"] --&gt; Web["React Frontend"]
+  Web --&gt; API["Fastify API Server"]
+  API --&gt; PG["PostgreSQL"]
+  API --&gt; ESI["EVE ESI API"]
+  API --&gt; Market["Market / Contract Index"]
+  API --&gt; OCR["OpenAI OCR for fit screenshots"]
+  API --&gt; Discord["Discord Bot Integration"]
+  API --&gt; Email["Resend Email"]
+  API --&gt; OAuth["Google + EVE OAuth"]</pre>
+<h2>3. Core Modules</h2>
+<table><thead><tr><th>Module</th><th>Responsibility</th></tr></thead><tbody><tr><td>Auth</td><td>User signup, login, sessions, Google and EVE account OAuth, password reset</td></tr><tr><td>Characters</td><td>EVE SSO pilots, token refresh, main pilot selection</td></tr><tr><td>Fits</td><td>EFT parsing, Pyfa and in-game screenshot import, saved/public/private fits</td></tr><tr><td>Doctrines</td><td>Collections of saved fits, descriptions, public/private visibility</td></tr><tr><td>Market</td><td>Shopping lists, item price lookup, fit cost totals</td></tr><tr><td>Contracts</td><td>Region contract index, ship contract search, jump distance</td></tr><tr><td>Assets</td><td>Pilot asset snapshots, rollups, value summaries</td></tr><tr><td>Discord Import</td><td>Channel/thread listing and fit candidate extraction</td></tr><tr><td>Static/Public</td><td>Legal pages, public fit/doctrine routes, app shell</td></tr></tbody></table>
+<h2>4. Data Visibility Model</h2>
+<table><thead><tr><th>Data Type</th><th>Scope</th></tr></thead><tbody><tr><td>EVE pilot tokens</td><td>Private to owning user</td></tr><tr><td>Pilot assets, skills, PI, industry state</td><td>Private to owning user</td></tr><tr><td>Public EVE reference data</td><td>Global</td></tr><tr><td>Public fits</td><td>Global read, owner/admin edit</td></tr><tr><td>Private fits</td><td>Owner only</td></tr><tr><td>Public doctrines</td><td>Global read, owner/admin edit</td></tr><tr><td>Private doctrines</td><td>Owner only</td></tr><tr><td>Audit/security events</td><td>Anonymized retention</td></tr></tbody></table>
+<h2>5. External Integrations</h2>
+<ul><li>EVE ESI: Account login, pilot authorization, assets, skills, contracts, and in-game fit export.</li><li>Google OAuth: User login.</li><li>Resend: Account verification and password reset email.</li><li>OpenAI API: Pyfa and in-game fitting screenshot extraction to EFT-style import text.</li><li>Discord API: Bot-based channel scanning for EFT text and fit screenshots.</li><li>Railway: Production hosting and PostgreSQL.</li></ul>
+<h2>6. Low-Level Design</h2>
+<h3>6.1 Frontend</h3>
+<p>Technology:</p>
+<ul><li>React</li><li>TypeScript</li><li>Vite</li><li>CSS modules through shared stylesheet conventions</li></ul>
+<p>Primary views:</p>
+<ul><li><code>/pilots</code></li><li><code>/fleet</code></li><li><code>/fits</code></li><li><code>/fit/:id</code></li><li><code>/doctrine/:id</code></li><li><code>/assets</code></li><li><code>/market</code></li><li><code>/contracts</code></li><li><code>/industry</code></li><li><code>/planets</code></li></ul>
+<p>Frontend responsibilities:</p>
+<ul><li>Maintain selected view and route state.</li><li>Render private and public views based on authenticated user state.</li><li>Provide import modals for EFT, Pyfa or in-game fitting screenshots, and Discord.</li><li>Render fit layouts using EVE item icons and assigned slot sections.</li><li>Trigger pricing, refresh, save, publish, copy, and send actions.</li></ul>
+<h3>6.2 Backend API</h3>
+<p>Technology:</p>
+<ul><li>Node.js</li><li>Fastify</li><li>TypeScript</li></ul>
+<p>API responsibilities:</p>
+<ul><li>Authenticate requests and enforce user scoping.</li><li>Handle EVE OAuth state and token refresh.</li><li>Persist user accounts, sessions, pilot tokens, fits, doctrines, and asset snapshots.</li><li>Serve public read-only fit and doctrine data without authentication.</li><li>Perform fit parsing, pricing, and ESI payload generation.</li><li>Run contract indexing and asset refresh workflows.</li></ul>
+<h3>6.3 Database</h3>
+<p>Technology:</p>
+<ul><li>PostgreSQL</li></ul>
+<p>Key entities:</p>
+<ul><li>users</li><li>sessions</li><li>app_auth_tokens</li><li>characters</li><li>saved_fits</li><li>saved_fit_items</li><li>doctrines</li><li>doctrine_fits</li><li>asset_snapshots</li><li>universe_cache</li><li>contract_index tables</li></ul>
+<p>Design notes:</p>
+<ul><li>Private rows carry an owner/user reference.</li><li>Public library rows retain original owner where relevant.</li><li>Deleting a user removes private pilot-derived data and private library data.</li><li>Public fits/doctrines can be retained under admin ownership.</li></ul>
+<h3>6.4 Fit Import and Pricing Flow</h3>
+<pre>sequenceDiagram
+  participant U as User
+  participant F as Frontend
+  participant A as API
+  participant M as Market Pricing
+  participant DB as PostgreSQL
+
+  U-&gt;&gt;F: Paste EFT or upload a fit screenshot
+  F-&gt;&gt;A: Preview import
+  A-&gt;&gt;A: Parse and assign slots
+  A--&gt;&gt;F: Draft fit with warnings
+  U-&gt;&gt;F: Save fit
+  F-&gt;&gt;A: Save request
+  A-&gt;&gt;DB: Persist fit and assigned items
+  U-&gt;&gt;F: Refresh price
+  F-&gt;&gt;A: Quote fit
+  A-&gt;&gt;M: Resolve market prices
+  A--&gt;&gt;F: Hull / fitted / extras totals plus item rows</pre>
+<h3>6.5 Doctrine Flow</h3>
+<ul><li>User creates a doctrine manually.</li><li>User adds existing saved fits.</li><li>Doctrine can be private or public.</li><li>Public doctrines can only contain visible public member fits.</li><li>Non-owners can copy a public doctrine into a private library.</li></ul>
+<h3>6.6 Deployment</h3>
+<p>Runtime:</p>
+<ul><li>Railway application service</li><li>Railway PostgreSQL service</li></ul>
+<p>Deployment behavior:</p>
+<ul><li>Build command generates EVE mastery/reference data and builds the app.</li><li>Predeploy command runs database migrations.</li><li>Start command launches the Node server.</li><li>Health check uses <code>/api/health</code>.</li></ul>
+<h2>7. Operational Notes</h2>
+<ul><li>Environment variables configure OAuth clients, EVE developer credentials, cookie secrets, encryption keys, email provider, OpenAI API key, Discord bot token, and database URL.</li><li>The app should fail clearly when optional integrations are not configured.</li><li>Public routes must continue to work even when the viewer is unauthenticated.</li></ul>
+<h2>8. Future Design Items</h2>
+<ul><li>Rebuild Google Docs doctrine import as a standalone integration.</li><li>Add deeper fit analytics and doctrine comparison.</li><li>Improve asset location resolution and station/structure caching.</li><li>Add admin moderation workflows for public content.</li></ul></body></html>
