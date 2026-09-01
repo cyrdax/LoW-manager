@@ -1608,6 +1608,43 @@ body {
 .sk-compare-row .warn {
   color: var(--amber);
 }
+.sk-compare-sort {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.sk-compare-row .c .sk-compare-sort {
+  justify-content: center;
+}
+.sk-compare-row .r .sk-compare-sort {
+  justify-content: flex-end;
+}
+.sk-compare-sort:hover,
+.sk-compare-sort:focus-visible,
+.sk-compare-sort.active {
+  color: var(--text);
+}
+.sk-compare-sort:focus-visible {
+  outline: 1px solid var(--cyan);
+  outline-offset: 3px;
+}
+.sk-compare-sort-indicator {
+  color: var(--cyan);
+  font-size: 9px;
+}
+.sk-compare-sort:not(.active) .sk-compare-sort-indicator {
+  opacity: 0.55;
+}
 .sk-empty-inline {
   margin: 10px;
 }

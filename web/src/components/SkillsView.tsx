@@ -20,6 +20,7 @@ import {
   type SdeStatus,
   type ShipHit,
   type SkillComparison,
+  type SkillComparisonPilot,
   type SkillPlan,
 } from '../api.ts';
 
@@ -27,6 +28,11 @@ interface Props { chars: CharacterStatus[] }
 
 const MASTERY_NUMERALS = ['I', 'II', 'III', 'IV', 'V'];
 type PilotSortMode = 'alpha' | 'queue';
+export type SkillComparisonSortKey = 'pilot' | 'active' | 'trained' | 'sp' | 'status';
+export type SkillComparisonSort = {
+  key: SkillComparisonSortKey;
+  direction: 'asc' | 'desc';
+};
 type SkillSearchResult = {
   query: string;
   comparison: SkillComparison | null;
@@ -104,6 +110,53 @@ export function sortSkillPilots(chars: CharacterStatus[], mode: PilotSortMode, n
     );
   }
   return sorted.sort(byName);
+}
+
+export function nextSkillComparisonSort(
+  current: SkillComparisonSort,
+  key: SkillComparisonSortKey,
+): SkillComparisonSort {
+  return current.key === key
+    ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+    : { key, direction: 'asc' };
+}
+
+function skillComparisonStatus(pilot: SkillComparisonPilot): string | null {
+  if (!pilot.skillsAvailable) return null;
+  return pilot.trainedSkillLevel ? 'Trained' : 'Not trained';
+}
+
+function skillComparisonValue(
+  pilot: SkillComparisonPilot,
+  key: SkillComparisonSortKey,
+): string | number | null {
+  if (key === 'pilot') return pilot.characterName;
+  if (!pilot.skillsAvailable) return null;
+  if (key === 'active') return pilot.activeSkillLevel;
+  if (key === 'trained') return pilot.trainedSkillLevel;
+  if (key === 'sp') return pilot.skillpointsInSkill;
+  return skillComparisonStatus(pilot);
+}
+
+export function sortSkillComparisonPilots(
+  pilots: SkillComparisonPilot[],
+  sort: SkillComparisonSort,
+): SkillComparisonPilot[] {
+  const byPilot = (a: SkillComparisonPilot, b: SkillComparisonPilot) =>
+    a.characterName.localeCompare(b.characterName) || a.characterId - b.characterId;
+
+  return [...pilots].sort((a, b) => {
+    const aValue = skillComparisonValue(a, sort.key);
+    const bValue = skillComparisonValue(b, sort.key);
+    if (aValue == null && bValue == null) return byPilot(a, b);
+    if (aValue == null) return 1;
+    if (bValue == null) return -1;
+
+    const comparison = typeof aValue === 'number' && typeof bValue === 'number'
+      ? aValue - bValue
+      : String(aValue).localeCompare(String(bValue));
+    return (sort.direction === 'desc' ? -comparison : comparison) || byPilot(a, b);
+  });
 }
 
 export function SkillsView({ chars }: Props) {
@@ -558,7 +611,40 @@ function CharacterSkillsPanel({ overview, character }: { overview: CharacterSkil
   );
 }
 
-function SkillComparisonPanel({
+function SkillComparisonSortHeader({
+  label,
+  sortKey,
+  sort,
+  className,
+  onSort,
+}: {
+  label: string;
+  sortKey: SkillComparisonSortKey;
+  sort: SkillComparisonSort;
+  className?: string;
+  onSort: (key: SkillComparisonSortKey) => void;
+}) {
+  const active = sort.key === sortKey;
+  const ariaSort = active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none';
+
+  return (
+    <div role="columnheader" aria-sort={ariaSort} className={className}>
+      <button
+        type="button"
+        className={`sk-compare-sort${active ? ' active' : ''}`}
+        aria-label={`Sort by ${label}`}
+        onClick={() => onSort(sortKey)}
+      >
+        <span>{label}</span>
+        <span className="sk-compare-sort-indicator" aria-hidden="true">
+          {active ? (sort.direction === 'asc' ? '▲' : '▼') : '↕'}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+export function SkillComparisonPanel({
   query,
   comparison,
   loading,
@@ -570,6 +656,12 @@ function SkillComparisonPanel({
   error: string | null;
 }) {
   const trimmed = query.trim();
+  const [sort, setSort] = useState<SkillComparisonSort>({ key: 'pilot', direction: 'asc' });
+  const matches = useMemo(() => comparison?.matches.map(match => ({
+    ...match,
+    pilots: sortSkillComparisonPilots(match.pilots, sort),
+  })) ?? [], [comparison, sort]);
+  const onSort = (key: SkillComparisonSortKey) => setSort(current => nextSkillComparisonSort(current, key));
 
   return (
     <section className="sk-section sk-compare">
@@ -594,7 +686,7 @@ function SkillComparisonPanel({
 
       {!error && comparison && comparison.matches.length > 0 && (
         <div className="sk-compare-matches">
-          {comparison.matches.map(match => (
+          {matches.map(match => (
             <div key={match.skillId} className="sk-compare-match">
               <div className="sk-compare-match-head">
                 <div>
@@ -602,27 +694,27 @@ function SkillComparisonPanel({
                   <span className="dim"> {match.groupName} · rank x{match.rank}</span>
                 </div>
               </div>
-              <div className="sk-compare-table">
-                <div className="sk-compare-row sk-skill-head">
-                  <div>Pilot</div>
-                  <div className="c">Active</div>
-                  <div className="c">Trained</div>
-                  <div className="r">SP</div>
-                  <div>Status</div>
+              <div className="sk-compare-table" role="table" aria-label={`${match.name} pilot results`}>
+                <div className="sk-compare-row sk-skill-head" role="row">
+                  <SkillComparisonSortHeader label="Pilot" sortKey="pilot" sort={sort} onSort={onSort} />
+                  <SkillComparisonSortHeader label="Active" sortKey="active" sort={sort} className="c" onSort={onSort} />
+                  <SkillComparisonSortHeader label="Trained" sortKey="trained" sort={sort} className="c" onSort={onSort} />
+                  <SkillComparisonSortHeader label="SP" sortKey="sp" sort={sort} className="r" onSort={onSort} />
+                  <SkillComparisonSortHeader label="Status" sortKey="status" sort={sort} onSort={onSort} />
                 </div>
                 {match.pilots.map(pilot => (
-                  <div key={pilot.characterId} className="sk-compare-row">
-                    <div className="sk-name">{pilot.characterName}</div>
-                    <div className="c">
+                  <div key={pilot.characterId} className="sk-compare-row" role="row">
+                    <div className="sk-name" role="cell">{pilot.characterName}</div>
+                    <div className="c" role="cell">
                       {pilot.skillsAvailable && pilot.activeSkillLevel != null ? levelLabel(pilot.activeSkillLevel) : '—'}
                     </div>
-                    <div className="c">
+                    <div className="c" role="cell">
                       {pilot.skillsAvailable && pilot.trainedSkillLevel != null ? levelLabel(pilot.trainedSkillLevel) : '—'}
                     </div>
-                    <div className="r">
+                    <div className="r" role="cell">
                       {pilot.skillpointsInSkill != null ? formatSp(pilot.skillpointsInSkill) : '—'}
                     </div>
-                    <div className={pilot.skillsAvailable ? 'dim' : 'warn'}>
+                    <div className={pilot.skillsAvailable ? 'dim' : 'warn'} role="cell">
                       {pilot.skillsAvailable ? (pilot.trainedSkillLevel ? 'Trained' : 'Not trained') : 'Not polled'}
                     </div>
                   </div>
