@@ -14,7 +14,7 @@ test('market view defaults to shopping list and shows it before PLEX', () => {
   assert.ok(shoppingButton >= 0);
   assert.ok(plexButton >= 0);
   assert.ok(shoppingButton < plexButton);
-  assert.match(marketView, /tab === 'shopping' \? <ShoppingListView chars=\{chars\} currentUser=\{currentUser\} onLoginRequired=\{onLoginRequired\} \/> : <PlexView \/>/);
+  assert.match(marketView, /tab === 'shopping' \? <ShoppingListView \/> : <PlexView \/>/);
 });
 
 test('market view can route directly to the PLEX tab', () => {
@@ -46,14 +46,13 @@ test('shopping list result columns are sortable', () => {
   assert.match(styles, /\.mk-shop-sort-btn/);
 });
 
-test('shopping list keeps public pricing while replacing pilot send with login CTA for anonymous users', () => {
+test('shopping list stays public without pilot EVEmail controls', () => {
   const marketView = readFileSync(resolve('web/src/components/MarketView.tsx'), 'utf8');
+  const api = readFileSync(resolve('web/src/api.ts'), 'utf8');
+  const styles = readFileSync(resolve('web/src/styles.css'), 'utf8');
 
-  assert.match(marketView, /chars: CharacterStatus\[\]/);
-  assert.match(marketView, /currentUser\?: CurrentUser \| null/);
-  assert.match(marketView, /onLoginRequired: \(\) => void/);
-  assert.match(marketView, /<ShoppingListView chars=\{chars\} currentUser=\{currentUser\} onLoginRequired=\{onLoginRequired\} \/>/);
-  assert.match(marketView, /currentUser \? \(/);
-  assert.match(marketView, /Log in to send to a pilot/);
-  assert.match(marketView, /onClick=\{onLoginRequired\}/);
+  assert.match(marketView, /tab === 'shopping' \? <ShoppingListView \/> : <PlexView \/>/);
+  assert.doesNotMatch(marketView, /Send as EVEmail|Log in to send to a pilot|sendShoppingList|SHOPPING_PILOT_KEY/);
+  assert.doesNotMatch(api, /shopping-list\/send|sendShoppingList|ShoppingListSendResult/);
+  assert.doesNotMatch(styles, /\.mk-shop-send|\.mk-shop-pilot-select/);
 });

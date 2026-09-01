@@ -44,8 +44,12 @@ test('EVE account start works signed out and stores only safe account-intent sta
   });
 
   assert.equal(response.statusCode, 302);
-  assert.match(String(response.headers.location), /^https:\/\/login\.eveonline\.com/);
-  assert.match(String(response.headers.location), /state=state-1/);
+  const authorizationUrl = new URL(String(response.headers.location));
+  assert.equal(authorizationUrl.origin, 'https://login.eveonline.com');
+  assert.equal(authorizationUrl.searchParams.get('state'), 'state-1');
+  const requestedScopes = authorizationUrl.searchParams.get('scope')?.split(' ') ?? [];
+  assert.ok(requestedScopes.includes('esi-assets.read_assets.v1'));
+  assert.ok(!requestedScopes.includes('esi-mail.send_mail.v1'));
   assert.deepEqual(states.issued[0], { provider: 'eve', intent: 'account', returnTo: '/fits?mode=fits' });
 
   await app.inject({ method: 'GET', url: '/auth/eve/start?intent=account&returnTo=https%3A%2F%2Fevil.example' });

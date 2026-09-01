@@ -83,7 +83,7 @@ test('frontend lets anonymous users view public fit and doctrine routes read-onl
   assert.match(doctrinesView, /const canStartEditing = !!detail && !!currentUser/);
 });
 
-test('frontend lets anonymous users view public market and contracts with auth-only CTAs', () => {
+test('frontend keeps market public while gating private contract actions', () => {
   const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
   const authGate = readFileSync(resolve('web/src/components/AuthGate.tsx'), 'utf8');
   const marketView = readFileSync(resolve('web/src/components/MarketView.tsx'), 'utf8');
@@ -91,7 +91,7 @@ test('frontend lets anonymous users view public market and contracts with auth-o
 
   assert.match(app, /const publicRoute = \['fits', 'fitsV2', 'market', 'contracts'\]\.includes\(route\.view\)/);
   assert.match(app, /if \(!currentUser && !publicRoute\)/);
-  assert.match(app, /<MarketView[\s\S]*chars=\{currentUser \? list : \[\]\}[\s\S]*currentUser=\{currentUser\}/);
+  assert.match(app, /<MarketView[\s\S]*initialTab=\{route\.view === 'market'/);
   assert.match(app, /<ContractsView currentUser=\{currentUser\}/);
   assert.match(app, /onLoginRequired=\{showLogin\}/);
   assert.match(app, /function showLogin\(\)/);
@@ -100,10 +100,8 @@ test('frontend lets anonymous users view public market and contracts with auth-o
   assert.match(authGate, /value && value\.startsWith\('\/'\) && !value\.startsWith\('\/\/'\)/);
   assert.match(authGate, /finishAuthenticated\(res\.user\)/);
 
-  assert.match(marketView, /currentUser\?: CurrentUser \| null/);
-  assert.match(marketView, /onLoginRequired: \(\) => void/);
-  assert.match(marketView, /Log in to send to a pilot/);
-  assert.match(marketView, /currentUser \?/);
+  assert.match(marketView, /tab === 'shopping' \? <ShoppingListView \/> : <PlexView \/>/);
+  assert.doesNotMatch(marketView, /CurrentUser|onLoginRequired|Log in to send to a pilot/);
 
   assert.match(contractsView, /currentUser\?: CurrentUser \| null/);
   assert.match(contractsView, /onLoginRequired: \(\) => void/);

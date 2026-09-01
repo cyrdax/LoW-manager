@@ -12,7 +12,6 @@ export const SCOPES = [
   'esi-ui.write_waypoint.v1',
   'esi-ui.open_window.v1',
   'esi-planets.manage_planets.v1',
-  'esi-mail.send_mail.v1',
   'esi-fittings.write_fittings.v1',
   'esi-universe.read_structures.v1',
 ] as const;

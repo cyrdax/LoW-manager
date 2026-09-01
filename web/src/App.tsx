@@ -277,11 +277,8 @@ export function App() {
       {view === 'fleet' && <FleetView chars={list} selection={selection} />}
       {view === 'market' && (
         <MarketView
-          chars={currentUser ? list : []}
-          currentUser={currentUser}
           initialTab={route.view === 'market' && route.marketTab === 'plex' ? 'plex' : 'shopping'}
           onTabRoute={(tab) => navigateToRoute({ view: 'market', marketTab: tab })}
-          onLoginRequired={showLogin}
         />
       )}
       {view === 'industry' && <IndustryView chars={list} />}

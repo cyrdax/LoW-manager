@@ -7,7 +7,6 @@ test('private pilot action routes verify character ownership before using ESI da
   const db = readFileSync(resolve('src/db.ts'), 'utf8');
   const helper = readFileSync(resolve('src/auth/pilot-access.ts'), 'utf8');
   const autopilot = readFileSync(resolve('src/routes/autopilot.ts'), 'utf8');
-  const market = readFileSync(resolve('src/routes/market.ts'), 'utf8');
   const fits = readFileSync(resolve('src/routes/fits.ts'), 'utf8');
   const skills = readFileSync(resolve('src/routes/skills.ts'), 'utf8');
 
@@ -22,13 +21,11 @@ test('private pilot action routes verify character ownership before using ESI da
 
   assert.match(autopilot, /listUsableCharacters/);
   assert.match(autopilot, /await listCharacters\(user\.id\)/);
-  assert.match(market, /requireOwnedCharacter/);
   assert.match(fits, /requireOwnedCharacter/);
   assert.match(skills, /requireOwnedCharacter/);
-  assert.match(market, /await requireOwnedCharacter/);
   assert.match(fits, /await requireOwnedCharacter/);
   assert.match(skills, /await requireOwnedCharacter/);
-  assert.doesNotMatch([autopilot, market, fits, skills].join('\n'), /if \(!requireOwnedCharacter/);
+  assert.doesNotMatch([autopilot, fits, skills].join('\n'), /if \(!requireOwnedCharacter/);
   assert.match(skills, /createSavedSkillPlanStore/);
   assert.match(skills, /savedPlans\.list\(user\.id/);
   assert.doesNotMatch(skills, /saved_skill_plans/);

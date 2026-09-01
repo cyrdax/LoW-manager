@@ -3,9 +3,6 @@ import {
   fetchPlexHistory,
   fetchPlexOrders,
   quoteShoppingList,
-  sendShoppingList,
-  type CharacterStatus,
-  type CurrentUser,
   type PlexHistory,
   type PlexHistoryEntry,
   type PlexOrders,
@@ -20,11 +17,8 @@ import {
 } from '../market-shopping-sort.ts';
 
 interface Props {
-  chars: CharacterStatus[];
-  currentUser?: CurrentUser | null;
   initialTab?: MarketTab;
   onTabRoute: (tab: MarketTab) => void;
-  onLoginRequired: () => void;
 }
 
 type Range = '7d' | '30d' | '90d' | '1y' | 'all';
@@ -56,7 +50,7 @@ function pctChange(from: number, to: number): number {
 
 type MarketTab = 'plex' | 'shopping';
 
-export function MarketView({ chars, currentUser, initialTab = 'shopping', onTabRoute, onLoginRequired }: Props) {
+export function MarketView({ initialTab = 'shopping', onTabRoute }: Props) {
   const [tab, setTab] = useState<MarketTab>(initialTab);
 
   useEffect(() => setTab(initialTab), [initialTab]);
@@ -73,7 +67,7 @@ export function MarketView({ chars, currentUser, initialTab = 'shopping', onTabR
           onClick={() => { setTab('plex'); onTabRoute('plex'); }}
         >PLEX</button>
       </div>
-      {tab === 'shopping' ? <ShoppingListView chars={chars} currentUser={currentUser} onLoginRequired={onLoginRequired} /> : <PlexView />}
+      {tab === 'shopping' ? <ShoppingListView /> : <PlexView />}
     </main>
   );
 }
@@ -179,15 +173,8 @@ function PlexView() {
 
 const SHOPPING_TEXT_KEY = 'efd.market.shopping.text';
 const SHOPPING_HUB_KEY = 'efd.market.shopping.hub';
-const SHOPPING_PILOT_KEY = 'efd.market.shopping.pilot';
 
-type SendStatus =
-  | { kind: 'idle' }
-  | { kind: 'sending' }
-  | { kind: 'sent'; pilotName: string; mailId: number | null }
-  | { kind: 'error'; message: string; reauthHint: string | null };
-
-function ShoppingListView({ chars, currentUser, onLoginRequired }: { chars: CharacterStatus[]; currentUser?: CurrentUser | null; onLoginRequired: () => void }) {
+function ShoppingListView() {
   const [hub, setHub] = useState<ShoppingHub>(
     () => (localStorage.getItem(SHOPPING_HUB_KEY) as ShoppingHub) || 'jita',
   );
@@ -195,30 +182,6 @@ function ShoppingListView({ chars, currentUser, onLoginRequired }: { chars: Char
   const [quote, setQuote] = useState<ShoppingListQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // Pilot dropdown defaults to the previously-used selection if still present,
-  // otherwise to the first authed pilot. Stored as a string in localStorage
-  // because <select> values are strings.
-  const sortedChars = useMemo(
-    () => [...chars].sort((a, b) => a.name.localeCompare(b.name)),
-    [chars],
-  );
-  const [pilotId, setPilotId] = useState<number | null>(() => {
-    const raw = localStorage.getItem(SHOPPING_PILOT_KEY);
-    const n = raw != null ? Number(raw) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : null;
-  });
-  useEffect(() => {
-    if (sortedChars.length === 0) return;
-    if (pilotId == null || !sortedChars.some(c => c.characterId === pilotId)) {
-      setPilotId(sortedChars[0].characterId);
-    }
-  }, [sortedChars, pilotId]);
-  useEffect(() => {
-    if (pilotId != null) localStorage.setItem(SHOPPING_PILOT_KEY, String(pilotId));
-  }, [pilotId]);
-
-  const [sendStatus, setSendStatus] = useState<SendStatus>({ kind: 'idle' });
 
   useEffect(() => { localStorage.setItem(SHOPPING_HUB_KEY, hub); }, [hub]);
   useEffect(() => { localStorage.setItem(SHOPPING_TEXT_KEY, text); }, [text]);
@@ -239,7 +202,6 @@ function ShoppingListView({ chars, currentUser, onLoginRequired }: { chars: Char
     }
     setLoading(true);
     setError(null);
-    setSendStatus({ kind: 'idle' });
     const res = await quoteShoppingList(hub, quoteItems);
     setLoading(false);
     if ('error' in res) {
@@ -247,26 +209,6 @@ function ShoppingListView({ chars, currentUser, onLoginRequired }: { chars: Char
       setError(res.error);
     } else {
       setQuote(res);
-    }
-  };
-
-  const sendToPilot = async () => {
-    if (!quote || pilotId == null) return;
-    const pilot = sortedChars.find(c => c.characterId === pilotId);
-    if (!pilot) return;
-    setSendStatus({ kind: 'sending' });
-    // Resend the validated items rather than the quote rows so the server
-    // walks the book at send-time (prices may have shifted between Calculate
-    // and Send).
-    const res = await sendShoppingList(
-      hub,
-      quoteItems,
-      pilotId,
-    );
-    if ('error' in res) {
-      setSendStatus({ kind: 'error', message: res.error, reauthHint: res.reauthHint ?? null });
-    } else {
-      setSendStatus({ kind: 'sent', pilotName: pilot.name, mailId: res.mailId });
     }
   };
 
@@ -320,53 +262,7 @@ function ShoppingListView({ chars, currentUser, onLoginRequired }: { chars: Char
 
       {error && <div className="empty err">{error}</div>}
 
-      {quote && (
-        <>
-          <div className="mk-shop-send">
-            {currentUser ? (
-              <>
-                <label className="mk-shop-send-label" htmlFor="mk-shop-pilot">Send to pilot</label>
-                <select
-                  id="mk-shop-pilot"
-                  className="mk-shop-pilot-select"
-                  value={pilotId ?? ''}
-                  onChange={e => setPilotId(Number(e.target.value) || null)}
-                  disabled={sortedChars.length === 0 || sendStatus.kind === 'sending'}
-                >
-                  {sortedChars.length === 0 && <option value="">No pilots authed</option>}
-                  {sortedChars.map(c => (
-                    <option key={c.characterId} value={c.characterId}>
-                      {c.name}{c.needsReauth ? ' (needs re-auth)' : ''}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  className="fl-refresh"
-                  onClick={sendToPilot}
-                  disabled={pilotId == null || sendStatus.kind === 'sending'}
-                  title="Sends the list as an EVEmail to the selected pilot, with each item as a clickable in-game link"
-                >{sendStatus.kind === 'sending' ? 'Sending…' : 'Send as EVEmail'}</button>
-              </>
-            ) : (
-              <button className="fl-refresh" type="button" onClick={onLoginRequired}>Log in to send to a pilot</button>
-            )}
-            {sendStatus.kind === 'sent' && (
-              <span className="mk-shop-send-ok">
-                Sent to {sendStatus.pilotName}{sendStatus.mailId != null ? ` (mail #${sendStatus.mailId})` : ''}. Check their in-game mail tab.
-              </span>
-            )}
-            {sendStatus.kind === 'error' && (
-              <span className="mk-shop-send-err">
-                {sendStatus.message}
-                {sendStatus.reauthHint && (
-                  <> · <span className="dim">{sendStatus.reauthHint}</span></>
-                )}
-              </span>
-            )}
-          </div>
-          <ShoppingListResults quote={quote} />
-        </>
-      )}
+      {quote && <ShoppingListResults quote={quote} />}
     </>
   );
 }
