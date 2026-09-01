@@ -31,7 +31,7 @@ test('postgres migrations boot the live test schema', { skip: config ? false : '
       WHERE table_schema = 'public'
         AND table_type = 'BASE TABLE'
     `);
-    assert.equal(Number(tableCount.rows[0].count), 22);
+    assert.equal(Number(tableCount.rows[0].count), 23);
 
     await truncatePostgresTables(pool);
     const userCount = await pool.query<{ count: string }>('SELECT count(*) AS count FROM app_users');
