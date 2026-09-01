@@ -63,6 +63,25 @@ export interface PostgresCharacterStoreOptions {
   secretKey?: Buffer;
 }
 
+export interface PostgresAuthorizedCharacterOptions {
+  now?: () => Date;
+  secretKey?: Buffer;
+}
+
+export class CharacterOwnershipError extends Error {
+  constructor(readonly characterId: number) {
+    super('character_linked_elsewhere');
+    this.name = 'CharacterOwnershipError';
+  }
+}
+
+export class CharacterOwnerMismatchError extends Error {
+  constructor(readonly characterId: number) {
+    super('eve_owner_mismatch');
+    this.name = 'CharacterOwnerMismatchError';
+  }
+}
+
 interface PostgresCharacterRow {
   character_id: string | number;
   user_id: string;
@@ -107,22 +126,22 @@ export function createSqliteCharacterStore(
 ): CharacterStore {
   const database = inputDatabase ?? missingSqliteDatabase('createSqliteCharacterStore');
   const now = options.now ?? (() => Date.now());
-  const assetSnapshotsTableExists = database.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'asset_snapshots'",
-  );
   const upsertAuthorized = database.transaction((input: AuthorizedCharacterInput, addedAt: number) => {
-    if (assetSnapshotsTableExists.get()) {
-      database.prepare('DELETE FROM asset_snapshots WHERE character_id = ? AND user_id <> ?')
-        .run(input.characterId, input.userId);
+    const existing = database.prepare('SELECT user_id, owner_hash FROM characters WHERE character_id = ?')
+      .get(input.characterId) as { user_id: string | null; owner_hash: string } | undefined;
+    if (existing?.user_id && existing.user_id !== input.userId) {
+      throw new CharacterOwnershipError(input.characterId);
+    }
+    if (existing && existing.owner_hash !== input.ownerHash) {
+      throw new CharacterOwnerMismatchError(input.characterId);
     }
     database.prepare(`
       INSERT INTO characters (character_id, user_id, character_name, owner_hash, scopes,
         refresh_token, access_token, access_token_expires_at, added_at, needs_reauth, is_boss)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
       ON CONFLICT(character_id) DO UPDATE SET
-        user_id = excluded.user_id,
+        user_id = COALESCE(characters.user_id, excluded.user_id),
         character_name = excluded.character_name,
-        owner_hash = excluded.owner_hash,
         scopes = excluded.scopes,
         refresh_token = excluded.refresh_token,
         access_token = excluded.access_token,
@@ -314,48 +333,10 @@ export function createPostgresCharacterStore(
     },
 
     async upsertAuthorized(input) {
-      const addedAt = now();
-      const rows = await withTransaction(client, async tx => {
-        await tx.query(
-          'DELETE FROM asset_snapshots WHERE character_id = $1 AND user_id <> $2',
-          [input.characterId, input.userId],
-        );
-        return tx.query<PostgresCharacterRow>(
-        `
-          INSERT INTO characters (
-            character_id, user_id, character_name, owner_hash, scopes,
-            refresh_token_enc, access_token_enc, access_token_expires_at,
-            added_at, needs_reauth, is_boss, updated_at
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, false, $9)
-          ON CONFLICT (character_id) DO UPDATE SET
-            user_id = excluded.user_id,
-            character_name = excluded.character_name,
-            owner_hash = excluded.owner_hash,
-            scopes = excluded.scopes,
-            refresh_token_enc = excluded.refresh_token_enc,
-            access_token_enc = excluded.access_token_enc,
-            access_token_expires_at = excluded.access_token_expires_at,
-            needs_reauth = false,
-            updated_at = excluded.updated_at
-          RETURNING character_id, user_id, character_name, owner_hash, scopes,
-            refresh_token_enc, access_token_enc, access_token_expires_at, added_at,
-            needs_reauth, is_boss
-        `,
-        [
-          input.characterId,
-          input.userId,
-          input.characterName,
-          input.ownerHash,
-          input.scopes,
-          encryptSecret(input.refreshToken, key),
-          input.accessToken ? encryptSecret(input.accessToken, key) : null,
-          input.accessTokenExpiresAt == null ? null : new Date(input.accessTokenExpiresAt),
-          addedAt,
-        ],
-        );
-      });
-      return mapPostgresCharacter(rows.rows[0]!, key);
+      return withTransaction(client, tx => upsertPostgresAuthorizedCharacter(tx, input, {
+        now,
+        secretKey: key,
+      }));
     },
 
     async updateTokens(characterId, input) {
@@ -416,6 +397,71 @@ export function createPostgresCharacterStore(
   };
 
   return store;
+}
+
+export async function upsertPostgresAuthorizedCharacter(
+  client: QueryClient,
+  input: AuthorizedCharacterInput,
+  options: PostgresAuthorizedCharacterOptions = {},
+): Promise<CharacterRow> {
+  const now = options.now ?? (() => new Date());
+  const key = options.secretKey ?? tokenEncryptionKey();
+  const existingRows = await client.query<{ user_id: string; owner_hash: string }>(
+    'SELECT user_id, owner_hash FROM characters WHERE character_id = $1 FOR UPDATE',
+    [input.characterId],
+  );
+  const existing = existingRows.rows[0];
+  if (existing?.user_id !== undefined && existing.user_id !== input.userId) {
+    throw new CharacterOwnershipError(input.characterId);
+  }
+  if (existing && existing.owner_hash !== input.ownerHash) {
+    throw new CharacterOwnerMismatchError(input.characterId);
+  }
+
+  const addedAt = now();
+  const rows = await client.query<PostgresCharacterRow>(
+    `
+      INSERT INTO characters (
+        character_id, user_id, character_name, owner_hash, scopes,
+        refresh_token_enc, access_token_enc, access_token_expires_at,
+        added_at, needs_reauth, is_boss, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, false, $9)
+      ON CONFLICT (character_id) DO UPDATE SET
+        character_name = excluded.character_name,
+        scopes = excluded.scopes,
+        refresh_token_enc = excluded.refresh_token_enc,
+        access_token_enc = excluded.access_token_enc,
+        access_token_expires_at = excluded.access_token_expires_at,
+        needs_reauth = false,
+        updated_at = excluded.updated_at
+      WHERE characters.user_id = excluded.user_id
+        AND characters.owner_hash = excluded.owner_hash
+      RETURNING character_id, user_id, character_name, owner_hash, scopes,
+        refresh_token_enc, access_token_enc, access_token_expires_at, added_at,
+        needs_reauth, is_boss
+    `,
+    [
+      input.characterId,
+      input.userId,
+      input.characterName,
+      input.ownerHash,
+      input.scopes,
+      encryptSecret(input.refreshToken, key),
+      input.accessToken ? encryptSecret(input.accessToken, key) : null,
+      input.accessTokenExpiresAt == null ? null : new Date(input.accessTokenExpiresAt),
+      addedAt,
+    ],
+  );
+  if (rows.rows[0]) return mapPostgresCharacter(rows.rows[0], key);
+
+  const conflictRows = await client.query<{ user_id: string; owner_hash: string }>(
+    'SELECT user_id, owner_hash FROM characters WHERE character_id = $1',
+    [input.characterId],
+  );
+  const conflict = conflictRows.rows[0];
+  if (conflict?.user_id !== input.userId) throw new CharacterOwnershipError(input.characterId);
+  throw new CharacterOwnerMismatchError(input.characterId);
 }
 
 function mapPostgresCharacter(row: PostgresCharacterRow, key: Buffer): CharacterRow {
