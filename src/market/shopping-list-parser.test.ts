@@ -2,6 +2,24 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { aggregateShoppingItems, parseShoppingList } from './shopping-list-parser.ts';
 
+test('parseShoppingList turns each EFT header into one hull item', () => {
+  const parsed = parseShoppingList(`
+[Machariel, *Machariel Ratting Angels]
+Explosive Armor Hardener II
+[Machariel, Backup Ratting Fit]
+`);
+
+  assert.deepEqual(parsed.map(line => ({ name: line.name, qty: line.qty, ok: line.ok })), [
+    { name: 'Machariel', qty: 1, ok: true },
+    { name: 'Explosive Armor Hardener II', qty: 1, ok: true },
+    { name: 'Machariel', qty: 1, ok: true },
+  ]);
+  assert.deepEqual(aggregateShoppingItems(parsed), [
+    { name: 'Machariel', qty: 2 },
+    { name: 'Explosive Armor Hardener II', qty: 1 },
+  ]);
+});
+
 test('parseShoppingList accepts fit-style item lists with duplicates and trailing quantities', () => {
   const parsed = parseShoppingList(`
 Republic Fleet Gyrostabilizer

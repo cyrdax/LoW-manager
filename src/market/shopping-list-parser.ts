@@ -34,6 +34,16 @@ function parseShoppingLine(raw: string): ParsedShoppingLine | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
+  const header = /^\[(.+)\]$/.exec(trimmed);
+  if (header) {
+    const commaIndex = header[1].indexOf(',');
+    if (commaIndex >= 0) {
+      const shipName = header[1].slice(0, commaIndex).trim();
+      const fitName = header[1].slice(commaIndex + 1).trim();
+      if (shipName && fitName) return line(shipName, 1, trimmed);
+    }
+  }
+
   let match = trimmed.match(/^(.+?)\t+(\d[\d,]*)\b/);
   if (match) {
     return line(match[1], quantity(match[2]), trimmed);
