@@ -391,7 +391,7 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
   );
 }
 
-function ContractResultsTable({
+export function ContractResultsTable({
   rows,
   onOpenDetails,
 }: {
@@ -429,6 +429,7 @@ function ContractResultsTable({
             <SortableTh label="Location" sortKey="location" active={sort} onSort={onSort} />
             <SortableTh label="Jumps" sortKey="jumps" active={sort} onSort={onSort} numeric />
             <SortableTh label="Cap jumps" sortKey="capitalJumps" active={sort} onSort={onSort} numeric />
+            <SortableTh label="Fuel (JFC V)" sortKey="fuel" active={sort} onSort={onSort} numeric />
             <SortableTh label="Expires" sortKey="expires" active={sort} onSort={onSort} />
             <SortableTh label="Title" sortKey="title" active={sort} onSort={onSort} />
             <SortableTh label="Contract" sortKey="contract" active={sort} onSort={onSort} numeric />
@@ -458,6 +459,14 @@ function ContractResultsTable({
               </td>
               <td className="num">{row.jumps == null ? '—' : row.jumps}</td>
               <td className="num">{row.capitalJumps == null ? 'N/A' : row.capitalJumps}</td>
+              <td className="num">
+                {row.jumpFuelAmount == null || !row.jumpFuelTypeName ? 'N/A' : (
+                  <>
+                    <div>{row.jumpFuelAmount.toLocaleString()}</div>
+                    <small>{row.jumpFuelTypeName}</small>
+                  </>
+                )}
+              </td>
               <td>{formatExpiry(row.dateExpired)}</td>
               <td>{row.title || '—'}</td>
               <td className="num">

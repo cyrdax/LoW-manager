@@ -30,8 +30,8 @@ const masteryData = {
     '17920': { name: 'Barghest', groupId: 27, groupName: 'Battleship', requiredSkills: [], masteries: [[], [], [], [], []] },
     '24688': { name: 'Rokh', groupId: 27, groupName: 'Battleship', requiredSkills: [], masteries: [[], [], [], [], []] },
     '587': { name: 'Rifter', groupId: 25, groupName: 'Frigate', requiredSkills: [], masteries: [[], [], [], [], []] },
-    '23757': { name: 'Archon', groupId: 547, groupName: 'Carrier', requiredSkills: [], masteries: [[], [], [], [], []], jumpDriveBaseRangeLy: 3.5 },
-    '19720': { name: 'Revelation', groupId: 485, groupName: 'Dreadnought', requiredSkills: [], masteries: [[], [], [], [], []], jumpDriveBaseRangeLy: 3.5 },
+    '23757': { name: 'Archon', groupId: 547, groupName: 'Carrier', requiredSkills: [], masteries: [[], [], [], [], []], jumpDriveBaseRangeLy: 3.5, jumpFuelTypeId: 16_274, jumpFuelTypeName: 'Helium Isotopes', jumpFuelUnitsPerLy: 3_000 },
+    '19720': { name: 'Revelation', groupId: 485, groupName: 'Dreadnought', requiredSkills: [], masteries: [[], [], [], [], []], jumpDriveBaseRangeLy: 3.5, jumpFuelTypeId: 16_274, jumpFuelTypeName: 'Helium Isotopes', jumpFuelUnitsPerLy: 3_000 },
   },
 } as unknown as MasteryData;
 
@@ -143,6 +143,8 @@ test('runContractSearch calculates JDC V jump-drive jumps from the searched ship
   });
 
   assert.equal(response.results[0].capitalJumps, 1);
+  assert.equal(response.results[0].jumpFuelTypeName, 'Helium Isotopes');
+  assert.equal(response.results[0].jumpFuelAmount, 10_401);
 });
 
 test('runJumpCapableContractSearch returns any jump-capable ship within one JDC V jump', async () => {
@@ -180,8 +182,8 @@ test('runJumpCapableContractSearch returns any jump-capable ship within one JDC 
 
   assert.equal(response.ship.name, 'Any jump-capable ship');
   assert.equal(response.radius, 1);
-  assert.deepEqual(response.results.map(row => [row.contractId, row.shipName, row.capitalJumps]), [
-    [1, 'Archon', 1],
+  assert.deepEqual(response.results.map(row => [row.contractId, row.shipName, row.capitalJumps, row.jumpFuelAmount, row.jumpFuelTypeName]), [
+    [1, 'Archon', 1, 10_401, 'Helium Isotopes'],
   ]);
 });
 
@@ -288,6 +290,9 @@ function row(contractId: number, jumps: number | null, effectivePrice: number | 
     locationKnown: jumps != null,
     jumps,
     capitalJumps: null,
+    jumpFuelTypeId: null,
+    jumpFuelTypeName: null,
+    jumpFuelAmount: null,
     dateIssued: '2026-01-01T00:00:00Z',
     dateExpired: '2026-01-02T00:00:00Z',
   };

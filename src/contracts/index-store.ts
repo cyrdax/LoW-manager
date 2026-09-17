@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { jumpDriveJumpsAtJdc5 } from './capital-jumps.ts';
+import { jumpDriveJumpsAtJdc5, jumpFuelUnitsAtJfc5 } from './capital-jumps.ts';
 import { locationForId, type ContractMapTopology } from './map.ts';
 import { sortContractResultsDefault } from './result-sort.ts';
 import type { ContractSearchResult, PublicContractItem, PublicContractSummary } from './types.ts';
@@ -24,6 +24,9 @@ export interface IndexedContractSearchInput {
   shipTypeId: number;
   shipName: string;
   jumpDriveBaseRangeLy: number | null;
+  jumpFuelTypeId?: number | null;
+  jumpFuelTypeName?: string | null;
+  jumpFuelUnitsPerLy?: number | null;
   originSystemId: number;
   topology: ContractMapTopology;
   regionIds: number[];
@@ -35,6 +38,9 @@ export interface IndexedJumpCapableShip {
   typeId: number;
   name: string;
   jumpDriveBaseRangeLy: number;
+  jumpFuelTypeId?: number | null;
+  jumpFuelTypeName?: string | null;
+  jumpFuelUnitsPerLy?: number | null;
 }
 
 export interface IndexedJumpCapableContractSearchInput {
@@ -398,6 +404,14 @@ export function searchIndexedContracts(
         row.location_system_id,
         input.jumpDriveBaseRangeLy,
       ),
+      jumpFuelTypeId: input.jumpFuelTypeId ?? null,
+      jumpFuelTypeName: input.jumpFuelTypeName ?? null,
+      jumpFuelAmount: jumpFuelUnitsAtJfc5(
+        input.topology,
+        input.originSystemId,
+        row.location_system_id,
+        input.jumpFuelUnitsPerLy,
+      ),
       dateIssued: row.date_issued,
       dateExpired: row.date_expired,
     });
@@ -483,6 +497,14 @@ export function searchIndexedJumpCapableContracts(
       locationKnown: row.location_known === 1,
       jumps: input.distances.get(row.location_system_id) ?? null,
       capitalJumps,
+      jumpFuelTypeId: ship.jumpFuelTypeId ?? null,
+      jumpFuelTypeName: ship.jumpFuelTypeName ?? null,
+      jumpFuelAmount: jumpFuelUnitsAtJfc5(
+        input.topology,
+        input.originSystemId,
+        row.location_system_id,
+        ship.jumpFuelUnitsPerLy,
+      ),
       dateIssued: row.date_issued,
       dateExpired: row.date_expired,
     });

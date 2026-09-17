@@ -301,6 +301,9 @@ export interface ContractSearchResult {
   locationKnown: boolean;
   jumps: number | null;
   capitalJumps: number | null;
+  jumpFuelTypeId: number | null;
+  jumpFuelTypeName: string | null;
+  jumpFuelAmount: number | null;
   dateIssued: string;
   dateExpired: string;
 }
@@ -326,7 +329,7 @@ export interface ContractDetailItem {
 }
 
 export interface ContractDetails {
-  contract: Omit<ContractSearchResult, 'shipTypeId' | 'shipName' | 'jumps' | 'capitalJumps'> & {
+  contract: Omit<ContractSearchResult, 'shipTypeId' | 'shipName' | 'jumps' | 'capitalJumps' | 'jumpFuelTypeId' | 'jumpFuelTypeName' | 'jumpFuelAmount'> & {
     locationId: number | null;
   };
   items: ContractDetailItem[];

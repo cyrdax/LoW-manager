@@ -126,6 +126,9 @@ export async function runContractSearch(
     shipTypeId: input.shipId,
     shipName: ship.name,
     jumpDriveBaseRangeLy: ship.jumpDriveBaseRangeLy ?? null,
+    jumpFuelTypeId: ship.jumpFuelTypeId ?? null,
+    jumpFuelTypeName: ship.jumpFuelTypeName ?? null,
+    jumpFuelUnitsPerLy: ship.jumpFuelUnitsPerLy ?? null,
     originSystemId: input.originSystemId,
     topology,
     regionIds,
@@ -246,6 +249,9 @@ function jumpCapableContractShips(data: MasteryData) {
       typeId: Number(typeId),
       name: ship.name,
       jumpDriveBaseRangeLy: ship.jumpDriveBaseRangeLy ?? 0,
+      jumpFuelTypeId: ship.jumpFuelTypeId ?? null,
+      jumpFuelTypeName: ship.jumpFuelTypeName ?? null,
+      jumpFuelUnitsPerLy: ship.jumpFuelUnitsPerLy ?? null,
     }))
     .filter(ship => Number.isFinite(ship.typeId) && ship.jumpDriveBaseRangeLy > 0);
 }

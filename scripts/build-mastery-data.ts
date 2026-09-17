@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
+import { extractJumpDriveStaticData } from '../src/contracts/capital-jumps.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -31,8 +32,6 @@ const ATTR_REQUIRED_LEVEL = [277, 278, 279, 1286, 1287, 1288];
 const ATTR_PRIMARY = 180;
 const ATTR_SECONDARY = 181;
 const ATTR_SKILL_RANK = 275;
-const ATTR_CAN_JUMP = 861;
-const ATTR_JUMP_DRIVE_RANGE = 867;
 const SHIP_CATEGORY_ID = 6;
 
 const MASTERY_GRADES = ['basic', 'standard', 'improved', 'advanced', 'elite'] as const;
@@ -115,6 +114,9 @@ interface OutShip {
   groupId: number;
   groupName: string;
   jumpDriveBaseRangeLy: number | null;
+  jumpFuelTypeId: number | null;
+  jumpFuelTypeName: string | null;
+  jumpFuelUnitsPerLy: number | null;
   requiredSkills: Array<{ skillId: number; level: number }>;
   masteries: number[][];
 }
@@ -338,15 +340,6 @@ function extractRequiredSkills(d: SdeTypeDogma | undefined): Array<{ skillId: nu
   return out;
 }
 
-function extractJumpDriveBaseRangeLy(d: SdeTypeDogma | undefined): number | null {
-  if (!d?.dogmaAttributes) return null;
-  const byId = new Map<number, number>();
-  for (const a of d.dogmaAttributes) byId.set(a.attributeID, a.value);
-  if (byId.get(ATTR_CAN_JUMP) !== 1) return null;
-  const range = byId.get(ATTR_JUMP_DRIVE_RANGE);
-  return range != null && Number.isFinite(range) && range > 0 ? range : null;
-}
-
 function shapeMasteries(raw: Record<string, number[]> | undefined): number[][] {
   // Normalize into a 5-element array indexed 0..4 (Mastery I..V).
   const out: number[][] = [[], [], [], [], []];
@@ -377,12 +370,6 @@ function extractRequiredSkillsFromAttrs(attrs: Map<number, number> | undefined):
     if (sid && lvl != null) out.push({ skillId: Math.round(sid), level: Math.round(lvl) });
   }
   return out;
-}
-
-function extractJumpDriveBaseRangeLyFromAttrs(attrs: Map<number, number> | undefined): number | null {
-  if (!attrs || attrs.get(ATTR_CAN_JUMP) !== 1) return null;
-  const range = attrs.get(ATTR_JUMP_DRIVE_RANGE);
-  return range != null && Number.isFinite(range) && range > 0 ? range : null;
 }
 
 function activityKey(blueprintId: number, activityId: number): string {
@@ -468,11 +455,18 @@ function overlayFuzzworkData(
     if (shipGroupIds.has(type.groupId)) {
       const existing = ships[String(type.typeId)];
       if (required.length === 0 && !existing) continue;
+      const jumpDrive = extractJumpDriveStaticData(
+        attrsByType.get(type.typeId),
+        fuelTypeId => types.get(fuelTypeId)?.name,
+      );
       ships[String(type.typeId)] = {
         name: type.name,
         groupId: type.groupId,
         groupName: group?.name ?? `Group ${type.groupId}`,
-        jumpDriveBaseRangeLy: extractJumpDriveBaseRangeLyFromAttrs(attrsByType.get(type.typeId)) ?? existing?.jumpDriveBaseRangeLy ?? null,
+        jumpDriveBaseRangeLy: jumpDrive.jumpDriveBaseRangeLy ?? existing?.jumpDriveBaseRangeLy ?? null,
+        jumpFuelTypeId: jumpDrive.jumpFuelTypeId ?? existing?.jumpFuelTypeId ?? null,
+        jumpFuelTypeName: jumpDrive.jumpFuelTypeName ?? existing?.jumpFuelTypeName ?? null,
+        jumpFuelUnitsPerLy: jumpDrive.jumpFuelUnitsPerLy ?? existing?.jumpFuelUnitsPerLy ?? null,
         requiredSkills: required,
         masteries: existing?.masteries ?? [[], [], [], [], []],
       };
@@ -733,11 +727,15 @@ async function main() {
     if (shipGroupIds.has(groupId)) {
       const masteries = shapeMasteries(t.masteries);
       if (required.length === 0 && masteries.every(m => m.length === 0)) continue;
+      const jumpDrive = extractJumpDriveStaticData(
+        new Map((typeDogma[tid]?.dogmaAttributes ?? []).map(attr => [attr.attributeID, attr.value])),
+        fuelTypeId => types[String(fuelTypeId)]?.name?.en,
+      );
       ships[tid] = {
         name: t.name?.en ?? `Type ${tid}`,
         groupId,
         groupName: groupNames.get(groupId) ?? `Group ${groupId}`,
-        jumpDriveBaseRangeLy: extractJumpDriveBaseRangeLy(typeDogma[tid]),
+        ...jumpDrive,
         requiredSkills: required,
         masteries,
       };

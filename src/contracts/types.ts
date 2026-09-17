@@ -66,6 +66,9 @@ export interface ContractSearchResult {
   locationKnown: boolean;
   jumps: number | null;
   capitalJumps: number | null;
+  jumpFuelTypeId: number | null;
+  jumpFuelTypeName: string | null;
+  jumpFuelAmount: number | null;
   dateIssued: string;
   dateExpired: string;
 }

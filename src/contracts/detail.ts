@@ -22,7 +22,7 @@ export interface ContractDetailItem {
 }
 
 export interface ContractDetails {
-  contract: Omit<ContractSearchResult, 'shipTypeId' | 'shipName' | 'jumps' | 'capitalJumps'> & {
+  contract: Omit<ContractSearchResult, 'shipTypeId' | 'shipName' | 'jumps' | 'capitalJumps' | 'jumpFuelTypeId' | 'jumpFuelTypeName' | 'jumpFuelAmount'> & {
     locationId: number | null;
   };
   items: ContractDetailItem[];
