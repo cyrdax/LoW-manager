@@ -2,14 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
-import { getShipLayout, parseCsvRows, resolveItemByName, resolveItemByTypeId, resolveShipByName, searchFitItems, searchFitShips } from './metadata.ts';
+import { classifyFitItem, getShipLayout, parseCsvRows, resolveItemByName, resolveItemByTypeId, resolveShipByName } from './metadata.ts';
 
 describe('fit metadata', () => {
   it('resolves provided example ships and items', () => {
     assert.equal(resolveShipByName('Naglfar')?.typeId, 19722);
     assert.equal(resolveShipByName('Archon')?.typeId, 23757);
     assert.equal(resolveItemByName('Republic Fleet Gyrostabilizer')?.name, 'Republic Fleet Gyrostabilizer');
-    assert.equal(searchFitShips('nag', 5).some(ship => ship.name === 'Naglfar'), true);
   });
 
   it('reads ship slots from dogma attributes', () => {
@@ -46,21 +45,13 @@ describe('fit metadata', () => {
     assert.equal(tritanium?.groupName, 'Mineral');
   });
 
-  it('searches fit items with prefix matches and slot role hints', () => {
-    const hits = searchFitItems('Siege Module', 5);
-    assert.equal(hits[0]?.name, 'Siege Module I');
-    assert.equal(hits.some(hit => hit.name === 'Siege Module II' && hit.role === 'high'), true);
-
-    const fighters = searchFitItems('Templar II', 5);
-    assert.equal(fighters[0]?.role, 'fighterBay');
-  });
-
   it('infers fitted module slot roles from common module groups', () => {
-    assert.equal(searchFitItems('Drone Damage Amplifier II', 1)[0]?.role, 'low');
-    assert.equal(searchFitItems('Capital Cap Battery II', 1)[0]?.role, 'mid');
-    assert.equal(searchFitItems('Tracking Computer II', 1)[0]?.role, 'mid');
-    assert.equal(searchFitItems('Heavy Assault Missile Launcher II', 1)[0]?.role, 'high');
-    assert.equal(searchFitItems('Capital Capacitor Control Circuit I', 1)[0]?.role, 'rig');
+    assert.equal(classifyFitItem(resolveItemByName('Drone Damage Amplifier II')), 'low');
+    assert.equal(classifyFitItem(resolveItemByName('Capital Cap Battery II')), 'mid');
+    assert.equal(classifyFitItem(resolveItemByName('Tracking Computer II')), 'mid');
+    assert.equal(classifyFitItem(resolveItemByName('Heavy Assault Missile Launcher II')), 'high');
+    assert.equal(classifyFitItem(resolveItemByName('Capital Capacitor Control Circuit I')), 'rig');
+    assert.equal(classifyFitItem(resolveItemByName('Templar II')), 'fighterBay');
   });
 
   it('indexes every published Fuzzwork item ID even when names collide', () => {

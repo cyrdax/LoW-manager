@@ -3,7 +3,6 @@ import type { QueryClient } from '../db/migrations.ts';
 import { getPostgresPool } from '../db/postgres.ts';
 import { withTransaction, type TransactionSource } from '../db/transaction.ts';
 import { buildFitDraft } from './assignment.ts';
-import { parseSerializedFitsV2EditorDocument, serializeFitsV2EditorDocument } from './editor.ts';
 import { getShipLayout, resolveShipByTypeId } from './metadata.ts';
 import type {
   AssignedFitItem,
@@ -14,7 +13,6 @@ import type {
   FitShip,
   FitShipLayout,
   FitWarning,
-  FitsV2EditorDocument,
 } from './types.ts';
 
 type SqliteDatabase = Database.Database;
@@ -28,7 +26,6 @@ export interface SaveFitInput {
   ownerUserId?: string | null;
   visibility?: LibraryVisibility;
   sourcePublicFitId?: number | null;
-  editorJson?: FitsV2EditorDocument | null;
 }
 
 export interface UpdateFitInput {
@@ -36,7 +33,6 @@ export interface UpdateFitInput {
   shipTypeId?: number;
   fitName?: string;
   notes?: string;
-  editorJson?: FitsV2EditorDocument | null;
 }
 
 export interface SavedFitWarningCounts {
@@ -58,7 +54,6 @@ export interface SavedFitSummary {
   updatedAt: number;
   itemCount: number;
   warningCounts: SavedFitWarningCounts;
-  hasEditorJson: boolean;
 }
 
 export interface SavedFitDetail extends FitDraft {
@@ -67,7 +62,6 @@ export interface SavedFitDetail extends FitDraft {
   visibility: LibraryVisibility;
   sourcePublicFitId: number | null;
   notes: string;
-  editorJson: FitsV2EditorDocument | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -110,7 +104,6 @@ interface SavedFitRow {
   fit_name: string;
   notes: string;
   raw_eft: string;
-  editor_json: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -141,7 +134,6 @@ interface PostgresSavedFitRow {
   fit_name: string;
   notes: string;
   raw_eft: string;
-  editor_json: unknown;
   created_at: Date | string | number;
   updated_at: Date | string | number;
 }
@@ -246,11 +238,11 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
   const insertFit = database.prepare(`
     INSERT INTO saved_fits (
       owner_user_id, visibility, source_public_fit_id,
-      ship_type_id, ship_name, fit_name, notes, raw_eft, editor_json, created_at, updated_at
+      ship_type_id, ship_name, fit_name, notes, raw_eft, created_at, updated_at
     )
     VALUES (
       @ownerUserId, @visibility, @sourcePublicFitId,
-      @shipTypeId, @shipName, @fitName, @notes, @rawEft, @editorJson, @createdAt, @updatedAt
+      @shipTypeId, @shipName, @fitName, @notes, @rawEft, @createdAt, @updatedAt
     )
   `);
   const updateFit = database.prepare(`
@@ -260,7 +252,6 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
         fit_name = @fitName,
         notes = @notes,
         raw_eft = @rawEft,
-        editor_json = @editorJson,
         updated_at = @updatedAt
     WHERE id = @id
   `);
@@ -310,7 +301,6 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
       fitName,
       notes: input.notes ?? '',
       rawEft: input.rawEft,
-      editorJson: serializeFitsV2EditorDocument(input.editorJson),
       createdAt: timestamp,
       updatedAt: timestamp,
     });
@@ -336,7 +326,6 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
       fitName,
       notes: input.notes ?? existing.notes,
       rawEft,
-      editorJson: input.editorJson === undefined ? existing.editor_json : serializeFitsV2EditorDocument(input.editorJson),
       updatedAt: timestamp,
     });
     persistItems(id, draft.items);
@@ -391,7 +380,6 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
         ownerUserId,
         visibility: 'private',
         sourcePublicFitId: source.id,
-        editorJson: source.editorJson,
       }));
     },
 
@@ -404,7 +392,7 @@ export function createFitStore(database: SqliteDatabase, options: FitStoreOption
 
 const FIT_COLUMNS = `
   id, owner_user_id, visibility, source_public_fit_id,
-  ship_type_id, ship_name, fit_name, notes, raw_eft, editor_json, created_at, updated_at
+  ship_type_id, ship_name, fit_name, notes, raw_eft, created_at, updated_at
 `;
 
 const FIT_ITEM_COLUMNS = `
@@ -470,9 +458,8 @@ export function createPostgresFitStore(
                 fit_name = $3,
                 notes = $4,
                 raw_eft = $5,
-                editor_json = $6,
-                updated_at = $7
-            WHERE id = $8
+                updated_at = $6
+            WHERE id = $7
             RETURNING id
           `,
           [
@@ -481,7 +468,6 @@ export function createPostgresFitStore(
             fitName,
             input.notes ?? existing.notes,
             rawEft,
-            input.editorJson === undefined ? existing.editor_json : serializeFitsV2EditorDocument(input.editorJson),
             timestamp,
             id,
           ],
@@ -512,7 +498,6 @@ export function createPostgresFitStore(
           ownerUserId,
           visibility: 'private',
           sourcePublicFitId: sourceFit.id,
-          editorJson: sourceFit.editorJson,
         }, now());
         return readPostgresDetail(client, copiedId);
       });
@@ -558,9 +543,9 @@ async function insertPostgresFit(client: QueryClient, input: SaveFitInput, times
     `
       INSERT INTO saved_fits (
         owner_user_id, visibility, source_public_fit_id,
-        ship_type_id, ship_name, fit_name, notes, raw_eft, editor_json, created_at, updated_at
+        ship_type_id, ship_name, fit_name, notes, raw_eft, created_at, updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING id
     `,
     [
@@ -572,7 +557,6 @@ async function insertPostgresFit(client: QueryClient, input: SaveFitInput, times
       fitName,
       input.notes ?? '',
       input.rawEft,
-      serializeFitsV2EditorDocument(input.editorJson),
       timestamp,
       timestamp,
     ],
@@ -640,7 +624,6 @@ function buildDetail(fit: SavedFitRow, rows: SavedFitItemRow[]): SavedFitDetail 
       `[${ship.name}, ${fit.fit_name}]`,
     ),
     notes: fit.notes,
-    editorJson: parseSerializedFitsV2EditorDocument(fit.editor_json),
     createdAt: fit.created_at,
     updatedAt: fit.updated_at,
   };
@@ -657,9 +640,6 @@ function mapPostgresFitRow(row: PostgresSavedFitRow): SavedFitRow {
     fit_name: row.fit_name,
     notes: row.notes,
     raw_eft: row.raw_eft,
-    editor_json: typeof row.editor_json === 'string' || row.editor_json == null
-      ? row.editor_json ?? null
-      : JSON.stringify(row.editor_json),
     created_at: toEpochMs(row.created_at),
     updated_at: toEpochMs(row.updated_at),
   };
@@ -719,7 +699,6 @@ function detailToSummary(detail: SavedFitDetail | null): SavedFitSummary | null 
     updatedAt: detail.updatedAt,
     itemCount: detail.items.length,
     warningCounts: countWarnings(detail.warnings),
-    hasEditorJson: detail.editorJson != null,
   };
 }
 

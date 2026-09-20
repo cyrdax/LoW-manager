@@ -7,7 +7,6 @@ import {
   type OwnsCharacter,
 } from '../auth/pilot-access.ts';
 import { buildFitDraft } from '../fits/assignment.ts';
-import { assertFitsV2EditorDocument } from '../fits/editor.ts';
 import { buildEsiFittingPayload, createCharacterFitting, type EsiFittingCreatePayload } from '../fits/esi.ts';
 import { quoteFit, type FitQuote } from '../fits/pricing.ts';
 import {
@@ -19,8 +18,7 @@ import {
   type PyfaScreenshotExtractor,
 } from '../fits/pyfa-image-import.ts';
 import { type AsyncFitStore, type FitStore, type LibraryVisibility, type SavedFitDetail } from '../fits/store.ts';
-import type { FitDraft, FitsV2EditorDocument } from '../fits/types.ts';
-import { getShipLayout, searchFitItems, searchFitShips } from '../fits/metadata.ts';
+import type { FitDraft } from '../fits/types.ts';
 import { HUBS, type HubKey } from '../market/pricing.ts';
 
 const MAX_RAW_EFT_CHARS = 64 * 1024;
@@ -33,8 +31,6 @@ export interface FitRouteDeps {
   buildDraft?: typeof buildFitDraft;
   quoteFit?: (fit: FitDraft, hub: HubKey) => Promise<FitQuote>;
   createFitting?: (characterId: number, payload: EsiFittingCreatePayload) => Promise<number | null>;
-  searchShips?: typeof searchFitShips;
-  searchItems?: typeof searchFitItems;
   currentUser?: CurrentUserResolver;
   ownsCharacter?: OwnsCharacter;
   pyfaScreenshotExtractor?: PyfaScreenshotExtractor;
@@ -45,41 +41,9 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   const draftBuilder = deps.buildDraft ?? buildFitDraft;
   const quote = deps.quoteFit ?? quoteFit;
   const createFitting = deps.createFitting ?? createCharacterFitting;
-  const shipSearch = deps.searchShips ?? searchFitShips;
-  const itemSearch = deps.searchItems ?? searchFitItems;
   const currentUser = routeCurrentUser(deps);
   const owns = deps.ownsCharacter;
   const pyfaScreenshotExtractor = deps.pyfaScreenshotExtractor ?? createDefaultPyfaScreenshotExtractor();
-
-  app.get('/api/fits/ships', async (req) => {
-    const q = String((req.query as { q?: string }).q ?? '');
-    return shipSearch(q, 20).map(ship => {
-      const layout = getShipLayout(ship.typeId);
-      return {
-        id: ship.typeId,
-        name: ship.name,
-        groupId: ship.groupId,
-        groupName: ship.groupName,
-        highSlots: layout.highSlots,
-        midSlots: layout.midSlots,
-        lowSlots: layout.lowSlots,
-        rigSlots: layout.rigSlots,
-        serviceSlots: layout.serviceSlots,
-        subsystemSlots: layout.subsystemSlots,
-      };
-    });
-  });
-
-  app.get('/api/fits/items', async (req) => {
-    const q = String((req.query as { q?: string }).q ?? '');
-    return itemSearch(q, 30).map(item => ({
-      id: item.typeId,
-      name: item.name,
-      groupName: item.groupName,
-      categoryName: item.categoryName,
-      role: item.role,
-    }));
-  });
 
   app.post('/api/fits/import-pyfa-image', { bodyLimit: PYFA_IMAGE_IMPORT_REQUEST_BODY_LIMIT_BYTES }, async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
@@ -157,12 +121,11 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
   app.post('/api/fits', async (req, reply) => {
     const user = await requireUser(req, reply, currentUser);
     if (!user) return reply;
-    const body = req.body as { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string; visibility?: string; editorJson?: unknown } | undefined;
+    const body = req.body as { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string; visibility?: string } | undefined;
     const rawEft = body?.rawEft;
     const rawError = validateRawEft(rawEft);
     if (rawError) return reply.code(400).send({ error: rawError });
     try {
-      const editorJson = parseEditorJson(body?.editorJson);
       return await store.create({
         rawEft: rawEft!,
         shipTypeId: cleanPositiveNumber(body?.shipTypeId),
@@ -170,7 +133,6 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
         notes: body?.notes,
         ownerUserId: user.id,
         visibility: parseVisibility(body?.visibility),
-        editorJson,
       });
     } catch (err) {
       return reply.code(400).send({ error: errorMessage(err, 'failed to save fit') });
@@ -230,7 +192,7 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
     if (!existing) return reply.code(404).send({ error: 'fit not found' });
     if (!canEditFit(existing, user)) return reply.code(403).send({ error: 'not allowed' });
     try {
-      const body = req.body as { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string; editorJson?: unknown } | undefined;
+      const body = req.body as { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string } | undefined;
       const rawError = body?.rawEft == null ? null : validateRawEft(body.rawEft);
       if (rawError) return reply.code(400).send({ error: rawError });
       const fit = await store.update(id, {
@@ -238,7 +200,6 @@ export function registerFitRoutes(app: FastifyInstance, deps: FitRouteDeps = {})
         shipTypeId: cleanPositiveNumber(body?.shipTypeId),
         fitName: body?.fitName,
         notes: body?.notes,
-        ...(body && Object.prototype.hasOwnProperty.call(body, 'editorJson') ? { editorJson: parseEditorJson(body.editorJson) } : {}),
       });
       if (!fit) return reply.code(404).send({ error: 'fit not found' });
       return fit;
@@ -330,12 +291,6 @@ function parseHub(raw: string | undefined): HubKey | null {
 
 function parseVisibility(raw: string | undefined): LibraryVisibility {
   return raw === 'public' ? 'public' : 'private';
-}
-
-function parseEditorJson(value: unknown): FitsV2EditorDocument | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  return assertFitsV2EditorDocument(value);
 }
 
 function validateRawEft(rawEft: unknown): string | null {

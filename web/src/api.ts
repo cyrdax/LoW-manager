@@ -1098,36 +1098,6 @@ export interface AssignedFitSection {
   items: AssignedFitItem[];
 }
 
-export type FitsV2ModuleState = 'offline' | 'online' | 'active' | 'overheated';
-
-export interface FitsV2SkillProfile {
-  kind: 'all-v' | 'pilot';
-  characterId: number | null;
-  name: string;
-}
-
-export interface FitsV2EditorItem {
-  editorItemId: string;
-  typeId: number;
-  name: string;
-  role: FitSectionRole;
-  quantity: number;
-  slotIndex: number | null;
-  state: FitsV2ModuleState;
-  chargeTypeId: number | null;
-  chargeName: string | null;
-}
-
-export interface FitsV2EditorDocument {
-  version: 1;
-  hull: FitShip;
-  layout?: FitShipLayout | null;
-  fitName: string;
-  notes: string;
-  skillProfile: FitsV2SkillProfile;
-  items: FitsV2EditorItem[];
-}
-
 export interface FitDraft {
   rawEft: string;
   fitName: string;
@@ -1148,7 +1118,6 @@ export interface SavedFitDetail extends FitDraft {
   visibility: LibraryVisibility;
   sourcePublicFitId: number | null;
   notes: string;
-  editorJson: FitsV2EditorDocument | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -1166,7 +1135,6 @@ export interface SavedFitSummary {
   updatedAt: number;
   itemCount: number;
   warningCounts: { unmatched: number; overSlot: number; unassignable: number };
-  hasEditorJson: boolean;
 }
 
 export interface DoctrineFitMember extends SavedFitSummary {
@@ -1212,26 +1180,6 @@ export interface FitQuote {
   totals: { hull: number; fitted: number; extras: number; grand: number };
   counts: { ok: number; partial: number; noOrders: number; unknown: number };
   fetchedAt: number;
-}
-
-export interface FitShipHit {
-  id: number;
-  name: string;
-  groupId: number;
-  groupName: string;
-  highSlots: number;
-  midSlots: number;
-  lowSlots: number;
-  rigSlots: number;
-  serviceSlots: number;
-  subsystemSlots: number;
-}
-export interface FitItemHit {
-  id: number;
-  name: string;
-  groupName: string;
-  categoryName: string;
-  role: FitSectionRole | null;
 }
 
 export interface PyfaImageImportRequest {
@@ -1548,7 +1496,6 @@ export async function saveFit(input: {
   fitName?: string;
   notes?: string;
   visibility?: LibraryVisibility;
-  editorJson?: FitsV2EditorDocument | null;
 }): Promise<SavedFitDetail | { error: string }> {
   return jsonOrError(await fetch('/api/fits', {
     method: 'POST',
@@ -1559,7 +1506,7 @@ export async function saveFit(input: {
 
 export async function updateFit(
   id: number,
-  input: { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string; editorJson?: FitsV2EditorDocument | null },
+  input: { rawEft?: string; shipTypeId?: number; fitName?: string; notes?: string },
 ): Promise<SavedFitDetail | { error: string }> {
   return jsonOrError(await fetch(`/api/fits/${id}`, {
     method: 'PUT',
@@ -1578,20 +1525,6 @@ export async function publishFit(id: number): Promise<SavedFitDetail | { error: 
 
 export async function copyFitToPrivate(id: number): Promise<SavedFitDetail | { error: string }> {
   return jsonOrError(await fetch(`/api/fits/${id}/copy-private`, { method: 'POST' }));
-}
-
-export async function searchFitShips(q: string, signal?: AbortSignal): Promise<FitShipHit[]> {
-  if (q.trim().length < 2) return [];
-  const res = await fetch(`/api/fits/ships?q=${encodeURIComponent(q)}`, { signal });
-  if (!res.ok) return [];
-  return res.json();
-}
-
-export async function searchFitItems(q: string, signal?: AbortSignal): Promise<FitItemHit[]> {
-  if (q.trim().length < 2) return [];
-  const res = await fetch(`/api/fits/items?q=${encodeURIComponent(q)}`, { signal });
-  if (!res.ok) return [];
-  return res.json();
 }
 
 export async function quoteSavedFit(id: number, hub: FitHub): Promise<FitQuote | { error: string }> {

@@ -113,7 +113,7 @@ test('doctrine google doc tabs migration scopes memberships by tab', () => {
   assert.match(sql, /ADD PRIMARY KEY \(doctrine_id, google_doc_tab_id, fit_id\)/);
 });
 
-test('saved fit editor json migration adds optional Fits v2 payload storage', () => {
+test('saved fit editor json migration preserves the deployed legacy column', () => {
   const sql = readFileSync(resolve('src/db/migrations/0005_saved_fit_editor_json.sql'), 'utf8');
 
   assert.match(sql, /ALTER TABLE saved_fits/);

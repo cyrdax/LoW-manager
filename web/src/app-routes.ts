@@ -1,17 +1,15 @@
-export type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits' | 'fitsV2' | 'assets';
+export type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits' | 'assets';
 export type MarketTab = 'shopping' | 'plex';
 
 export type AppRoute =
-  | { view: Exclude<View, 'fits' | 'fitsV2' | 'market'> }
+  | { view: Exclude<View, 'fits' | 'market'> }
   | { view: 'market'; marketTab?: MarketTab }
-  | { view: 'fits'; mode?: 'fits' | 'doctrines'; fitId?: number; doctrineId?: number }
-  | { view: 'fitsV2'; fitId?: number };
+  | { view: 'fits'; mode?: 'fits' | 'doctrines'; fitId?: number; doctrineId?: number };
 
 const VIEW_PATHS: Record<View, string> = {
   pilots: '/pilots',
   fleet: '/fleet',
   fits: '/fits',
-  fitsV2: '/fits-v2',
   assets: '/assets',
   market: '/market',
   contracts: '/contracts',
@@ -25,13 +23,13 @@ export function parseAppRoute(pathname: string): AppRoute {
   if (parts.length === 0) return { view: 'pilots' };
 
   const [first, second] = parts;
-  if (first === 'fit-v2' && numericId(second) != null) return { view: 'fitsV2', fitId: numericId(second)! };
-  if (first === 'fit' && second === 'v2' && numericId(parts[2]) != null) return { view: 'fitsV2', fitId: numericId(parts[2])! };
+  if (first === 'fit-v2' && numericId(second) != null) return { view: 'fits', mode: 'fits', fitId: numericId(second)! };
+  if (first === 'fit' && second === 'v2' && numericId(parts[2]) != null) return { view: 'fits', mode: 'fits', fitId: numericId(parts[2])! };
   if (first === 'fit' && numericId(second) != null) return { view: 'fits', mode: 'fits', fitId: numericId(second)! };
   if (first === 'doctrine' && numericId(second) != null) return { view: 'fits', mode: 'doctrines', doctrineId: numericId(second)! };
   if (first === 'doctrines') return { view: 'fits', mode: 'doctrines' };
-  if (first === 'fits-v2') return { view: 'fitsV2' };
-  if (first === 'fits' && second === 'v2') return { view: 'fitsV2' };
+  if (first === 'fits-v2') return { view: 'fits', mode: 'fits' };
+  if (first === 'fits' && second === 'v2') return { view: 'fits', mode: 'fits' };
   if (first === 'market') return second === 'plex' ? { view: 'market', marketTab: 'plex' } : { view: 'market' };
   if (first === 'contract') return { view: 'contracts' };
 
@@ -41,7 +39,6 @@ export function parseAppRoute(pathname: string): AppRoute {
 
 export function pathForRoute(route: AppRoute): string {
   if (route.view === 'market') return route.marketTab === 'plex' ? '/market/plex' : '/market';
-  if (route.view === 'fitsV2') return route.fitId != null ? `/fit-v2/${route.fitId}` : '/fits-v2';
   if (route.view !== 'fits') return VIEW_PATHS[route.view];
   if (route.fitId != null) return `/fit/${route.fitId}`;
   if (route.doctrineId != null) return `/doctrine/${route.doctrineId}`;

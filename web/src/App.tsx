@@ -12,7 +12,6 @@ import { MarketView } from './components/MarketView.tsx';
 import { IndustryView } from './components/IndustryView.tsx';
 import { ContractsView } from './components/ContractsView.tsx';
 import { FitsView } from './components/FitsView.tsx';
-import { FitsV2View } from './components/FitsV2View.tsx';
 import { AssetsView } from './components/AssetsView.tsx';
 import { AuthGate } from './components/AuthGate.tsx';
 import { deleteCharacter, fetchCurrentUser, logout, setBoss, setMainCharacter, type CharacterStatus, type CurrentUser } from './api.ts';
@@ -197,7 +196,7 @@ export function App() {
     return <div className="auth-page"><div className="auth-panel"><div className="empty">Loading...</div></div></div>;
   }
 
-  const publicRoute = ['fits', 'fitsV2', 'market', 'contracts'].includes(route.view);
+  const publicRoute = ['fits', 'market', 'contracts'].includes(route.view);
   if (!currentUser && !publicRoute) {
     return <AuthGate onAuthenticated={setCurrentUser} />;
   }
@@ -293,15 +292,6 @@ export function App() {
           onOpenFitRoute={(id) => navigateToRoute({ view: 'fits', mode: 'fits', fitId: id })}
           onOpenDoctrineRoute={(id) => navigateToRoute({ view: 'fits', mode: 'doctrines', doctrineId: id })}
           onModeRoute={(mode) => navigateToRoute({ view: 'fits', mode })}
-        />
-      )}
-      {view === 'fitsV2' && (
-        <FitsV2View
-          chars={currentUser ? list : []}
-          currentUser={currentUser}
-          visibility={currentUser ? 'private' : 'public'}
-          routeFitId={route.view === 'fitsV2' && route.fitId != null ? route.fitId : null}
-          onOpenFitRoute={(id) => navigateToRoute({ view: 'fitsV2', fitId: id })}
         />
       )}
       {view === 'assets' && <AssetsView />}

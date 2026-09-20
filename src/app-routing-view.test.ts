@@ -25,9 +25,7 @@ test('fits and doctrines expose deep-link route targets and update URLs from cli
 
   assert.match(app, /route\.view === 'fits' && route\.fitId != null \? route\.fitId : null/);
   assert.match(app, /route\.view === 'fits' && route\.doctrineId != null \? route\.doctrineId : null/);
-  assert.match(app, /route\.view === 'fitsV2' && route\.fitId != null \? route\.fitId : null/);
   assert.match(app, /onOpenFitRoute=\{\(id\) => navigateToRoute\(\{ view: 'fits', mode: 'fits', fitId: id \}\)\}/);
-  assert.match(app, /onOpenFitRoute=\{\(id\) => navigateToRoute\(\{ view: 'fitsV2', fitId: id \}\)\}/);
   assert.match(app, /onOpenDoctrineRoute=\{\(id\) => navigateToRoute\(\{ view: 'fits', mode: 'doctrines', doctrineId: id \}\)\}/);
 
   assert.match(fitsView, /routeFitId: number \| null/);

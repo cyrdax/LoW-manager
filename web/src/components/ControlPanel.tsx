@@ -1,6 +1,6 @@
 import type { CharacterStatus, CurrentUser } from '../api.ts';
 
-type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits' | 'fitsV2' | 'assets';
+type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits' | 'assets';
 
 interface Props {
   chars: CharacterStatus[];
@@ -36,7 +36,7 @@ export function ControlPanel({ chars, selection, view, setView, currentUser, onL
         </div>
       )}
 
-      <div className="view-nav view-nav-10">
+      <div className="view-nav view-nav-9">
         <button
           className={`nav-btn${view === 'pilots' ? ' active' : ''}`}
           onClick={() => setView('pilots')}
@@ -53,10 +53,6 @@ export function ControlPanel({ chars, selection, view, setView, currentUser, onL
           className={`nav-btn${view === 'fits' ? ' active' : ''}`}
           onClick={() => setView('fits')}
         >Fits</button>
-        <button
-          className={`nav-btn${view === 'fitsV2' ? ' active' : ''}`}
-          onClick={() => setView('fitsV2')}
-        >Fits v2</button>
         <button
           className={`nav-btn${view === 'assets' ? ' active' : ''}`}
           onClick={() => setView('assets')}

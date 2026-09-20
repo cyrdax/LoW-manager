@@ -62,7 +62,7 @@ test('frontend lets anonymous users view public fit and doctrine routes read-onl
   const fitsView = readFileSync(resolve('web/src/components/FitsView.tsx'), 'utf8');
   const doctrinesView = readFileSync(resolve('web/src/components/DoctrinesView.tsx'), 'utf8');
 
-  assert.match(app, /const publicRoute = \['fits', 'fitsV2', 'market', 'contracts'\]\.includes\(route\.view\)/);
+  assert.match(app, /const publicRoute = \['fits', 'market', 'contracts'\]\.includes\(route\.view\)/);
   assert.match(app, /if \(!currentUser && !publicRoute\)/);
   assert.match(app, /currentUser=\{currentUser\}/);
   assert.match(app, /chars=\{currentUser \? list : \[\]\}/);
@@ -89,7 +89,7 @@ test('frontend keeps market public while gating private contract actions', () =>
   const marketView = readFileSync(resolve('web/src/components/MarketView.tsx'), 'utf8');
   const contractsView = readFileSync(resolve('web/src/components/ContractsView.tsx'), 'utf8');
 
-  assert.match(app, /const publicRoute = \['fits', 'fitsV2', 'market', 'contracts'\]\.includes\(route\.view\)/);
+  assert.match(app, /const publicRoute = \['fits', 'market', 'contracts'\]\.includes\(route\.view\)/);
   assert.match(app, /if \(!currentUser && !publicRoute\)/);
   assert.match(app, /<MarketView[\s\S]*initialTab=\{route\.view === 'market'/);
   assert.match(app, /<ContractsView currentUser=\{currentUser\}/);
@@ -116,6 +116,6 @@ test('sidebar main navigation follows the requested workflow order', () => {
   const navBlock = controlPanel.slice(navStart, navEnd);
   const labels = Array.from(navBlock.matchAll(/>\s*([A-Za-z0-9 ]+)\s*<\/button>/g), match => match[1]);
 
-  assert.deepEqual(labels, ['Pilots', 'Skills', 'Fleet', 'Fits', 'Fits v2', 'Assets', 'Market', 'Contracts', 'Industry', 'Planets']);
-  assert.match(navBlock, /view-nav-10/);
+  assert.deepEqual(labels, ['Pilots', 'Skills', 'Fleet', 'Fits', 'Assets', 'Market', 'Contracts', 'Industry', 'Planets']);
+  assert.match(navBlock, /view-nav-9/);
 });
