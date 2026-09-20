@@ -28,6 +28,7 @@ import {
   type ContractDetailSortDirection,
   type ContractDetailSortKey,
 } from '../contract-detail-sort.ts';
+import { ModalBackdrop } from './ModalBackdrop.tsx';
 import { formatContractSearchSummaryLine } from '../../../src/contracts/summary-copy.ts';
 
 const SHIP_ID_KEY = 'efd.contracts.shipId';
@@ -764,12 +765,12 @@ function Modal({
   bodyClassName?: string;
 }) {
   return (
-    <div className="fits-modal-backdrop">
+    <ModalBackdrop className="fits-modal-backdrop" role="dialog" aria-modal="true" aria-label={title} onClose={onClose}>
       <div className={`fits-modal${className ? ` ${className}` : ''}`}>
         <div className="fits-modal-head"><strong>{title}</strong><button onClick={onClose}>x</button></div>
         <div className={`fits-modal-body${bodyClassName ? ` ${bodyClassName}` : ''}`}>{children}</div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
 

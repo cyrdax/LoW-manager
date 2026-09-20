@@ -7,6 +7,7 @@ import {
   type FleetStructure,
   type InviteResult,
 } from '../api.ts';
+import { ModalBackdrop } from './ModalBackdrop.tsx';
 
 interface Props {
   chars: CharacterStatus[];
@@ -218,7 +219,7 @@ export function FleetInviteWidget({ chars, selection, defaultExpanded, expanded:
         </div>
       )}
       {results && (
-        <div className="fleet-results-modal" role="dialog" aria-modal="true" aria-label="Fleet command results">
+        <ModalBackdrop className="fleet-results-modal" role="dialog" aria-modal="true" aria-label="Fleet command results" onClose={() => setResults(null)}>
           <div className="fleet-results-panel">
             <div className="fleet-results-head">
               <div>
@@ -238,7 +239,7 @@ export function FleetInviteWidget({ chars, selection, defaultExpanded, expanded:
               ))}
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </section>
   );

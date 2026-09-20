@@ -7,6 +7,7 @@ import {
   type SystemHit,
   type WaypointResult,
 } from '../api.ts';
+import { ModalBackdrop } from './ModalBackdrop.tsx';
 
 interface Props {
   chars: CharacterStatus[];
@@ -164,7 +165,7 @@ function AutopilotPanel({ selectedIds }: { selectedIds: number[] }) {
         </ul>
       )}
       {apResults && (
-        <div className="waypoint-results-modal" role="dialog" aria-modal="true" aria-label="Waypoint results">
+        <ModalBackdrop className="waypoint-results-modal" role="dialog" aria-modal="true" aria-label="Waypoint results" onClose={() => setApResults(null)}>
           <div className="waypoint-results-panel">
             <div className="waypoint-results-head">
               <div>
@@ -184,7 +185,7 @@ function AutopilotPanel({ selectedIds }: { selectedIds: number[] }) {
               ))}
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

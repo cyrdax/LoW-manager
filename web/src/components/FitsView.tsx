@@ -38,6 +38,7 @@ import {
 import { DoctrinesView } from './DoctrinesView.tsx';
 import { FitModeSwitch, type FitMode } from './FitModeSwitch.tsx';
 import { LibraryScopeSwitch } from './LibraryScopeSwitch.tsx';
+import { ModalBackdrop } from './ModalBackdrop.tsx';
 import type { AppRoute } from '../app-routes.ts';
 
 interface Props {
@@ -1347,11 +1348,11 @@ function readFileBase64(file: File): Promise<string> {
 
 function Modal({ title, children, onClose, className = '', bodyClassName = '' }: { title: string; children: React.ReactNode; onClose: () => void; className?: string; bodyClassName?: string }) {
   return (
-    <div className="fits-modal-backdrop">
+    <ModalBackdrop className="fits-modal-backdrop" role="dialog" aria-modal="true" aria-label={title} onClose={onClose}>
       <div className={`fits-modal${className ? ` ${className}` : ''}`}>
         <div className="fits-modal-head"><strong>{title}</strong><button onClick={onClose}>x</button></div>
         <div className={`fits-modal-body${bodyClassName ? ` ${bodyClassName}` : ''}`}>{children}</div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
