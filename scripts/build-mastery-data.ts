@@ -33,6 +33,7 @@ const ATTR_PRIMARY = 180;
 const ATTR_SECONDARY = 181;
 const ATTR_SKILL_RANK = 275;
 const SHIP_CATEGORY_ID = 6;
+const SKILL_CATEGORY_ID = 16;
 
 const MASTERY_GRADES = ['basic', 'standard', 'improved', 'advanced', 'elite'] as const;
 
@@ -452,6 +453,11 @@ function overlayFuzzworkData(
     const categoryId = group?.categoryId;
     const required = extractRequiredSkillsFromAttrs(attrsByType.get(type.typeId));
 
+    if (categoryId === SKILL_CATEGORY_ID) {
+      usedSkillIds.add(type.typeId);
+      continue;
+    }
+
     if (shipGroupIds.has(type.groupId)) {
       const existing = ships[String(type.typeId)];
       if (required.length === 0 && !existing) continue;
@@ -724,6 +730,11 @@ async function main() {
     const categoryId = groupCategory.get(groupId);
     const required = extractRequiredSkills(typeDogma[tid]);
 
+    if (categoryId === SKILL_CATEGORY_ID) {
+      usedSkillIds.add(Number(tid));
+      continue;
+    }
+
     if (shipGroupIds.has(groupId)) {
       const masteries = shapeMasteries(t.masteries);
       if (required.length === 0 && masteries.every(m => m.length === 0)) continue;
@@ -821,7 +832,7 @@ async function main() {
   }
   console.log(`[certs]   ${Object.keys(certs).length} certificates`);
 
-  // 3) Skills metadata (only the skills we actually reference)
+  // 3) Skills metadata (all published skills plus referenced prerequisites)
   const skillsOut: Record<string, OutSkill> = {};
   for (const sid of usedSkillIds) {
     const t = types[String(sid)];
