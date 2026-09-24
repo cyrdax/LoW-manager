@@ -45,7 +45,7 @@ export class TrackedLog {
   private selectedEncoding: LogEncoding | null;
   private pendingEncodingBytes = Buffer.alloc(0);
   private pendingEncodingOffset = 0;
-  private suppressExistingStartupRead = false;
+  private startupLinesToSuppress = 0;
 
   private constructor(
     readonly filePath: string,
@@ -86,7 +86,7 @@ export class TrackedLog {
       if (mode === 'existing') {
         tracked.updateCharacterName(tracked.decodeBytes(header, 0));
         tracked.cursor = fileStats.size;
-        tracked.suppressExistingStartupRead = tracked.selectedEncoding === null && header.length > 0;
+        tracked.startupLinesToSuppress = tracked.selectedEncoding === null && header.length > 0 ? 2 : 0;
         await tracked.prepareExistingTail(handle, fileStats.size);
       }
 
@@ -108,8 +108,6 @@ export class TrackedLog {
       }
 
       const lines: DecodedLine[] = [];
-      const suppressDecodedRead = this.suppressExistingStartupRead;
-      let decodedLineDuringSuppressedRead = false;
       let remaining = fileStats.size - this.cursor;
       while (remaining > 0) {
         const length = Math.min(remaining, READ_BYTES);
@@ -123,15 +121,7 @@ export class TrackedLog {
         this.cursor += bytesRead;
         remaining -= bytesRead;
         this.updateCharacterName(decoded);
-        if (suppressDecodedRead) {
-          decodedLineDuringSuppressedRead ||= decoded.length > 0;
-        } else {
-          lines.push(...decoded);
-        }
-      }
-
-      if (suppressDecodedRead && decodedLineDuringSuppressedRead) {
-        this.suppressExistingStartupRead = false;
+        lines.push(...this.removeStartupLines(decoded));
       }
 
       return { lines, truncated };
@@ -194,8 +184,14 @@ export class TrackedLog {
 
     if (tailLength > 0) {
       this.decoder.push(tail.subarray(tailLength - 1), size - 1);
-      this.suppressExistingStartupRead = true;
+      this.startupLinesToSuppress = 1;
     }
+  }
+
+  private removeStartupLines(lines: DecodedLine[]): DecodedLine[] {
+    const suppressed = Math.min(this.startupLinesToSuppress, lines.length);
+    this.startupLinesToSuppress -= suppressed;
+    return lines.slice(suppressed);
   }
 
   private resetGeneration(): void {
@@ -205,7 +201,7 @@ export class TrackedLog {
     this.selectedEncoding = null;
     this.pendingEncodingBytes = Buffer.alloc(0);
     this.pendingEncodingOffset = 0;
-    this.suppressExistingStartupRead = false;
+    this.startupLinesToSuppress = 0;
   }
 
 }

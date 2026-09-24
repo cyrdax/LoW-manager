@@ -101,6 +101,22 @@ test('TrackedLog suppresses every historical line when existing startup sees onl
   });
 });
 
+test('TrackedLog suppresses only an incomplete historical record when its completion and a new event share one read', async () => {
+  await inTemporaryDirectory(async (directory) => {
+    const file = join(directory, 'partial-history-and-new-event.log');
+    const historicalStart = '\uFEFF  Listener: Cyrdax Prime\r\n[ 2026.09.23 03:04:05 ] (notify) historical tail';
+    const nextText = '[ 2026.09.23 03:04:06 ] (notify) genuinely new event.';
+    await writeFile(file, historicalStart, 'utf8');
+    const tracked = await TrackedLog.open(file, 'existing');
+
+    await appendFile(file, ` completed\r\n${nextText}\r\n`, 'utf8');
+    assert.deepEqual(await tracked.readAppended(), {
+      lines: [{ text: nextText, byteOffset: 89 }],
+      truncated: false,
+    });
+  });
+});
+
 test('TrackedLog preserves UTF-16LE EOF boundary context at every existing-file startup byte to decode the next event', async () => {
   await inTemporaryDirectory(async (directory) => {
     const historical = Buffer.from(`\uFEFF${listener}${decloak}`, 'utf16le');
@@ -116,8 +132,9 @@ test('TrackedLog preserves UTF-16LE EOF boundary context at every existing-file 
       const historyRead = await tracked.readAppended();
       const initialEndsAtLineBoundary =
         split >= 2 && historical[split - 2] === 0x0a && historical[split - 1] === 0x00;
+      const listenerEnd = 54;
       assert.deepEqual(historyRead, {
-        lines: initialEndsAtLineBoundary
+        lines: initialEndsAtLineBoundary || (split > 1 && split < listenerEnd)
           ? [{ text: decloakText, byteOffset: 54 }]
           : [],
         truncated: false,
