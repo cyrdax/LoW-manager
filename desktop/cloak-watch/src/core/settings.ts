@@ -21,13 +21,13 @@ export interface SettingsFileSystem {
   rename(from: string, to: string): Promise<void>;
 }
 
-export const DEFAULT_SETTINGS: AppSettings = {
+export const DEFAULT_SETTINGS = Object.freeze<AppSettings>({
   version: 1,
   logDirectory: null,
   soundEnabled: true,
   notificationsEnabled: true,
   startAtLogin: true,
-};
+});
 
 const nodeFileSystem: SettingsFileSystem = {
   mkdir,
@@ -53,6 +53,10 @@ function isNotFound(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 }
 
+function createDefaultSettings(): AppSettings {
+  return { ...DEFAULT_SETTINGS };
+}
+
 export class SettingsStore {
   readonly #settingsPath: string;
   readonly #temporaryPath: string;
@@ -73,7 +77,7 @@ export class SettingsStore {
       serialized = await this.fileSystem.readFile(this.#settingsPath);
     } catch (error) {
       if (isNotFound(error)) {
-        return { settings: DEFAULT_SETTINGS, warning: null };
+        return { settings: createDefaultSettings(), warning: null };
       }
       throw error;
     }
@@ -86,10 +90,10 @@ export class SettingsStore {
       return { settings: parsed, warning: null };
     } catch (error) {
       await this.fileSystem.rename(this.#settingsPath, this.#corruptPath);
-      await this.save(DEFAULT_SETTINGS);
+      await this.save(createDefaultSettings());
       const description = error instanceof Error ? error.message : 'Invalid settings data';
       return {
-        settings: DEFAULT_SETTINGS,
+        settings: createDefaultSettings(),
         warning: `Settings were reset after recovery: ${description}`,
       };
     }

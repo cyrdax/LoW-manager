@@ -30,6 +30,22 @@ test('SettingsStore returns the documented defaults before preferences have been
   });
 });
 
+test('SettingsStore gives each missing-settings load an independent defaults object', async () => {
+  await inTemporaryDirectory(async (directory) => {
+    const firstResult = await new SettingsStore(join(directory, 'first-user-data')).load();
+    firstResult.settings.soundEnabled = false;
+
+    const secondResult = await new SettingsStore(join(directory, 'second-user-data')).load();
+    assert.deepEqual(secondResult.settings, {
+      version: 1,
+      logDirectory: null,
+      soundEnabled: true,
+      notificationsEnabled: true,
+      startAtLogin: true,
+    });
+  });
+});
+
 test('SettingsStore persists a saved preference for a newly constructed store', async () => {
   await inTemporaryDirectory(async (directory) => {
     const store = new SettingsStore(directory);
