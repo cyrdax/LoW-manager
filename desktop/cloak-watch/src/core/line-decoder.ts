@@ -5,8 +5,14 @@ export interface DecodedLine {
   byteOffset: number;
 }
 
-export function detectEncoding(prefix: Uint8Array): LogEncoding {
-  return prefix[0] === 0xff && prefix[1] === 0xfe ? 'utf16le' : 'utf8';
+export function detectEncoding(prefix: Uint8Array): LogEncoding | null {
+  if (prefix.length === 0 || prefix[0] === 0xff || prefix[0] === 0xfe) {
+    return prefix.length < 2 ? null : prefix[0] === 0xff && prefix[1] === 0xfe ? 'utf16le' : 'utf8';
+  }
+  if (prefix[0] === 0xef && prefix.length < 3) {
+    return null;
+  }
+  return 'utf8';
 }
 
 export class StreamingLineDecoder {

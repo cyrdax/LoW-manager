@@ -41,15 +41,26 @@ export class TrackedLog {
   characterName: string | null = null;
 
   private cursor: number;
-  private readonly decoder: StreamingLineDecoder;
+  private decoder: StreamingLineDecoder | null = null;
+  private selectedEncoding: LogEncoding | null;
+  private pendingEncodingBytes = Buffer.alloc(0);
+  private pendingEncodingOffset = 0;
+  private discardFirstDecodedLine = false;
 
   private constructor(
     readonly filePath: string,
-    readonly encoding: LogEncoding,
+    encoding: LogEncoding | null,
     private identity: FileIdentity,
   ) {
     this.cursor = 0;
-    this.decoder = new StreamingLineDecoder(encoding);
+    this.selectedEncoding = encoding;
+    if (encoding !== null) {
+      this.decoder = new StreamingLineDecoder(encoding);
+    }
+  }
+
+  get encoding(): LogEncoding {
+    return this.selectedEncoding ?? 'utf8';
   }
 
   static async open(filePath: string, mode: 'existing' | 'new'): Promise<TrackedLog> {
@@ -62,7 +73,7 @@ export class TrackedLog {
         await handle.read(header, 0, headerLength, 0);
       }
 
-      if (header[0] === 0xfe && header[1] === 0xff) {
+      if (hasUtf16BeBom(header)) {
         throw new UnsupportedLogEncodingError(filePath);
       }
 
@@ -73,9 +84,9 @@ export class TrackedLog {
       );
 
       if (mode === 'existing') {
-        tracked.updateCharacterName(tracked.decoder.push(header, 0));
+        tracked.updateCharacterName(tracked.decodeBytes(header, 0));
         tracked.cursor = fileStats.size;
-        tracked.decoder.reset(tracked.cursor);
+        await tracked.prepareExistingTail(handle, fileStats.size);
       }
 
       return tracked;
@@ -91,8 +102,7 @@ export class TrackedLog {
       let truncated = false;
       if (!sameIdentity(this.identity, identityFrom(fileStats)) || fileStats.size < this.cursor) {
         this.identity = identityFrom(fileStats);
-        this.cursor = 0;
-        this.decoder.reset(0);
+        this.resetGeneration();
         truncated = true;
       }
 
@@ -106,11 +116,11 @@ export class TrackedLog {
           break;
         }
 
-        const decoded = this.decoder.push(bytes.subarray(0, bytesRead), this.cursor);
+        const decoded = this.decodeBytes(bytes.subarray(0, bytesRead), this.cursor);
         this.cursor += bytesRead;
         remaining -= bytesRead;
         this.updateCharacterName(decoded);
-        lines.push(...decoded);
+        lines.push(...this.removeHistoricalFirstLine(decoded));
       }
 
       return { lines, truncated };
@@ -127,6 +137,86 @@ export class TrackedLog {
       }
     }
   }
+
+  private decodeBytes(bytes: Uint8Array, startOffset: number): DecodedLine[] {
+    if (this.decoder !== null) {
+      return this.decoder.push(bytes, startOffset);
+    }
+
+    if (this.pendingEncodingBytes.length === 0) {
+      this.pendingEncodingOffset = startOffset;
+    }
+    this.pendingEncodingBytes = Buffer.concat([this.pendingEncodingBytes, Buffer.from(bytes)]);
+    if (hasUtf16BeBom(this.pendingEncodingBytes)) {
+      throw new UnsupportedLogEncodingError(this.filePath);
+    }
+
+    const encoding = detectEncoding(this.pendingEncodingBytes);
+    if (encoding === null) {
+      return [];
+    }
+
+    this.selectedEncoding = encoding;
+    this.decoder = new StreamingLineDecoder(encoding);
+    const pendingBytes = this.pendingEncodingBytes;
+    const pendingOffset = this.pendingEncodingOffset;
+    this.pendingEncodingBytes = Buffer.alloc(0);
+    return this.decoder.push(pendingBytes, pendingOffset);
+  }
+
+  private async prepareExistingTail(handle: Awaited<ReturnType<typeof open>>, size: number): Promise<void> {
+    const encoding = this.selectedEncoding;
+    if (this.decoder === null || encoding === null) {
+      return;
+    }
+
+    const tailLength = Math.min(size, encoding === 'utf16le' ? 2 : 1);
+    const tail = Buffer.alloc(tailLength);
+    if (tailLength > 0) {
+      await handle.read(tail, 0, tailLength, size - tailLength);
+    }
+
+    this.decoder.reset(size);
+    if (endsWithLineBreak(tail, encoding)) {
+      return;
+    }
+
+    if (tailLength > 0) {
+      this.decoder.push(tail.subarray(tailLength - 1), size - 1);
+      this.discardFirstDecodedLine = true;
+    }
+  }
+
+  private removeHistoricalFirstLine(lines: DecodedLine[]): DecodedLine[] {
+    if (!this.discardFirstDecodedLine || lines.length === 0) {
+      return lines;
+    }
+
+    this.discardFirstDecodedLine = false;
+    return lines.slice(1);
+  }
+
+  private resetGeneration(): void {
+    this.characterName = null;
+    this.cursor = 0;
+    this.decoder = null;
+    this.selectedEncoding = null;
+    this.pendingEncodingBytes = Buffer.alloc(0);
+    this.pendingEncodingOffset = 0;
+    this.discardFirstDecodedLine = false;
+  }
+
+}
+
+function hasUtf16BeBom(prefix: Uint8Array): boolean {
+  return prefix[0] === 0xfe && prefix[1] === 0xff;
+}
+
+function endsWithLineBreak(bytes: Uint8Array, encoding: LogEncoding): boolean {
+  if (encoding === 'utf8') {
+    return bytes.at(-1) === 0x0a;
+  }
+  return bytes.length === 2 && bytes[0] === 0x0a && bytes[1] === 0x00;
 }
 
 async function openLogFile(filePath: string) {
