@@ -80,6 +80,27 @@ test('TrackedLog delays encoding selection for an empty new file until a split U
   });
 });
 
+test('TrackedLog suppresses every historical line when existing startup sees only the first UTF-16LE BOM byte', async () => {
+  await inTemporaryDirectory(async (directory) => {
+    const file = join(directory, 'existing-split-bom.log');
+    const nextText = '[ 2026.09.23 03:04:06 ] (notify) Your cloaking device has been forcibly deactivated.';
+    await writeFile(file, Buffer.from([0xff]));
+    const tracked = await TrackedLog.open(file, 'existing');
+
+    await appendFile(file, Buffer.concat([
+      Buffer.from([0xfe]),
+      Buffer.from(`${listener}${decloak}`, 'utf16le'),
+    ]));
+    assert.deepEqual(await tracked.readAppended(), { lines: [], truncated: false });
+
+    await appendFile(file, Buffer.from(`${nextText}\r\n`, 'utf16le'));
+    assert.deepEqual(await tracked.readAppended(), {
+      lines: [{ text: nextText, byteOffset: 204 }],
+      truncated: false,
+    });
+  });
+});
+
 test('TrackedLog preserves UTF-16LE EOF boundary context at every existing-file startup byte to decode the next event', async () => {
   await inTemporaryDirectory(async (directory) => {
     const historical = Buffer.from(`\uFEFF${listener}${decloak}`, 'utf16le');
@@ -91,11 +112,21 @@ test('TrackedLog preserves UTF-16LE EOF boundary context at every existing-file 
       await writeFile(file, historical.subarray(0, split));
       const tracked = await TrackedLog.open(file, 'existing');
 
-      await appendFile(file, Buffer.concat([historical.subarray(split), next]));
-      const { lines } = await tracked.readAppended();
-      assert.deepEqual(lines.at(-1), {
-        text: nextText,
-        byteOffset: historical.length,
+      await appendFile(file, historical.subarray(split));
+      const historyRead = await tracked.readAppended();
+      const initialEndsAtLineBoundary =
+        split >= 2 && historical[split - 2] === 0x0a && historical[split - 1] === 0x00;
+      assert.deepEqual(historyRead, {
+        lines: initialEndsAtLineBoundary
+          ? [{ text: decloakText, byteOffset: 54 }]
+          : [],
+        truncated: false,
+      });
+
+      await appendFile(file, next);
+      assert.deepEqual(await tracked.readAppended(), {
+        lines: [{ text: nextText, byteOffset: historical.length }],
+        truncated: false,
       });
     }
   });
