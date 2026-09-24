@@ -1,0 +1,57 @@
+{
+  "name": "outfit420-cloak-watch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local read-only EVE decloak log notifier",
+  "type": "module",
+  "main": "dist/main/index.js",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test:focused": "node --import tsx --test",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.build.json && node scripts/copy-static.mjs",
+    "dev": "npm run build && electron .",
+    "package:mac": "npm run build && electron-builder --mac dmg zip --publish never",
+    "package:win": "npm run build && electron-builder --win nsis portable --publish never",
+    "publish:mac": "npm run build && electron-builder --mac dmg zip --publish always",
+    "publish:win": "npm run build && electron-builder --win nsis portable --publish always"
+  },
+  "dependencies": {
+    "chokidar": "5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  },
+  "build": {
+    "appId": "com.outfit420.cloakwatch",
+    "productName": "Outfit420 Cloak Watch",
+    "asar": true,
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "files": ["dist/**/*", "package.json"],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "identity": null,
+      "target": ["dmg", "zip"]
+    },
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "draft"
+    }
+  }
+}
