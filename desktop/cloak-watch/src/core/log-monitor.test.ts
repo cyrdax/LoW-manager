@@ -170,6 +170,49 @@ test('missed unlink and atomic replacement are reconciled without replaying old 
   assert.deepEqual(f.statuses.at(-1), { kind: 'waiting', activeLogs: 0 });
 });
 
+test('delayed unlink and add preserve a replacement cursor already advanced by reconciliation', async (t) => {
+  let release!: () => void;
+  let entered!: () => void;
+  const replacementRead = new Promise<void>((resolve) => { entered = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let hold = false;
+  const f = await fixture(t, { openLog: async (file, mode) => {
+    const tracked = await TrackedLog.open(file, mode);
+    return {
+      get characterName() { return tracked.characterName; },
+      readAppended: async () => {
+        const result = await tracked.readAppended();
+        if (hold) { entered(); await gate; }
+        return result;
+      },
+    };
+  } });
+  const file = join(f.directory, 'rotated.txt');
+  const replacement = join(f.directory, 'replacement.tmp');
+  await writeFile(file, 'Listener: Nova Pilot\r\n' + decloak);
+  await f.monitor.start();
+  await writeFile(replacement, header + decloak);
+  await rename(replacement, file);
+
+  hold = true;
+  const reconciliation = f.monitor.reconcile();
+  await replacementRead;
+  // These notifications describe the old generation's removal and the replacement's arrival.
+  f.watchers[0].emit('unlink', file);
+  f.watchers[0].emit('add', file);
+  hold = false;
+  release();
+  await reconciliation;
+  await f.monitor.reconcile();
+  assert.deepEqual(f.events.map((event) => event.byteOffset), [24]);
+  assert.equal(f.events[0].characterName, 'Cyrdax Prime');
+  assert.deepEqual(f.statuses.at(-1), { kind: 'watching', activeLogs: 1 });
+
+  await appendFile(file, decloak);
+  await f.monitor.reconcile();
+  assert.deepEqual(f.events.map((event) => event.byteOffset), [24, 99]);
+});
+
 test('truncation allows a new record at a previously seen byte offset', async (t) => {
   const f = await fixture(t);
   const file = join(f.directory, 'truncate.txt');

@@ -242,8 +242,10 @@ export class LogMonitor {
         watcher.on(event, (file) => dispatch(async () => {
           const path = resolve(file);
           if (!this.isLogPath(path)) return;
-          if (event === 'unlink') this.retire(path);
-          else await this.read(path, event === 'add' ? 'new' : 'existing');
+          // Unlink may describe an older generation already replaced and read by
+          // reconciliation. Revalidate through read: only a missing/non-file path
+          // retires its cursor; an existing replacement retains its progress.
+          await this.read(path, event === 'add' ? 'new' : 'existing');
         }));
       }
       watcher.on('error', (error) => dispatch(() => this.watchFailed(error)));
