@@ -34,12 +34,12 @@ test('contract index migration creates region contract and item tables', () => {
   ]);
 });
 
-test('indexed search returns matching included ship items and excludes out-of-radius known locations', () => {
+test('indexed search returns matching ship items within the selected cyno jump limit', () => {
   const db = seededDb();
   const topology = buildTopologyFromSystems([
-    { systemId: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145] },
-    { systemId: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge', neighbors: [30000142, 30000148] },
-    { systemId: 30000148, name: 'Urlen', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145] },
+    { systemId: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145], x: 0, y: 0, z: 0 },
+    { systemId: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge', neighbors: [30000142, 30000148], x: 9_460_000_000_000_000, y: 0, z: 0 },
+    { systemId: 30000148, name: 'Urlen', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145], x: 8 * 9_460_000_000_000_000, y: 0, z: 0 },
   ], [
     { stationId: 60003760, stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant', solarSystemId: 30000142 },
     { stationId: 60000001, stationName: 'Urlen Station', solarSystemId: 30000148 },
@@ -71,7 +71,9 @@ test('indexed search returns matching included ship items and excludes out-of-ra
   const search = searchIndexedContracts(db, {
     shipTypeId: 17920,
     shipName: 'Barghest',
-    jumpDriveBaseRangeLy: null,
+    jumpDriveBaseRangeLy: 3.5,
+    jdcLevel: 5,
+    maxCapitalJumps: 1,
     originSystemId: 30000142,
     topology,
     regionIds: [10000002],
@@ -83,7 +85,7 @@ test('indexed search returns matching included ship items and excludes out-of-ra
   assert.equal(search.results[0].quantity, 1);
   assert.equal(search.results[0].locationName, 'Jita IV - Moon 4 - Caldari Navy Assembly Plant');
   assert.equal(search.results[0].jumps, 0);
-  assert.equal(search.results[0].capitalJumps, null);
+  assert.equal(search.results[0].capitalJumps, 0);
 });
 
 test('indexed search excludes unknown-location contracts and reports skipped count', () => {

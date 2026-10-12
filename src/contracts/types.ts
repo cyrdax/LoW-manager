@@ -1,7 +1,3 @@
-export const CONTRACT_RADIUS_DEFAULT = 30;
-export const CONTRACT_RADIUS_MIN = 1;
-export const CONTRACT_RADIUS_MAX = 100;
-
 export type ContractType = 'item_exchange' | 'auction';
 
 export interface ContractWarning {
@@ -76,7 +72,8 @@ export interface ContractSearchResult {
 export interface ContractSearchResponse {
   ship: ContractShipHit;
   origin: ContractOrigin;
-  radius: number;
+  jdcLevel: number;
+  maxCynoJumps: number;
   regionsScanned: ContractRegion[];
   index: ContractIndexSummary;
   fetchedAt: number;

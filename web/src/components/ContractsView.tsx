@@ -34,10 +34,13 @@ import { formatContractSearchSummaryLine } from '../../../src/contracts/summary-
 const SHIP_ID_KEY = 'efd.contracts.shipId';
 const SHIP_NAME_KEY = 'efd.contracts.shipName';
 const SHIP_GROUP_KEY = 'efd.contracts.shipGroupName';
+const SHIP_JUMP_RANGE_KEY = 'efd.contracts.shipJumpDriveBaseRangeLy';
 const ORIGIN_ID_KEY = 'efd.contracts.originSystemId';
 const ORIGIN_NAME_KEY = 'efd.contracts.originSystemName';
-const RADIUS_KEY = 'efd.contracts.radius';
+const JDC_LEVEL_KEY = 'efd.contracts.jdcLevel';
+const MAX_CYNO_JUMPS_KEY = 'efd.contracts.maxCynoJumps';
 const SEARCH_MODE_KEY = 'efd.contracts.searchMode';
+const JDC_LEVELS = ['I', 'II', 'III', 'IV', 'V'] as const;
 
 type ContractSearchMode = 'ship' | 'jumpCapable';
 
@@ -54,7 +57,22 @@ function readSavedShip(): ContractShipHit | null {
   const id = Number(localStorage.getItem(SHIP_ID_KEY));
   const name = localStorage.getItem(SHIP_NAME_KEY);
   const groupName = localStorage.getItem(SHIP_GROUP_KEY);
-  return Number.isFinite(id) && id > 0 && name && groupName ? { id, name, groupName, jumpDriveBaseRangeLy: null } : null;
+  const savedRange = Number(localStorage.getItem(SHIP_JUMP_RANGE_KEY));
+  const jumpDriveBaseRangeLy = Number.isFinite(savedRange) && savedRange > 0 ? savedRange : null;
+  return Number.isFinite(id) && id > 0 && name && groupName ? { id, name, groupName, jumpDriveBaseRangeLy } : null;
+}
+
+export function resolveSavedShip(saved: ContractShipHit, hits: ContractShipHit[]): ContractShipHit | null {
+  return hits.find(hit => hit.id === saved.id) ?? null;
+}
+
+export function rangeValueForPersistence(
+  ship: ContractShipHit | null,
+  needsHydration: boolean,
+): string | null | undefined {
+  if (needsHydration) return undefined;
+  if (!ship) return null;
+  return String(ship.jumpDriveBaseRangeLy ?? 0);
 }
 
 function readSavedOrigin(): SystemHit | null {
@@ -63,20 +81,26 @@ function readSavedOrigin(): SystemHit | null {
   return Number.isFinite(id) && id > 0 && name ? { id, name } : null;
 }
 
-function readSavedRadius(): number {
-  const value = Number(localStorage.getItem(RADIUS_KEY) ?? 30);
-  return Number.isFinite(value) ? Math.max(1, Math.min(100, Math.round(value))) : 30;
+function readSavedSetting(key: string, fallback: number): number {
+  const value = Number(localStorage.getItem(key) ?? fallback);
+  return Number.isFinite(value) ? Math.max(1, Math.min(5, Math.round(value))) : fallback;
 }
 
 export function ContractsView({ currentUser, onLoginRequired }: Props) {
   const [searchMode, setSearchMode] = useState<ContractSearchMode>(() => readSavedSearchMode());
   const [shipText, setShipText] = useState(() => localStorage.getItem(SHIP_NAME_KEY) ?? '');
   const [ship, setShip] = useState<ContractShipHit | null>(() => readSavedShip());
+  const [shipNeedsHydration, setShipNeedsHydration] = useState(() => (
+    readSavedShip() != null && localStorage.getItem(SHIP_JUMP_RANGE_KEY) == null
+  ));
+  const [shipHydrationError, setShipHydrationError] = useState(false);
+  const [shipHydrationAttempt, setShipHydrationAttempt] = useState(0);
   const [shipHits, setShipHits] = useState<ContractShipHit[]>([]);
   const [originText, setOriginText] = useState(() => localStorage.getItem(ORIGIN_NAME_KEY) ?? '');
   const [origin, setOrigin] = useState<SystemHit | null>(() => readSavedOrigin());
   const [systemHits, setSystemHits] = useState<SystemHit[]>([]);
-  const [radius, setRadius] = useState(() => readSavedRadius());
+  const [jdcLevel, setJdcLevel] = useState(() => readSavedSetting(JDC_LEVEL_KEY, 5));
+  const [maxCynoJumps, setMaxCynoJumps] = useState(() => readSavedSetting(MAX_CYNO_JUMPS_KEY, 1));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<ContractSearchResponse | null>(null);
@@ -95,6 +119,27 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
   }, [searchMode, shipText, ship]);
 
   useEffect(() => {
+    if (!shipNeedsHydration || !ship) return;
+    const ctrl = new AbortController();
+    searchContractShips(ship.name, ctrl.signal)
+      .then(hits => {
+        if (ctrl.signal.aborted) return;
+        const resolved = resolveSavedShip(ship, hits);
+        if (!resolved) {
+          setShipHydrationError(true);
+          return;
+        }
+        setShip(resolved);
+        setShipHydrationError(false);
+        setShipNeedsHydration(false);
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setShipHydrationError(true);
+      });
+    return () => ctrl.abort();
+  }, [shipNeedsHydration, ship, shipHydrationAttempt]);
+
+  useEffect(() => {
     if (originText.trim().length < 2 || origin?.name === originText.trim()) {
       setSystemHits([]);
       return;
@@ -105,16 +150,20 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
   }, [originText, origin]);
 
   useEffect(() => {
-    if (!ship) {
+    const rangeValue = rangeValueForPersistence(ship, shipNeedsHydration);
+    if (rangeValue === undefined) return;
+    if (rangeValue === null || !ship) {
       localStorage.removeItem(SHIP_ID_KEY);
       localStorage.removeItem(SHIP_NAME_KEY);
       localStorage.removeItem(SHIP_GROUP_KEY);
+      localStorage.removeItem(SHIP_JUMP_RANGE_KEY);
       return;
     }
     localStorage.setItem(SHIP_ID_KEY, String(ship.id));
     localStorage.setItem(SHIP_NAME_KEY, ship.name);
     localStorage.setItem(SHIP_GROUP_KEY, ship.groupName);
-  }, [ship]);
+    localStorage.setItem(SHIP_JUMP_RANGE_KEY, rangeValue);
+  }, [ship, shipNeedsHydration]);
 
   useEffect(() => {
     if (!origin) {
@@ -127,8 +176,12 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
   }, [origin]);
 
   useEffect(() => {
-    localStorage.setItem(RADIUS_KEY, String(radius));
-  }, [radius]);
+    localStorage.setItem(JDC_LEVEL_KEY, String(jdcLevel));
+  }, [jdcLevel]);
+
+  useEffect(() => {
+    localStorage.setItem(MAX_CYNO_JUMPS_KEY, String(maxCynoJumps));
+  }, [maxCynoJumps]);
 
   useEffect(() => {
     localStorage.setItem(SEARCH_MODE_KEY, searchMode);
@@ -144,7 +197,7 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
 
   const canSearch = origin != null && (
     searchMode === 'jumpCapable'
-      || (ship != null && radius >= 1 && radius <= 100)
+      || (ship?.jumpDriveBaseRangeLy != null && ship.jumpDriveBaseRangeLy > 0)
   );
 
   const invalidateSearch = () => {
@@ -166,8 +219,8 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
     try {
       const result = await (
         searchMode === 'jumpCapable'
-          ? searchJumpCapableContracts({ originSystemId: origin.id }, ctrl.signal)
-          : searchContracts({ shipId: ship!.id, originSystemId: origin.id, radius }, ctrl.signal)
+          ? searchJumpCapableContracts({ originSystemId: origin.id, jdcLevel, maxCynoJumps }, ctrl.signal)
+          : searchContracts({ shipId: ship!.id, originSystemId: origin.id, jdcLevel, maxCynoJumps }, ctrl.signal)
       ).catch(err => {
         return { error: err instanceof Error ? err.message : 'Failed to search contracts' };
       });
@@ -207,7 +260,8 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
       mode: searchMode,
       resultCount: response.results.length,
       originName: response.origin.name,
-      radius: response.radius,
+      jdcLevel: response.jdcLevel,
+      maxCynoJumps: response.maxCynoJumps,
       fetchedAt: response.fetchedAt,
     });
   }, [response, searchMode]);
@@ -241,7 +295,6 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
           >
             Any cap jump
           </button>
-          {searchMode === 'jumpCapable' && <small>Within 1 JDC V cap jump</small>}
         </div>
 
         <label className="ct-field" htmlFor="contracts-ship-input">
@@ -257,6 +310,8 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
               invalidateSearch();
               setShipText(e.target.value);
               setShip(null);
+              setShipNeedsHydration(false);
+              setShipHydrationError(false);
               setResponse(null);
               setError(null);
             }}
@@ -269,6 +324,8 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
                   type="button"
                   onClick={() => {
                     setShip(hit);
+                    setShipNeedsHydration(false);
+                    setShipHydrationError(false);
                     setShipText(hit.name);
                     setShipHits([]);
                   }}
@@ -315,23 +372,40 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
           )}
         </label>
 
-        <label className="ct-field ct-radius" htmlFor="contracts-radius-input">
-          <span>Jumps</span>
-          <input
-            id="contracts-radius-input"
-            type="number"
-            min={1}
-            max={100}
-            value={radius}
-            disabled={searchMode === 'jumpCapable'}
+        <label className="ct-field ct-jump-setting" htmlFor="contracts-jdc-level">
+          <span>JDC level</span>
+          <select
+            id="contracts-jdc-level"
+            value={jdcLevel}
             onChange={e => {
-              if (searchMode === 'jumpCapable') return;
               invalidateSearch();
-              setRadius(Math.max(1, Math.min(100, Number(e.target.value) || 1)));
+              setJdcLevel(Number(e.target.value));
               setResponse(null);
               setError(null);
             }}
-          />
+          >
+            {JDC_LEVELS.map((label, index) => (
+              <option key={label} value={index + 1}>{label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="ct-field ct-jump-setting" htmlFor="contracts-cyno-jumps">
+          <span>Cyno jumps</span>
+          <select
+            id="contracts-cyno-jumps"
+            value={maxCynoJumps}
+            onChange={e => {
+              invalidateSearch();
+              setMaxCynoJumps(Number(e.target.value));
+              setResponse(null);
+              setError(null);
+            }}
+          >
+            {[1, 2, 3, 4, 5].map(value => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
         </label>
 
         <button
@@ -342,12 +416,36 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
         >
           {busy ? 'Searching…' : 'Search'}
         </button>
+
+        {searchMode === 'ship' && shipNeedsHydration && !shipHydrationError && (
+          <small className="ct-search-note" role="status">Refreshing saved ship data…</small>
+        )}
+
+        {searchMode === 'ship' && shipNeedsHydration && shipHydrationError && (
+          <small className="ct-search-note" role="status">
+            Couldn’t refresh saved ship data.
+            <button
+              type="button"
+              onClick={() => {
+                setShipHydrationError(false);
+                setShipHydrationAttempt(value => value + 1);
+              }}
+            >
+              Retry
+            </button>
+          </small>
+        )}
+
+        {searchMode === 'ship' && !shipNeedsHydration && ship != null && ship.jumpDriveBaseRangeLy == null && (
+          <small className="ct-search-note" role="status">This ship has no jump drive.</small>
+        )}
+
       </section>
 
       {error && <div className="ct-error">{error}</div>}
 
       {!response && !busy && !error && (
-        <div className="empty">Pick a ship and origin system to search public contracts.</div>
+        <div className="empty">Pick a jump-capable ship and origin system to search public contracts.</div>
       )}
 
       {response && (
@@ -358,7 +456,7 @@ export function ContractsView({ currentUser, onLoginRequired }: Props) {
             ) : (
               <>
                 <strong>{response.ship.name}</strong>
-                <span>{response.origin.name} · {response.radius} jumps</span>
+                <span>{response.origin.name} · JDC {JDC_LEVELS[response.jdcLevel - 1] ?? response.jdcLevel} · {response.maxCynoJumps} cyno {response.maxCynoJumps === 1 ? 'jump' : 'jumps'}</span>
                 {summary && <span>{summary}</span>}
                 {indexSummary && <span>{indexSummary}</span>}
                 <span>Updated {formatUpdatedAt(response.fetchedAt)}</span>

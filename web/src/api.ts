@@ -311,7 +311,8 @@ export interface ContractSearchResult {
 export interface ContractSearchResponse {
   ship: ContractShipHit;
   origin: { id: number; name: string };
-  radius: number;
+  jdcLevel: number;
+  maxCynoJumps: number;
   regionsScanned: Array<{ id: number; name: string }>;
   index: ContractIndexSummary;
   fetchedAt: number;
@@ -357,13 +358,14 @@ export async function searchContractShips(q: string, signal?: AbortSignal): Prom
 }
 
 export async function searchContracts(
-  params: { shipId: number; originSystemId: number; radius: number },
+  params: { shipId: number; originSystemId: number; jdcLevel: number; maxCynoJumps: number },
   signal?: AbortSignal,
 ): Promise<ContractSearchResponse | { error: string }> {
   const qs = new URLSearchParams({
     shipId: String(params.shipId),
     originSystemId: String(params.originSystemId),
-    radius: String(params.radius),
+    jdcLevel: String(params.jdcLevel),
+    maxCynoJumps: String(params.maxCynoJumps),
   });
   const res = await fetch(`/api/contracts/search?${qs.toString()}`, { signal });
   if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };
@@ -371,11 +373,13 @@ export async function searchContracts(
 }
 
 export async function searchJumpCapableContracts(
-  params: { originSystemId: number },
+  params: { originSystemId: number; jdcLevel: number; maxCynoJumps: number },
   signal?: AbortSignal,
 ): Promise<ContractSearchResponse | { error: string }> {
   const qs = new URLSearchParams({
     originSystemId: String(params.originSystemId),
+    jdcLevel: String(params.jdcLevel),
+    maxCynoJumps: String(params.maxCynoJumps),
   });
   const res = await fetch(`/api/contracts/search/jump-capable?${qs.toString()}`, { signal });
   if (!res.ok) return { error: (await res.json().catch(() => ({}))).error ?? res.statusText };

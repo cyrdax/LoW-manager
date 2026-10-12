@@ -662,7 +662,7 @@ body {
 
 .ct-search {
   display: grid;
-  grid-template-columns: minmax(220px, 1.5fr) minmax(220px, 1.3fr) 96px auto;
+  grid-template-columns: minmax(220px, 1.5fr) minmax(220px, 1.3fr) 100px 110px auto;
   gap: 10px;
   align-items: end;
 }
@@ -709,7 +709,8 @@ body {
   color: var(--dim);
 }
 
-.ct-field input {
+.ct-field input,
+.ct-field select {
   width: 100%;
   min-height: 36px;
   background: #101620;
@@ -720,13 +721,33 @@ body {
   font: inherit;
 }
 
-.ct-radius input {
+.ct-field select {
+  cursor: pointer;
+}
+
+.ct-jump-setting select {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 .ct-search-btn {
   min-height: 36px;
+}
+
+.ct-search-note {
+  grid-column: 1 / -1;
+  color: var(--amber);
+}
+
+.ct-search-note button {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .ct-suggest {
@@ -847,11 +868,11 @@ body {
     grid-template-columns: 1fr 1fr;
   }
 
-  .ct-radius {
-    grid-column: span 1;
+  .ct-search-btn {
+    grid-column: span 2;
   }
 
-  .ct-search-btn {
+  .ct-search-note {
     grid-column: span 2;
   }
 }
@@ -862,7 +883,7 @@ body {
   }
 
   .ct-search-btn,
-  .ct-radius {
+  .ct-search-note {
     grid-column: span 1;
   }
 }

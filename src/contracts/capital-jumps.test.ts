@@ -3,11 +3,46 @@ import test from 'node:test';
 import { buildTopologyFromSystems } from './map.ts';
 import {
   extractJumpDriveStaticData,
+  jumpDriveDistancesFrom,
+  jumpDriveJumpsAtJdcLevel,
   jumpDriveJumpsAtJdc5,
+  jumpDriveRangeAtJdcLevel,
   jumpDriveRangeAtJdc5,
   jumpFuelUnitsAtJfc5,
   LIGHT_YEAR_METERS,
 } from './capital-jumps.ts';
+
+test('jump-drive range scales by 20 percent for each JDC level', () => {
+  assert.equal(jumpDriveRangeAtJdcLevel(5, 1), 6);
+  assert.equal(jumpDriveRangeAtJdcLevel(5, 3), 8);
+  assert.equal(jumpDriveRangeAtJdcLevel(5, 5), 10);
+});
+
+test('capital jump count uses the selected JDC level', () => {
+  const topology = buildTopologyFromSystems([
+    system(30000142, 'Jita', 0, 0, 0),
+    system(30000145, 'Perimeter', 4.25 * LIGHT_YEAR_METERS, 0, 0),
+    system(30000148, 'Urlen', 8.5 * LIGHT_YEAR_METERS, 0, 0),
+  ]);
+
+  assert.equal(jumpDriveJumpsAtJdcLevel(topology, 30000142, 30000148, 5, 3), 2);
+  assert.equal(jumpDriveJumpsAtJdcLevel(topology, 30000142, 30000148, 5, 4), 1);
+});
+
+test('capital jump paths require an intermediate system for each jump', () => {
+  const disconnected = buildTopologyFromSystems([
+    system(30000142, 'Jita', 0, 0, 0),
+    system(30000148, 'Urlen', 8 * LIGHT_YEAR_METERS, 0, 0),
+  ]);
+  const connected = buildTopologyFromSystems([
+    system(30000142, 'Jita', 0, 0, 0),
+    system(30000145, 'Perimeter', 4 * LIGHT_YEAR_METERS, 0, 0),
+    system(30000148, 'Urlen', 8 * LIGHT_YEAR_METERS, 0, 0),
+  ]);
+
+  assert.equal(jumpDriveDistancesFrom(disconnected, 30000142, 3.5, 5, 2).has(30000148), false);
+  assert.equal(jumpDriveDistancesFrom(connected, 30000142, 3.5, 5, 2).get(30000148), 2);
+});
 
 test('capitalJumpsAtJdc5 returns zero for contracts in the origin system', () => {
   const topology = buildTopologyFromSystems([
