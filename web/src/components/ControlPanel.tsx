@@ -20,6 +20,14 @@ export function ControlPanel({ chars, selection, view, setView, currentUser, onL
     <aside className="sidebar">
       <div className="sidebar-brand">
         <img src="/outfit-logo.png" alt="Outfit 420-2" />
+        <a
+          className="sidebar-repo-link"
+          href="https://github.com/cyrdax/LoW-manager"
+          target="_blank"
+          rel="noreferrer"
+        >
+          GitHub repository
+        </a>
         <small>{chars.length} characters · {selection.size} selected</small>
       </div>
 

@@ -187,6 +187,17 @@ body {
   aspect-ratio: 760 / 230;
   border-radius: 8px;
 }
+.sidebar-repo-link {
+  align-self: flex-start;
+  color: var(--dim);
+  font-size: 12px;
+  text-decoration: none;
+}
+.sidebar-repo-link:hover,
+.sidebar-repo-link:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+}
 .sidebar h1 { font-size: 15px; margin: 0 0 4px; letter-spacing: 0.5px; }
 .sidebar small { color: var(--dim); }
 .sidebar button, .sidebar select {
