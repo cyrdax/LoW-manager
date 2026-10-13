@@ -222,8 +222,8 @@ export class CloakWatchController {
   }
 
   private applyAlertErrors(result: AlertResult): void {
-    this.soundWarning = result.soundError;
-    this.notificationWarning = result.notificationError;
+    this.soundWarning = this.settings.soundEnabled ? result.soundError : null;
+    this.notificationWarning = this.settings.notificationsEnabled ? result.notificationError : null;
     this.emit();
   }
 

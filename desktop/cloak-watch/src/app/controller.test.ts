@@ -241,6 +241,23 @@ test('CloakWatchController testAlert uses alert preferences without restarting t
   assert.equal(fixture.monitors.length, 1);
 });
 
+test('CloakWatchController ignores an in-flight channel failure after that channel is disabled', async () => {
+  let rejectNotification!: (error: Error) => void;
+  const pendingNotification = new Promise<void>((_resolve, reject) => {
+    rejectNotification = reject;
+  });
+  const fixture = createFixture({ showNotification: async () => pendingNotification });
+  await fixture.controller.start();
+
+  fixture.monitors[0].decloak(event);
+  await new Promise((resolve) => setImmediate(resolve));
+  await fixture.controller.setNotificationsEnabled(false);
+  rejectNotification(new Error('permission denied after disable'));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(fixture.controller.getViewModel().warning, null);
+});
+
 test('CloakWatchController publishes immutable view-model snapshots and cleans up subscriptions', async () => {
   const fixture = createFixture();
   await fixture.controller.start();
