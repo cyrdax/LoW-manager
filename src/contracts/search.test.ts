@@ -9,7 +9,6 @@ import {
   runJumpCapableContractSearch,
   searchContractShips,
   sortContractResults,
-  validateContractRadius,
   type ContractSearchResult,
 } from './search.ts';
 import {
@@ -42,14 +41,6 @@ test('searchContractShips returns prefix matches before substring matches', () =
 
 test('searchContractShips requires at least two characters', () => {
   assert.deepEqual(searchContractShips(masteryData, 'b'), []);
-});
-
-test('validateContractRadius defaults invalid input and rejects out-of-range values', () => {
-  assert.equal(validateContractRadius(Number.NaN), 30);
-  assert.equal(validateContractRadius(1), 1);
-  assert.equal(validateContractRadius(100), 100);
-  assert.throws(() => validateContractRadius(0), /radius must be between 1 and 100/);
-  assert.throws(() => validateContractRadius(101), /radius must be between 1 and 100/);
 });
 
 test('matchingShipQuantity sums only included positive-quantity ship rows', () => {
@@ -87,23 +78,24 @@ test('runContractSearch reads indexed contracts and returns coverage metadata', 
 
   const response = await runContractSearch({
     data: masteryData,
-    shipId: 17920,
+    shipId: 23757,
     originSystemId: 30000142,
-    radius: 30,
+    jdcLevel: 5,
+    maxCynoJumps: 1,
   }, {
     database: db,
     now: () => NOW,
     topology,
   });
 
-  assert.equal(response.ship.name, 'Barghest');
+  assert.equal(response.ship.name, 'Archon');
   assert.equal(response.origin.name, 'Jita');
   assert.deepEqual(response.regionsScanned, [{ id: 10000002, name: 'The Forge' }]);
   assert.equal(response.results.length, 1);
   assert.equal(response.results[0].contractId, 1);
   assert.equal(response.results[0].quantity, 1);
   assert.equal(response.results[0].jumps, 0);
-  assert.equal(response.results[0].capitalJumps, null);
+  assert.equal(response.results[0].capitalJumps, 0);
   assert.equal(response.results[0].locationName, 'Jita IV - Moon 4 - Caldari Navy Assembly Plant');
   assert.equal(response.index.regionsTotal, 1);
   assert.equal(response.index.regionsReady, 1);
@@ -111,7 +103,21 @@ test('runContractSearch reads indexed contracts and returns coverage metadata', 
   assert.deepEqual(response.warnings, []);
 });
 
-test('runContractSearch calculates JDC V jump-drive jumps from the searched ship range', async () => {
+test('runContractSearch rejects a selected ship without a jump drive', async () => {
+  await assert.rejects(runContractSearch({
+    data: masteryData,
+    shipId: 17920,
+    originSystemId: 30000142,
+    jdcLevel: 5,
+    maxCynoJumps: 1,
+  }, {
+    database: memoryDb(),
+    now: () => NOW,
+    topology: topologyFixture(),
+  }), /Ship has no jump drive/);
+});
+
+test('runContractSearch calculates capital jumps at the selected JDC level', async () => {
   const db = memoryDb();
   const topology = topologyFixture();
   upsertContractIndexRegions(db, [{ id: 10000002, name: 'The Forge' }], NOW);
@@ -131,23 +137,128 @@ test('runContractSearch calculates JDC V jump-drive jumps from the searched ship
     WHERE region_id = ?
   `).run(EXPIRES, 10000002);
 
-  const response = await runContractSearch({
+  const input = {
     data: masteryData,
     shipId: 23757,
     originSystemId: 30000142,
-    radius: 30,
-  }, {
+    jdcLevel: 3,
+    maxCynoJumps: 2,
+  };
+  const response = await runContractSearch(input, {
     database: db,
     now: () => NOW,
     topology,
   });
 
-  assert.equal(response.results[0].capitalJumps, 1);
+  assert.equal(response.results[0].capitalJumps, 2);
+  assert.equal(response.jdcLevel, 3);
+  assert.equal(response.maxCynoJumps, 2);
   assert.equal(response.results[0].jumpFuelTypeName, 'Helium Isotopes');
   assert.equal(response.results[0].jumpFuelAmount, 10_401);
 });
 
-test('runJumpCapableContractSearch returns any jump-capable ship within one JDC V jump', async () => {
+test('runContractSearch excludes contracts beyond the selected cyno jump limit', async () => {
+  const db = memoryDb();
+  const topology = topologyFixture();
+  upsertContractIndexRegions(db, [{ id: 10000002, name: 'The Forge' }], NOW);
+  upsertRegionContracts(db, {
+    region: { id: 10000002, name: 'The Forge' },
+    topology,
+    refreshedAt: NOW - 60_000,
+    expiresAt: EXPIRES,
+    contracts: [
+      contract(1, { start_location_id: 60000001, title: 'Near Archon hull' }),
+      contract(2, { start_location_id: 60000002, title: 'Far Archon hull' }),
+    ],
+  });
+  replaceContractItems(db, 1, [item(11, 23757, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 2, [item(21, 23757, 1, true)], NOW - 60_000, EXPIRES);
+  db.prepare(`
+    UPDATE contract_index_regions
+    SET next_refresh_at = ?
+    WHERE region_id = ?
+  `).run(EXPIRES, 10000002);
+
+  const input = {
+    data: masteryData,
+    shipId: 23757,
+    originSystemId: 30000142,
+    jdcLevel: 5,
+    maxCynoJumps: 1,
+  };
+  const response = await runContractSearch(input, {
+    database: db,
+    now: () => NOW,
+    topology,
+  });
+
+  assert.deepEqual(response.results.map(row => row.contractId), [1]);
+});
+
+test('runContractSearch scans regions reachable by cyno range instead of gate links', async () => {
+  const db = memoryDb();
+  const topology = buildTopologyFromSystems([
+    { systemId: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge', neighbors: [], x: 0, y: 0, z: 0 },
+    { systemId: 30002500, name: 'Midpoint', regionId: 10000002, regionName: 'The Forge', neighbors: [], x: 4 * 9_460_000_000_000_000, y: 0, z: 0 },
+    { systemId: 30005000, name: 'Remote', regionId: 10000043, regionName: 'Domain', neighbors: [], x: 8 * 9_460_000_000_000_000, y: 0, z: 0 },
+  ], [
+    { stationId: 60005000, stationName: 'Remote Station', solarSystemId: 30005000 },
+  ]);
+  upsertContractIndexRegions(db, [{ id: 10000043, name: 'Domain' }], NOW);
+  upsertRegionContracts(db, {
+    region: { id: 10000043, name: 'Domain' },
+    topology,
+    refreshedAt: NOW - 60_000,
+    expiresAt: EXPIRES,
+    contracts: [contract(1, { start_location_id: 60005000, title: 'Remote Archon hull' })],
+  });
+  replaceContractItems(db, 1, [item(11, 23757, 1, true)], NOW - 60_000, EXPIRES);
+  db.prepare(`
+    UPDATE contract_index_regions
+    SET next_refresh_at = ?
+    WHERE region_id = ?
+  `).run(EXPIRES, 10000043);
+
+  const input = {
+    data: masteryData,
+    shipId: 23757,
+    originSystemId: 30000142,
+    jdcLevel: 5,
+    maxCynoJumps: 2,
+  };
+  const response = await runContractSearch(input, {
+    database: db,
+    now: () => NOW,
+    topology,
+  });
+
+  assert.deepEqual(response.regionsScanned.map(region => region.id).sort(), [10000002, 10000043]);
+  assert.deepEqual(response.results.map(row => [row.contractId, row.capitalJumps]), [[1, 2]]);
+});
+
+test('runContractSearch excludes regions without a valid intermediate cyno system', async () => {
+  const topology = buildTopologyFromSystems([
+    { systemId: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge', neighbors: [], x: 0, y: 0, z: 0 },
+    { systemId: 30005000, name: 'Remote', regionId: 10000043, regionName: 'Domain', neighbors: [], x: 8 * 9_460_000_000_000_000, y: 0, z: 0 },
+  ]);
+
+  const response = await runContractSearch({
+    data: masteryData,
+    shipId: 23757,
+    originSystemId: 30000142,
+    jdcLevel: 5,
+    maxCynoJumps: 2,
+  }, {
+    database: memoryDb(),
+    now: () => NOW,
+    topology,
+  });
+
+  assert.deepEqual(response.regionsScanned, [{ id: 10000002, name: 'The Forge' }]);
+  assert.deepEqual(response.results, []);
+});
+
+test('runJumpCapableContractSearch applies the selected JDC level and cyno jump limit to every ship', async () => {
   const db = memoryDb();
   const topology = topologyFixture();
   upsertContractIndexRegions(db, [{ id: 10000002, name: 'The Forge' }], NOW);
@@ -171,19 +282,24 @@ test('runJumpCapableContractSearch returns any jump-capable ship within one JDC 
     WHERE region_id = ?
   `).run(EXPIRES, 10000002);
 
-  const response = await runJumpCapableContractSearch({
+  const input = {
     data: masteryData,
     originSystemId: 30000142,
-  }, {
+    jdcLevel: 3,
+    maxCynoJumps: 2,
+  };
+  const response = await runJumpCapableContractSearch(input, {
     database: db,
     now: () => NOW,
     topology,
   });
 
   assert.equal(response.ship.name, 'Any jump-capable ship');
-  assert.equal(response.radius, 1);
+  assert.equal(response.jdcLevel, 3);
+  assert.equal(response.maxCynoJumps, 2);
   assert.deepEqual(response.results.map(row => [row.contractId, row.shipName, row.capitalJumps, row.jumpFuelAmount, row.jumpFuelTypeName]), [
-    [1, 'Archon', 1, 10_401, 'Helium Isotopes'],
+    [1, 'Archon', 2, 10_401, 'Helium Isotopes'],
+    [3, 'Revelation', 2, 12_000, 'Helium Isotopes'],
   ]);
 });
 
@@ -201,8 +317,8 @@ test('runContractSearch warns when matching contracts have unresolved locations'
       contract(2, { start_location_id: 1031231231231 }),
     ],
   });
-  replaceContractItems(db, 1, [item(11, 17920, 1, true)], NOW - 60_000, EXPIRES);
-  replaceContractItems(db, 2, [item(21, 17920, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 1, [item(11, 23757, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 2, [item(21, 23757, 1, true)], NOW - 60_000, EXPIRES);
   db.prepare(`
     UPDATE contract_index_regions
     SET next_refresh_at = ?
@@ -211,9 +327,10 @@ test('runContractSearch warns when matching contracts have unresolved locations'
 
   const response = await runContractSearch({
     data: masteryData,
-    shipId: 17920,
+    shipId: 23757,
     originSystemId: 30000142,
-    radius: 30,
+    jdcLevel: 5,
+    maxCynoJumps: 1,
   }, {
     database: db,
     now: () => NOW,
@@ -236,9 +353,10 @@ test('runContractSearch prioritizes touched regions for background refresh', asy
 
   await runContractSearch({
     data: masteryData,
-    shipId: 17920,
+    shipId: 23757,
     originSystemId: 30000142,
-    radius: 30,
+    jdcLevel: 5,
+    maxCynoJumps: 1,
   }, {
     database: db,
     now: () => NOW,
@@ -254,9 +372,10 @@ test('runContractSearch returns warming metadata and warning when index coverage
 
   const response = await runContractSearch({
     data: masteryData,
-    shipId: 17920,
+    shipId: 23757,
     originSystemId: 30000142,
-    radius: 30,
+    jdcLevel: 5,
+    maxCynoJumps: 1,
   }, {
     database: db,
     now: () => NOW,
@@ -307,9 +426,9 @@ function memoryDb() {
 function topologyFixture() {
   return buildTopologyFromSystems([
     { systemId: 30000142, name: 'Jita', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145], x: 0, y: 0, z: 0 },
-    { systemId: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge', neighbors: [30000142, 30000148], x: 1, y: 0, z: 0 },
-    { systemId: 30000148, name: 'Urlen', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145], x: 6.934 * 9_460_000_000_000_000, y: 0, z: 0 },
-    { systemId: 30000149, name: 'Far System', regionId: 10000002, regionName: 'The Forge', neighbors: [], x: 8 * 9_460_000_000_000_000, y: 0, z: 0 },
+    { systemId: 30000145, name: 'Perimeter', regionId: 10000002, regionName: 'The Forge', neighbors: [30000142, 30000148], x: 4 * 9_460_000_000_000_000, y: 0, z: 0 },
+    { systemId: 30000148, name: 'Urlen', regionId: 10000002, regionName: 'The Forge', neighbors: [30000145, 30000149], x: 6.934 * 9_460_000_000_000_000, y: 0, z: 0 },
+    { systemId: 30000149, name: 'Far System', regionId: 10000002, regionName: 'The Forge', neighbors: [30000148], x: 8 * 9_460_000_000_000_000, y: 0, z: 0 },
   ], [
     { stationId: 60003760, stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant', solarSystemId: 30000142 },
     { stationId: 60000001, stationName: 'Urlen Station', solarSystemId: 30000148 },
@@ -325,14 +444,14 @@ function seedIndexedRegion(db: Database.Database, topology: ReturnType<typeof to
     refreshedAt: NOW - 60_000,
     expiresAt: EXPIRES,
     contracts: [
-      contract(1, { start_location_id: 60003760, price: 50, title: 'Barghest hull' }),
+      contract(1, { start_location_id: 60003760, price: 50, title: 'Archon hull' }),
       contract(2, { type: 'courier', start_location_id: 60003760 }),
       contract(3, { date_expired: '2026-07-02T00:00:00Z', start_location_id: 60003760 }),
     ],
   });
-  replaceContractItems(db, 1, [item(11, 17920, 1, true)], NOW - 60_000, EXPIRES);
-  replaceContractItems(db, 2, [item(21, 17920, 1, true)], NOW - 60_000, EXPIRES);
-  replaceContractItems(db, 3, [item(31, 17920, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 1, [item(11, 23757, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 2, [item(21, 23757, 1, true)], NOW - 60_000, EXPIRES);
+  replaceContractItems(db, 3, [item(31, 23757, 1, true)], NOW - 60_000, EXPIRES);
 
   db.prepare(`
     UPDATE contract_index_regions

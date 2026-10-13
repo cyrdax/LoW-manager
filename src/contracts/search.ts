@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { db as appDb } from '../db.ts';
 import { loadContractMap, distancesFrom, regionsWithin, type ContractMapTopology } from './map.ts';
-import { LIGHT_YEAR_METERS, jumpDriveRangeAtJdc5 } from './capital-jumps.ts';
+import { jumpDriveDistancesFrom, jumpDriveRangeAtJdcLevel } from './capital-jumps.ts';
 import type { MasteryData } from '../skills/mastery-data.ts';
 import { sortContractResultsDefault } from './result-sort.ts';
 import {
@@ -12,9 +12,6 @@ import {
   upsertContractIndexRegions,
 } from './index-store.ts';
 import {
-  CONTRACT_RADIUS_DEFAULT,
-  CONTRACT_RADIUS_MAX,
-  CONTRACT_RADIUS_MIN,
   type ContractSearchResponse,
   type ContractSearchResult,
   type ContractShipHit,
@@ -26,6 +23,7 @@ import {
 export * from './types.ts';
 
 type SqliteDatabase = Database.Database;
+const CONTRACT_GATE_DISTANCE_MAX = 100;
 
 export function searchContractShips(data: MasteryData, q: string, limit = 25): ContractShipHit[] {
   const query = q.trim().toLowerCase();
@@ -51,17 +49,6 @@ export function searchContractShips(data: MasteryData, q: string, limit = 25): C
   return [...prefix, ...substr].slice(0, limit);
 }
 
-export function validateContractRadius(raw: number): number {
-  if (!Number.isFinite(raw)) return CONTRACT_RADIUS_DEFAULT;
-
-  const radius = Math.floor(raw);
-  if (radius < CONTRACT_RADIUS_MIN || radius > CONTRACT_RADIUS_MAX) {
-    throw new Error(`radius must be between ${CONTRACT_RADIUS_MIN} and ${CONTRACT_RADIUS_MAX}`);
-  }
-
-  return radius;
-}
-
 export function matchingShipQuantity(items: PublicContractItem[], shipTypeId: number): number {
   return items.reduce((sum, item) => {
     if (item.type_id !== shipTypeId) return sum;
@@ -85,13 +72,16 @@ export interface RunContractSearchInput {
   data: MasteryData;
   shipId: number;
   originSystemId: number;
-  radius: number;
+  jdcLevel?: number;
+  maxCynoJumps?: number;
   signal?: AbortSignal;
 }
 
 export interface RunJumpCapableContractSearchInput {
   data: MasteryData;
   originSystemId: number;
+  jdcLevel?: number;
+  maxCynoJumps?: number;
   signal?: AbortSignal;
 }
 
@@ -107,15 +97,25 @@ export async function runContractSearch(
 ): Promise<ContractSearchResponse> {
   throwIfAborted(input.signal);
 
-  const radius = validateContractRadius(input.radius);
   const ship = input.data.ships[String(input.shipId)];
   if (!ship) throw new Error('Ship not found');
+  const jdcLevel = input.jdcLevel ?? 5;
+  const maxCynoJumps = input.maxCynoJumps ?? 1;
+  const jumpRangeLy = jumpDriveRangeAtJdcLevel(ship.jumpDriveBaseRangeLy, jdcLevel);
+  if (jumpRangeLy == null) throw new Error('Ship has no jump drive');
 
   const topology = deps.topology ?? loadContractMap();
   const now = deps.now?.() ?? Date.now();
   const database = deps.database ?? appDb;
-  const distances = distancesFrom(topology, input.originSystemId, radius);
-  const regions = regionsWithin(topology, distances);
+  const distances = distancesFrom(topology, input.originSystemId, CONTRACT_GATE_DISTANCE_MAX);
+  const capitalDistances = jumpDriveDistancesFrom(
+    topology,
+    input.originSystemId,
+    ship.jumpDriveBaseRangeLy,
+    jdcLevel,
+    maxCynoJumps,
+  );
+  const regions = regionsWithin(topology, capitalDistances);
   const regionIds = regions.map(region => region.id);
   const warnings: ContractWarning[] = [];
 
@@ -126,6 +126,8 @@ export async function runContractSearch(
     shipTypeId: input.shipId,
     shipName: ship.name,
     jumpDriveBaseRangeLy: ship.jumpDriveBaseRangeLy ?? null,
+    jdcLevel,
+    maxCapitalJumps: maxCynoJumps,
     jumpFuelTypeId: ship.jumpFuelTypeId ?? null,
     jumpFuelTypeName: ship.jumpFuelTypeName ?? null,
     jumpFuelUnitsPerLy: ship.jumpFuelUnitsPerLy ?? null,
@@ -133,6 +135,7 @@ export async function runContractSearch(
     topology,
     regionIds,
     distances,
+    capitalDistances,
     now,
   });
 
@@ -166,7 +169,8 @@ export async function runContractSearch(
   return {
     ship: { id: input.shipId, name: ship.name, groupName: ship.groupName, jumpDriveBaseRangeLy: ship.jumpDriveBaseRangeLy ?? null },
     origin: { id: input.originSystemId, name: originName },
-    radius,
+    jdcLevel,
+    maxCynoJumps,
     index,
     regionsScanned: regions,
     fetchedAt: now,
@@ -184,10 +188,22 @@ export async function runJumpCapableContractSearch(
   const topology = deps.topology ?? loadContractMap();
   const now = deps.now?.() ?? Date.now();
   const database = deps.database ?? appDb;
-  const distances = distancesFrom(topology, input.originSystemId, CONTRACT_RADIUS_MAX);
+  const distances = distancesFrom(topology, input.originSystemId, CONTRACT_GATE_DISTANCE_MAX);
   const jumpCapableShips = jumpCapableContractShips(input.data);
-  const maxRangeLy = Math.max(...jumpCapableShips.map(ship => jumpDriveRangeAtJdc5(ship.jumpDriveBaseRangeLy) ?? 0));
-  const regions = regionsWithinJumpRange(topology, input.originSystemId, maxRangeLy);
+  const jdcLevel = input.jdcLevel ?? 5;
+  const maxCynoJumps = input.maxCynoJumps ?? 1;
+  const capitalDistancesByBaseRange = new Map<number, Map<number, number>>();
+  for (const baseRangeLy of new Set(jumpCapableShips.map(ship => ship.jumpDriveBaseRangeLy))) {
+    capitalDistancesByBaseRange.set(baseRangeLy, jumpDriveDistancesFrom(
+      topology,
+      input.originSystemId,
+      baseRangeLy,
+      jdcLevel,
+      maxCynoJumps,
+    ));
+  }
+  const maxBaseRangeLy = Math.max(...capitalDistancesByBaseRange.keys());
+  const regions = regionsWithin(topology, capitalDistancesByBaseRange.get(maxBaseRangeLy) ?? new Map([[input.originSystemId, 0]]));
   const regionIds = regions.map(region => region.id);
   const warnings: ContractWarning[] = [];
 
@@ -201,7 +217,9 @@ export async function runJumpCapableContractSearch(
     regionIds,
     distances,
     now,
-    maxCapitalJumps: 1,
+    jdcLevel,
+    maxCapitalJumps: maxCynoJumps,
+    capitalDistancesByBaseRange,
   });
 
   throwIfAborted(input.signal);
@@ -232,9 +250,10 @@ export async function runJumpCapableContractSearch(
   };
 
   return {
-    ship: { id: 0, name: 'Any jump-capable ship', groupName: 'Within 1 JDC V jump', jumpDriveBaseRangeLy: null },
+    ship: { id: 0, name: 'Any jump-capable ship', groupName: 'Jump-capable ships', jumpDriveBaseRangeLy: null },
     origin: { id: input.originSystemId, name: originName },
-    radius: 1,
+    jdcLevel,
+    maxCynoJumps,
     index,
     regionsScanned: regions,
     fetchedAt: now,
@@ -254,34 +273,6 @@ function jumpCapableContractShips(data: MasteryData) {
       jumpFuelUnitsPerLy: ship.jumpFuelUnitsPerLy ?? null,
     }))
     .filter(ship => Number.isFinite(ship.typeId) && ship.jumpDriveBaseRangeLy > 0);
-}
-
-function regionsWithinJumpRange(
-  topology: ContractMapTopology,
-  originSystemId: number,
-  maxRangeLy: number,
-): Array<{ id: number; name: string }> {
-  const origin = topology.systems.get(originSystemId);
-  if (!origin) throw new Error(`origin system ${originSystemId} is not present in contract map topology`);
-  if (!hasCoordinates(origin) || maxRangeLy <= 0) return regionsWithin(topology, new Map([[originSystemId, 0]]));
-
-  const systems = new Map<number, number>([[originSystemId, 0]]);
-  for (const system of topology.systems.values()) {
-    if (!hasCoordinates(system)) continue;
-    const distanceLy = Math.hypot(origin.x - system.x, origin.y - system.y, origin.z - system.z) / LIGHT_YEAR_METERS;
-    if (distanceLy <= maxRangeLy) systems.set(system.id, 1);
-  }
-
-  return regionsWithin(topology, systems);
-}
-
-function hasCoordinates(
-  system: { x?: number; y?: number; z?: number } | undefined,
-): system is { x: number; y: number; z: number } {
-  return system != null
-    && Number.isFinite(system.x)
-    && Number.isFinite(system.y)
-    && Number.isFinite(system.z);
 }
 
 function abortError(reason?: unknown): Error {

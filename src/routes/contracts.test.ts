@@ -38,14 +38,19 @@ test('GET /api/contracts/search validates required query params', async () => {
 test('GET /api/contracts/search delegates to contract search service', async () => {
   const app = Fastify();
   let observedSignal: AbortSignal | undefined;
+  let observedJdcLevel: number | undefined;
+  let observedMaxCynoJumps: number | undefined;
   registerContractRoutes(app, {
     loadData: () => data,
     runSearch: async input => {
       observedSignal = input.signal;
+      observedJdcLevel = input.jdcLevel;
+      observedMaxCynoJumps = input.maxCynoJumps;
       return {
         ship: { id: input.shipId, name: 'Barghest', groupName: 'Battleship', jumpDriveBaseRangeLy: null },
         origin: { id: input.originSystemId, name: 'Jita' },
-        radius: input.radius,
+        jdcLevel: input.jdcLevel ?? 5,
+        maxCynoJumps: input.maxCynoJumps ?? 1,
         regionsScanned: [],
         index: readyIndex(),
         fetchedAt: 1783526400000,
@@ -57,26 +62,31 @@ test('GET /api/contracts/search delegates to contract search service', async () 
 
   const res = await app.inject({
     method: 'GET',
-    url: '/api/contracts/search?shipId=17920&originSystemId=30000142&radius=30',
+    url: '/api/contracts/search?shipId=17920&originSystemId=30000142&jdcLevel=3&maxCynoJumps=4',
   });
 
   assert.equal(res.statusCode, 200);
   assert.equal(JSON.parse(res.body).origin.name, 'Jita');
   assert.ok(observedSignal);
   assert.equal(observedSignal.aborted, false);
+  assert.equal(observedJdcLevel, 3);
+  assert.equal(observedMaxCynoJumps, 4);
 });
 
-test('GET /api/contracts/search defaults omitted radius to 30', async () => {
+test('GET /api/contracts/search defaults omitted jump settings to JDC V and one cyno jump', async () => {
   const app = Fastify();
-  let receivedRadius: number | undefined;
+  let receivedJdcLevel: number | undefined;
+  let receivedMaxCynoJumps: number | undefined;
   registerContractRoutes(app, {
     loadData: () => data,
     runSearch: async input => {
-      receivedRadius = input.radius;
+      receivedJdcLevel = input.jdcLevel;
+      receivedMaxCynoJumps = input.maxCynoJumps;
       return {
         ship: { id: input.shipId, name: 'Barghest', groupName: 'Battleship', jumpDriveBaseRangeLy: null },
         origin: { id: input.originSystemId, name: 'Jita' },
-        radius: input.radius,
+        jdcLevel: input.jdcLevel ?? 5,
+        maxCynoJumps: input.maxCynoJumps ?? 1,
         regionsScanned: [],
         index: readyIndex(),
         fetchedAt: 1783526400000,
@@ -92,21 +102,26 @@ test('GET /api/contracts/search defaults omitted radius to 30', async () => {
   });
 
   assert.equal(res.statusCode, 200);
-  assert.equal(receivedRadius, 30);
-  assert.equal(JSON.parse(res.body).radius, 30);
+  assert.equal(receivedJdcLevel, 5);
+  assert.equal(receivedMaxCynoJumps, 1);
 });
 
-test('GET /api/contracts/search/jump-capable delegates to one-jump contract search service', async () => {
+test('GET /api/contracts/search/jump-capable delegates selected JDC level and cyno jump limit', async () => {
   const app = Fastify();
   let observedOrigin: number | undefined;
+  let observedJdcLevel: number | undefined;
+  let observedMaxCynoJumps: number | undefined;
   registerContractRoutes(app, {
     loadData: () => data,
     runJumpSearch: async input => {
       observedOrigin = input.originSystemId;
+      observedJdcLevel = input.jdcLevel;
+      observedMaxCynoJumps = input.maxCynoJumps;
       return {
         ship: { id: 0, name: 'Any jump-capable ship', groupName: 'Within 1 JDC V jump', jumpDriveBaseRangeLy: null },
         origin: { id: input.originSystemId, name: 'Jita' },
-        radius: 1,
+        jdcLevel: input.jdcLevel ?? 5,
+        maxCynoJumps: input.maxCynoJumps ?? 1,
         regionsScanned: [],
         index: readyIndex(),
         fetchedAt: 1783526400000,
@@ -118,15 +133,17 @@ test('GET /api/contracts/search/jump-capable delegates to one-jump contract sear
 
   const res = await app.inject({
     method: 'GET',
-    url: '/api/contracts/search/jump-capable?originSystemId=30000142',
+    url: '/api/contracts/search/jump-capable?originSystemId=30000142&jdcLevel=2&maxCynoJumps=5',
   });
 
   assert.equal(res.statusCode, 200);
   assert.equal(observedOrigin, 30000142);
+  assert.equal(observedJdcLevel, 2);
+  assert.equal(observedMaxCynoJumps, 5);
   assert.equal(JSON.parse(res.body).ship.name, 'Any jump-capable ship');
 });
 
-test('GET /api/contracts/search rejects radius below the allowed range', async () => {
+test('GET /api/contracts/search rejects JDC levels below one', async () => {
   const app = Fastify();
   let called = false;
   registerContractRoutes(app, {
@@ -136,7 +153,8 @@ test('GET /api/contracts/search rejects radius below the allowed range', async (
       return {
         ship: { id: 17920, name: 'Barghest', groupName: 'Battleship', jumpDriveBaseRangeLy: null },
         origin: { id: 30000142, name: 'Jita' },
-        radius: 30,
+        jdcLevel: 5,
+        maxCynoJumps: 1,
         regionsScanned: [],
         index: readyIndex(),
         fetchedAt: 1783526400000,
@@ -148,14 +166,14 @@ test('GET /api/contracts/search rejects radius below the allowed range', async (
 
   const res = await app.inject({
     method: 'GET',
-    url: '/api/contracts/search?shipId=17920&originSystemId=30000142&radius=0',
+    url: '/api/contracts/search?shipId=17920&originSystemId=30000142&jdcLevel=0&maxCynoJumps=1',
   });
 
   assert.equal(res.statusCode, 400);
   assert.equal(called, false);
 });
 
-test('GET /api/contracts/search rejects radius above the allowed range', async () => {
+test('GET /api/contracts/search rejects cyno jump limits above five', async () => {
   const app = Fastify();
   let called = false;
   registerContractRoutes(app, {
@@ -165,7 +183,8 @@ test('GET /api/contracts/search rejects radius above the allowed range', async (
       return {
         ship: { id: 17920, name: 'Barghest', groupName: 'Battleship', jumpDriveBaseRangeLy: null },
         origin: { id: 30000142, name: 'Jita' },
-        radius: 30,
+        jdcLevel: 5,
+        maxCynoJumps: 1,
         regionsScanned: [],
         index: readyIndex(),
         fetchedAt: 1783526400000,
@@ -177,7 +196,7 @@ test('GET /api/contracts/search rejects radius above the allowed range', async (
 
   const res = await app.inject({
     method: 'GET',
-    url: '/api/contracts/search?shipId=17920&originSystemId=30000142&radius=101',
+    url: '/api/contracts/search?shipId=17920&originSystemId=30000142&jdcLevel=5&maxCynoJumps=6',
   });
 
   assert.equal(res.statusCode, 400);
@@ -215,6 +234,24 @@ test('GET /api/contracts/search returns 400 when origin system is missing from t
 
   assert.equal(res.statusCode, 400);
   assert.match(JSON.parse(res.body).error, /origin system 30000000 is not present in contract map topology/);
+});
+
+test('GET /api/contracts/search returns 400 when the selected ship has no jump drive', async () => {
+  const app = Fastify();
+  registerContractRoutes(app, {
+    loadData: () => data,
+    runSearch: async () => {
+      throw new Error('Ship has no jump drive');
+    },
+  });
+
+  const res = await app.inject({
+    method: 'GET',
+    url: '/api/contracts/search?shipId=17920&originSystemId=30000142&jdcLevel=5&maxCynoJumps=1',
+  });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(JSON.parse(res.body).error, 'Ship has no jump drive');
 });
 
 test('GET /api/contracts/:contractId/details returns itemized pricing for a contract', async () => {

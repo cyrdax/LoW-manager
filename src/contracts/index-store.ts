@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { jumpDriveJumpsAtJdc5, jumpFuelUnitsAtJfc5 } from './capital-jumps.ts';
+import { jumpDriveDistancesFrom, jumpFuelUnitsAtJfc5 } from './capital-jumps.ts';
 import { locationForId, type ContractMapTopology } from './map.ts';
 import { sortContractResultsDefault } from './result-sort.ts';
 import type { ContractSearchResult, PublicContractItem, PublicContractSummary } from './types.ts';
@@ -24,6 +24,8 @@ export interface IndexedContractSearchInput {
   shipTypeId: number;
   shipName: string;
   jumpDriveBaseRangeLy: number | null;
+  jdcLevel?: number;
+  maxCapitalJumps?: number;
   jumpFuelTypeId?: number | null;
   jumpFuelTypeName?: string | null;
   jumpFuelUnitsPerLy?: number | null;
@@ -31,6 +33,7 @@ export interface IndexedContractSearchInput {
   topology: ContractMapTopology;
   regionIds: number[];
   distances: Map<number, number>;
+  capitalDistances?: ReadonlyMap<number, number>;
   now: number;
 }
 
@@ -50,7 +53,9 @@ export interface IndexedJumpCapableContractSearchInput {
   regionIds: number[];
   distances: Map<number, number>;
   now: number;
+  jdcLevel: number;
   maxCapitalJumps: number;
+  capitalDistancesByBaseRange?: ReadonlyMap<number, ReadonlyMap<number, number>>;
 }
 
 export interface IndexedContractSearch {
@@ -370,6 +375,13 @@ export function searchIndexedContracts(
   `).all(...input.regionIds, input.shipTypeId) as ContractIndexSummaryRow[];
 
   const results: ContractSearchResult[] = [];
+  const capitalDistances = input.capitalDistances ?? jumpDriveDistancesFrom(
+    input.topology,
+    input.originSystemId,
+    input.jumpDriveBaseRangeLy,
+    input.jdcLevel ?? 5,
+    input.maxCapitalJumps ?? 5,
+  );
   let unresolvedLocationCount = 0;
   for (const row of rows) {
     if (!CONTRACT_TYPES.has(row.type)) continue;
@@ -378,9 +390,9 @@ export function searchIndexedContracts(
       unresolvedLocationCount += 1;
       continue;
     }
-    if (!input.distances.has(row.location_system_id)) continue;
-
-    const jumps = input.distances.get(row.location_system_id)!;
+    const jumps = input.distances.get(row.location_system_id) ?? null;
+    const capitalJumps = capitalDistances.get(row.location_system_id) ?? null;
+    if (input.maxCapitalJumps != null && (capitalJumps == null || capitalJumps > input.maxCapitalJumps)) continue;
     results.push({
       contractId: row.contract_id,
       type: row.type,
@@ -398,12 +410,7 @@ export function searchIndexedContracts(
       locationName: row.location_name ?? 'Unknown structure',
       locationKnown: row.location_known === 1,
       jumps,
-      capitalJumps: jumpDriveJumpsAtJdc5(
-        input.topology,
-        input.originSystemId,
-        row.location_system_id,
-        input.jumpDriveBaseRangeLy,
-      ),
+      capitalJumps,
       jumpFuelTypeId: input.jumpFuelTypeId ?? null,
       jumpFuelTypeName: input.jumpFuelTypeName ?? null,
       jumpFuelAmount: jumpFuelUnitsAtJfc5(
@@ -460,6 +467,7 @@ export function searchIndexedJumpCapableContracts(
   `).all(...input.regionIds, ...input.ships.map(ship => ship.typeId)) as JumpCapableContractIndexSummaryRow[];
 
   const results: ContractSearchResult[] = [];
+  const capitalDistancesByBaseRange = new Map(input.capitalDistancesByBaseRange ?? []);
   let unresolvedLocationCount = 0;
   for (const row of rows) {
     const ship = shipByType.get(row.matched_type_id);
@@ -471,12 +479,18 @@ export function searchIndexedJumpCapableContracts(
       continue;
     }
 
-    const capitalJumps = jumpDriveJumpsAtJdc5(
-      input.topology,
-      input.originSystemId,
-      row.location_system_id,
-      ship.jumpDriveBaseRangeLy,
-    );
+    let capitalDistances = capitalDistancesByBaseRange.get(ship.jumpDriveBaseRangeLy);
+    if (!capitalDistances) {
+      capitalDistances = jumpDriveDistancesFrom(
+        input.topology,
+        input.originSystemId,
+        ship.jumpDriveBaseRangeLy,
+        input.jdcLevel,
+        input.maxCapitalJumps,
+      );
+      capitalDistancesByBaseRange.set(ship.jumpDriveBaseRangeLy, capitalDistances);
+    }
+    const capitalJumps = capitalDistances.get(row.location_system_id) ?? null;
     if (capitalJumps == null || capitalJumps > input.maxCapitalJumps) continue;
 
     results.push({

@@ -4,9 +4,6 @@ import { loadMasteryData, type MasteryData } from '../skills/mastery-data.ts';
 import { getContractDetails, type ContractDetails, type GetContractDetailsInput } from '../contracts/detail.ts';
 import { HUBS, type HubKey } from '../market/pricing.ts';
 import {
-  CONTRACT_RADIUS_DEFAULT,
-  CONTRACT_RADIUS_MAX,
-  CONTRACT_RADIUS_MIN,
   runContractSearch,
   runJumpCapableContractSearch,
   searchContractShips,
@@ -22,11 +19,14 @@ const shipQuery = z.object({
 const searchQuery = z.object({
   shipId: z.coerce.number().int().positive(),
   originSystemId: z.coerce.number().int().positive(),
-  radius: z.coerce.number().int().min(CONTRACT_RADIUS_MIN).max(CONTRACT_RADIUS_MAX).default(CONTRACT_RADIUS_DEFAULT),
+  jdcLevel: z.coerce.number().int().min(1).max(5).default(5),
+  maxCynoJumps: z.coerce.number().int().min(1).max(5).default(1),
 });
 
 const jumpCapableSearchQuery = z.object({
   originSystemId: z.coerce.number().int().positive(),
+  jdcLevel: z.coerce.number().int().min(1).max(5).default(5),
+  maxCynoJumps: z.coerce.number().int().min(1).max(5).default(1),
 });
 
 export interface ContractRouteDeps {
@@ -67,7 +67,8 @@ export function registerContractRoutes(app: FastifyInstance, deps: ContractRoute
         data: loadData(),
         shipId: parsed.data.shipId,
         originSystemId: parsed.data.originSystemId,
-        radius: parsed.data.radius,
+        jdcLevel: parsed.data.jdcLevel,
+        maxCynoJumps: parsed.data.maxCynoJumps,
         signal: controller.signal,
       });
     } catch (err) {
@@ -78,6 +79,7 @@ export function registerContractRoutes(app: FastifyInstance, deps: ContractRoute
 
       const message = err instanceof Error ? err.message : 'Failed to search contracts';
       if (message === 'Ship not found') return reply.code(404).send({ error: message });
+      if (message === 'Ship has no jump drive') return reply.code(400).send({ error: message });
       if (message.includes('origin system ') && message.includes(' is not present in contract map topology')) {
         return reply.code(400).send({ error: message });
       }
@@ -103,6 +105,8 @@ export function registerContractRoutes(app: FastifyInstance, deps: ContractRoute
       return await runJumpSearch({
         data: loadData(),
         originSystemId: parsed.data.originSystemId,
+        jdcLevel: parsed.data.jdcLevel,
+        maxCynoJumps: parsed.data.maxCynoJumps,
         signal: controller.signal,
       });
     } catch (err) {
