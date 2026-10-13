@@ -51,7 +51,7 @@ elements.startAtLogin.addEventListener('change', () => {
 });
 
 window.cloakWatch.onState(render);
-window.cloakWatch.onPlayPing(() => { void playPing(); });
+window.cloakWatch.onPlayPing(playPing);
 void window.cloakWatch.getState().then(render);
 
 async function playPing() {

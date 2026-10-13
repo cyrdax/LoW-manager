@@ -35,11 +35,24 @@ test('native notification and folder errors remain actionable', async () => {
   await assert.rejects(() => adapters.openLogDirectory('/logs'), /Permission denied/);
 });
 
+test('native adapters wait for renderer sound and operating-system notification delivery', async () => {
+  const dependencies = recordingDependencies([]);
+  dependencies.sendToRenderer = async () => { throw new Error('sound delivery timed out'); };
+  dependencies.showNotification = async () => { throw new Error('notification permission denied'); };
+  const adapters = createNativeAdapters(dependencies);
+
+  await assert.rejects(() => adapters.playPing(), /sound delivery timed out/);
+  await assert.rejects(
+    () => adapters.showNotification('Decloak', 'Pilot'),
+    /notification permission denied/,
+  );
+});
+
 function recordingDependencies(calls: string[]): NativeAdapterDependencies {
   return {
-    sendToRenderer: (channel) => { calls.push(`send:${channel}`); },
+    sendToRenderer: async (channel) => { calls.push(`send:${channel}`); },
     notificationsSupported: () => true,
-    showNotification: (title, body) => { calls.push(`notification:${title}|${body}`); },
+    showNotification: async (title, body) => { calls.push(`notification:${title}|${body}`); },
     setLoginItem: (enabled) => { calls.push(`login:${enabled}`); },
     chooseLogDirectory: async () => {
       calls.push('choose-folder');

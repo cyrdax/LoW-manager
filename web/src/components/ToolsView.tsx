@@ -1,4 +1,5 @@
-const RELEASES_URL = 'https://github.com/cyrdax/LoW-manager/releases/latest';
+const CLOAK_WATCH_VERSION = '0.1.0';
+const RELEASES_URL = `https://github.com/cyrdax/LoW-manager/releases/tag/cloak-watch-v${CLOAK_WATCH_VERSION}`;
 
 export function ToolsView() {
   return (
@@ -23,7 +24,7 @@ export function ToolsView() {
               <span><strong>Download for Windows</strong><small>Installer or portable</small></span>
             </a>
           </div>
-          <p className="tools-release-note">Unsigned preview · version 0.1.0 · downloads open on GitHub</p>
+          <p className="tools-release-note">Unsigned preview · version {CLOAK_WATCH_VERSION} · downloads open on GitHub</p>
         </div>
 
         <div className="tools-monitor" aria-label="Example Cloak Watch monitor">

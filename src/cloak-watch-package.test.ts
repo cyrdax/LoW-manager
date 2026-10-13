@@ -25,9 +25,9 @@ test('cloak watch remains isolated from the Railway package', async () => {
     url: 'https://github.com/cyrdax/LoW-manager.git',
     directory: 'desktop/cloak-watch',
   });
-  assert.equal(desktop.build.publish.owner, 'cyrdax');
-  assert.equal(desktop.build.publish.repo, 'LoW-manager');
-  assert.equal(desktop.build.publish.tagNamePrefix, 'cloak-watch-v');
+  assert.equal(desktop.scripts['publish:mac'], undefined);
+  assert.equal(desktop.scripts['publish:win'], undefined);
+  assert.equal(desktop.build.publish, undefined);
 });
 
 test('cloak watch release workflow verifies and packages both desktop platforms natively', async () => {
@@ -38,7 +38,7 @@ test('cloak watch release workflow verifies and packages both desktop platforms 
   const workflow = load(source) as Record<string, any>;
 
   assert.deepEqual(workflow.on.push.tags, ['cloak-watch-v*']);
-  assert.equal(workflow.permissions.contents, 'write');
+  assert.equal(workflow.permissions.contents, 'read');
   assert.deepEqual(
     workflow.jobs.package.strategy.matrix.include.map(
       ({ os, package_script }: { os: string; package_script: string }) => ({
@@ -60,5 +60,17 @@ test('cloak watch release workflow verifies and packages both desktop platforms 
   assert.ok(commands.includes('npm test'));
   assert.ok(commands.includes('npm run typecheck'));
   assert.ok(commands.includes('npm run ${{ matrix.package_script }}'));
-  assert.ok(commands.includes('npm run ${{ matrix.publish_script }}'));
+  assert.equal(commands.filter((command: string) => command === 'npm run ${{ matrix.package_script }}').length, 1);
+
+  const release = workflow.jobs.release;
+  assert.equal(release.needs, 'package');
+  assert.equal(release.if, "startsWith(github.ref, 'refs/tags/cloak-watch-v')");
+  assert.equal(release.permissions.contents, 'write');
+  const releaseCommands = release.steps
+    .map(({ run }: { run?: string }) => run)
+    .filter(Boolean)
+    .join('\n');
+  assert.match(releaseCommands, /cloak-watch-v\$\{VERSION\}/);
+  assert.match(releaseCommands, /gh release create/);
+  assert.equal((releaseCommands.match(/gh release create/g) ?? []).length, 1);
 });

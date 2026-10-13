@@ -10,6 +10,8 @@ import {
   Notification,
   shell,
   Tray,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
   type OpenDialogOptions,
 } from 'electron';
 import { AlertService } from '../app/alert-service.js';
@@ -32,6 +34,12 @@ let controller: CloakWatchController | null = null;
 let latestViewModel: AppViewModel | null = null;
 let quitting = false;
 let disposed = false;
+let pingSequence = 0;
+const pendingPings = new Map<string, {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}>();
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
@@ -51,14 +59,9 @@ async function startApplication(): Promise<void> {
   await createSettingsWindow();
 
   const nativeAdapters = createNativeAdapters({
-    sendToRenderer: (channel) => {
-      if (!settingsWindow || settingsWindow.isDestroyed()) throw new Error('Settings window is unavailable');
-      settingsWindow.webContents.send(channel);
-    },
+    sendToRenderer: requestRendererPing,
     notificationsSupported: () => Notification.isSupported(),
-    showNotification: (title, body) => {
-      new Notification({ title, body, icon: iconPath }).show();
-    },
+    showNotification: showNativeNotification,
     setLoginItem: (enabled) => {
       app.setLoginItemSettings({ openAtLogin: enabled });
     },
@@ -164,27 +167,88 @@ function updateViewModel(viewModel: AppViewModel): void {
 }
 
 function registerIpc(chooseLogDirectory: () => Promise<string | null>): void {
-  ipcMain.handle('cloak-watch:get-state', () => controller?.getViewModel());
-  ipcMain.handle('cloak-watch:choose-log-directory', async () => {
+  ipcMain.handle('cloak-watch:get-state', (event) => {
+    assertTrustedSender(event);
+    return controller?.getViewModel();
+  });
+  ipcMain.handle('cloak-watch:choose-log-directory', async (event) => {
+    assertTrustedSender(event);
     const directory = await chooseLogDirectory();
     if (directory) await controller?.setLogDirectory(directory);
     return controller?.getViewModel();
   });
-  ipcMain.handle('cloak-watch:set-sound', async (_event, enabled: boolean) => {
+  ipcMain.handle('cloak-watch:set-sound', async (event, enabled: boolean) => {
+    assertTrustedSender(event);
     await controller?.setSoundEnabled(enabled);
     return controller?.getViewModel();
   });
-  ipcMain.handle('cloak-watch:set-notifications', async (_event, enabled: boolean) => {
+  ipcMain.handle('cloak-watch:set-notifications', async (event, enabled: boolean) => {
+    assertTrustedSender(event);
     await controller?.setNotificationsEnabled(enabled);
     return controller?.getViewModel();
   });
-  ipcMain.handle('cloak-watch:set-start-at-login', async (_event, enabled: boolean) => {
+  ipcMain.handle('cloak-watch:set-start-at-login', async (event, enabled: boolean) => {
+    assertTrustedSender(event);
     await controller?.setStartAtLogin(enabled);
     return controller?.getViewModel();
   });
-  ipcMain.handle('cloak-watch:test-alert', async () => {
+  ipcMain.handle('cloak-watch:test-alert', async (event) => {
+    assertTrustedSender(event);
     await controller?.testAlert();
     return controller?.getViewModel();
+  });
+  ipcMain.on('cloak-watch:play-ping-result', (event, requestId: unknown, error: unknown) => {
+    assertTrustedSender(event);
+    if (typeof requestId !== 'string') return;
+    const pending = pendingPings.get(requestId);
+    if (!pending) return;
+    clearTimeout(pending.timeout);
+    pendingPings.delete(requestId);
+    if (typeof error === 'string' && error) pending.reject(new Error(error));
+    else pending.resolve();
+  });
+}
+
+function assertTrustedSender(event: IpcMainEvent | IpcMainInvokeEvent): void {
+  if (!settingsWindow || settingsWindow.isDestroyed() || event.sender.id !== settingsWindow.webContents.id) {
+    throw new Error('Rejected IPC from an untrusted renderer');
+  }
+}
+
+function requestRendererPing(channel: 'cloak-watch:play-ping'): Promise<void> {
+  if (!settingsWindow || settingsWindow.isDestroyed()) {
+    return Promise.reject(new Error('Settings window is unavailable'));
+  }
+  const requestId = `ping-${++pingSequence}`;
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pendingPings.delete(requestId);
+      reject(new Error('Sound alert delivery timed out'));
+    }, 5_000);
+    pendingPings.set(requestId, { resolve, reject, timeout });
+    try {
+      settingsWindow!.webContents.send(channel, requestId);
+    } catch (error) {
+      clearTimeout(timeout);
+      pendingPings.delete(requestId);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+}
+
+function showNativeNotification(title: string, body: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const notification = new Notification({ title, body, icon: iconPath });
+    const timeout = setTimeout(() => reject(new Error('Desktop notification delivery timed out')), 5_000);
+    notification.once('show', () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    notification.once('failed', (_event, error) => {
+      clearTimeout(timeout);
+      reject(new Error(error || 'Desktop notification could not be shown'));
+    });
+    notification.show();
   });
 }
 

@@ -4566,6 +4566,20 @@ body {
 }
 
 @media (max-width: 760px) {
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: auto;
+    min-height: 100%;
+  }
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    overflow: visible;
+  }
+  .sidebar-brand img { width: min(240px, 75vw); }
+  .view-nav.view-nav-10 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .view-nav-10 .nav-btn { text-align: center; }
   .tools-page { padding: 12px; }
   .tools-hero { padding: 28px 20px; }
   .tools-download { width: 100%; }
@@ -4576,4 +4590,5 @@ body {
   .tools-log-path { grid-template-columns: 1fr; }
   .tools-policy-note { align-items: flex-start; flex-direction: column; }
   .tools-policy-note > div { justify-content: flex-start; }
+  /* mobile-shell-end */
 }

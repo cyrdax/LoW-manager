@@ -13,7 +13,16 @@ contextBridge.exposeInMainWorld('cloakWatch', {
     return () => ipcRenderer.removeListener('cloak-watch:state', handler);
   },
   onPlayPing: (listener) => {
-    ipcRenderer.on('cloak-watch:play-ping', listener);
-    return () => ipcRenderer.removeListener('cloak-watch:play-ping', listener);
+    const handler = async (_event, requestId) => {
+      try {
+        await listener();
+        ipcRenderer.send('cloak-watch:play-ping-result', requestId, null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ipcRenderer.send('cloak-watch:play-ping-result', requestId, message);
+      }
+    };
+    ipcRenderer.on('cloak-watch:play-ping', handler);
+    return () => ipcRenderer.removeListener('cloak-watch:play-ping', handler);
   },
 });

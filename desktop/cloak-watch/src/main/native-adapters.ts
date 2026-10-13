@@ -9,9 +9,9 @@ export interface NativeAdapters {
 }
 
 export interface NativeAdapterDependencies {
-  sendToRenderer(channel: 'cloak-watch:play-ping'): void;
+  sendToRenderer(channel: 'cloak-watch:play-ping'): Promise<void>;
   notificationsSupported(): boolean;
-  showNotification(title: string, body: string): void;
+  showNotification(title: string, body: string): Promise<void>;
   setLoginItem(enabled: boolean): void;
   chooseLogDirectory(): Promise<string | null>;
   openPath(path: string): Promise<string>;
@@ -22,13 +22,13 @@ export interface NativeAdapterDependencies {
 export function createNativeAdapters(dependencies: NativeAdapterDependencies): NativeAdapters {
   return {
     playPing: async () => {
-      dependencies.sendToRenderer('cloak-watch:play-ping');
+      await dependencies.sendToRenderer('cloak-watch:play-ping');
     },
     showNotification: async (title, body) => {
       if (!dependencies.notificationsSupported()) {
         throw new Error('Desktop notifications are not supported or permission was denied');
       }
-      dependencies.showNotification(title, body);
+      await dependencies.showNotification(title, body);
     },
     setStartAtLogin: async (enabled) => {
       dependencies.setLoginItem(enabled);
