@@ -1,0 +1,85 @@
+name: Cloak Watch Desktop
+
+on:
+  pull_request:
+    paths:
+      - 'desktop/cloak-watch/**'
+      - '.github/workflows/cloak-watch.yml'
+      - 'src/cloak-watch-package.test.ts'
+  push:
+    branches: [main]
+    tags: ['cloak-watch-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            package_script: package:mac
+            artifact_name: cloak-watch-macos
+            artifact_path: |
+              desktop/cloak-watch/release/*.dmg
+              desktop/cloak-watch/release/*.zip
+          - os: windows-latest
+            package_script: package:win
+            artifact_name: cloak-watch-windows
+            artifact_path: desktop/cloak-watch/release/*.exe
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop/cloak-watch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/cloak-watch/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run ${{ matrix.package_script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/cloak-watch-v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Validate tag and create one draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./desktop/cloak-watch/package.json').version")
+          EXPECTED_TAG="cloak-watch-v${VERSION}"
+          test "${GITHUB_REF_NAME}" = "${EXPECTED_TAG}"
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            IS_DRAFT=$(gh release view "${GITHUB_REF_NAME}" --json isDraft --jq '.isDraft')
+            test "${IS_DRAFT}" = "true"
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --draft \
+              --verify-tag \
+              --title "Outfit420 Cloak Watch ${VERSION} Preview" \
+              --notes "Unsigned preview build. Download only from this repository; review the installation and third-party-tool guidance before use."
+          fi
+          gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber

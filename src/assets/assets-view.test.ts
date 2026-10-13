@@ -225,10 +225,12 @@ test('asset sort helper sorts pilots locations and nested assets without mutatin
 test('assets view is wired into navigation between fits and market', () => {
   const app = readFileSync(resolve('web/src/App.tsx'), 'utf8');
   const panel = readFileSync(resolve('web/src/components/ControlPanel.tsx'), 'utf8');
+  const routes = readFileSync(resolve('web/src/app-routes.ts'), 'utf8');
 
   assert.match(app, /import \{ AssetsView \}/);
   assert.match(app, /view === 'assets'/);
-  assert.match(panel, /type View = .*'assets'/s);
+  assert.match(panel, /import type \{ View \} from '\.\.\/app-routes\.ts'/);
+  assert.match(routes, /export type View = .*'assets'/s);
   assert.match(panel, />Fits<\/button>[\s\S]*view === 'assets'[\s\S]*>Assets<\/button>[\s\S]*>Market<\/button>/);
   assert.match(panel, />Market<\/button>[\s\S]*>Contracts<\/button>[\s\S]*>Industry<\/button>/);
 });

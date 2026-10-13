@@ -7,3 +7,6 @@ data/
 .superpowers/
 *.log
 .DS_Store
+desktop/cloak-watch/node_modules/
+desktop/cloak-watch/dist/
+desktop/cloak-watch/release/

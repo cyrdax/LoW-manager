@@ -1,4 +1,4 @@
-export type View = 'pilots' | 'planets' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits' | 'assets';
+export type View = 'pilots' | 'planets' | 'tools' | 'skills' | 'fleet' | 'market' | 'industry' | 'contracts' | 'fits' | 'assets';
 export type MarketTab = 'shopping' | 'plex';
 
 export type AppRoute =
@@ -15,6 +15,7 @@ const VIEW_PATHS: Record<View, string> = {
   contracts: '/contracts',
   industry: '/industry',
   planets: '/planets',
+  tools: '/tools',
   skills: '/skills',
 };
 
