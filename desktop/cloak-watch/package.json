@@ -59,6 +59,7 @@
       "provider": "github",
       "owner": "cyrdax",
       "repo": "LoW-manager",
+      "tagNamePrefix": "cloak-watch-v",
       "releaseType": "draft"
     }
   }

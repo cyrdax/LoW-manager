@@ -27,6 +27,7 @@ test('cloak watch remains isolated from the Railway package', async () => {
   });
   assert.equal(desktop.build.publish.owner, 'cyrdax');
   assert.equal(desktop.build.publish.repo, 'LoW-manager');
+  assert.equal(desktop.build.publish.tagNamePrefix, 'cloak-watch-v');
 });
 
 test('cloak watch release workflow verifies and packages both desktop platforms natively', async () => {
