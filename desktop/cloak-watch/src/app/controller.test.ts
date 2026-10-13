@@ -169,8 +169,11 @@ test('CloakWatchController delivers monitor events through alert adapters and ex
 });
 
 test('CloakWatchController persists preference changes and keeps sound enabled when notification permission fails', async () => {
+  let notificationFailure: Error | null = new Error('notification permission denied');
   const fixture = createFixture({
-    showNotification: async () => { throw new Error('notification permission denied'); },
+    showNotification: async () => {
+      if (notificationFailure) throw notificationFailure;
+    },
   });
   await fixture.controller.start();
 
@@ -190,6 +193,25 @@ test('CloakWatchController persists preference changes and keeps sound enabled w
   assert.deepEqual(fixture.loginStates, [true, false]);
   assert.equal(fixture.controller.getViewModel().soundEnabled, true);
   assert.equal(fixture.controller.getViewModel().warning, 'notification permission denied');
+
+  fixture.monitors[0].status({ kind: 'watching', activeLogs: 2 });
+  assert.equal(
+    fixture.controller.getViewModel().warning,
+    'notification permission denied',
+    'healthy monitor reconciliation must not erase an unresolved alert error',
+  );
+
+  notificationFailure = null;
+  await fixture.controller.testAlert();
+  assert.equal(fixture.controller.getViewModel().warning, null);
+
+  notificationFailure = new Error('notification permission denied');
+  fixture.monitors[0].decloak(event);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fixture.controller.getViewModel().warning, 'notification permission denied');
+
+  await fixture.controller.setNotificationsEnabled(false);
+  assert.equal(fixture.controller.getViewModel().warning, null);
 });
 
 test('CloakWatchController contains preference persistence errors and retains the saved preference', async () => {

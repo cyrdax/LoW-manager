@@ -30,6 +30,9 @@ export class CloakWatchController {
   private latestEventText = '';
   private settingsWarning: string | null = null;
   private runtimeWarning: string | null = null;
+  private monitorWarning: string | null = null;
+  private soundWarning: string | null = null;
+  private notificationWarning: string | null = null;
   private readonly listeners = new Set<ViewModelListener>();
 
   constructor(private readonly dependencies: ControllerDependencies) {}
@@ -76,11 +79,17 @@ export class CloakWatchController {
   }
 
   async setSoundEnabled(enabled: boolean): Promise<void> {
-    await this.persist({ ...this.settings, soundEnabled: enabled });
+    if (await this.persist({ ...this.settings, soundEnabled: enabled }) && !enabled && this.soundWarning) {
+      this.soundWarning = null;
+      this.emit();
+    }
   }
 
   async setNotificationsEnabled(enabled: boolean): Promise<void> {
-    await this.persist({ ...this.settings, notificationsEnabled: enabled });
+    if (await this.persist({ ...this.settings, notificationsEnabled: enabled }) && !enabled && this.notificationWarning) {
+      this.notificationWarning = null;
+      this.emit();
+    }
   }
 
   async setStartAtLogin(enabled: boolean): Promise<void> {
@@ -200,22 +209,22 @@ export class CloakWatchController {
     if (status.kind === 'watching') {
       this.statusText = `Watching ${status.activeLogs} ${status.activeLogs === 1 ? 'log' : 'logs'}`;
       this.runtimeWarning = null;
+      this.monitorWarning = null;
     } else if (status.kind === 'waiting') {
       this.statusText = 'Waiting for EVE game logs';
       this.runtimeWarning = null;
+      this.monitorWarning = null;
     } else {
       this.statusText = `Monitoring error: ${status.message}`;
-      this.runtimeWarning = status.message;
+      this.monitorWarning = status.message;
     }
     this.emit();
   }
 
   private applyAlertErrors(result: AlertResult): void {
-    const warning = result.notificationError ?? result.soundError;
-    if (warning) {
-      this.runtimeWarning = warning;
-      this.emit();
-    }
+    this.soundWarning = result.soundError;
+    this.notificationWarning = result.notificationError;
+    this.emit();
   }
 
   private requestSettings(): void {
@@ -231,7 +240,11 @@ export class CloakWatchController {
       notificationsEnabled: this.settings.notificationsEnabled,
       startAtLogin: this.settings.startAtLogin,
       latestEventText: this.latestEventText,
-      warning: this.runtimeWarning ?? this.settingsWarning,
+      warning: this.runtimeWarning
+        ?? this.notificationWarning
+        ?? this.soundWarning
+        ?? this.monitorWarning
+        ?? this.settingsWarning,
     });
   }
 

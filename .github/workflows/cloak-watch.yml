@@ -72,8 +72,14 @@ jobs:
           VERSION=$(node -p "require('./desktop/cloak-watch/package.json').version")
           EXPECTED_TAG="cloak-watch-v${VERSION}"
           test "${GITHUB_REF_NAME}" = "${EXPECTED_TAG}"
-          gh release create "${GITHUB_REF_NAME}" release-assets/* \
-            --draft \
-            --verify-tag \
-            --title "Outfit420 Cloak Watch ${VERSION} Preview" \
-            --notes "Unsigned preview build. Download only from this repository; review the installation and third-party-tool guidance before use."
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            IS_DRAFT=$(gh release view "${GITHUB_REF_NAME}" --json isDraft --jq '.isDraft')
+            test "${IS_DRAFT}" = "true"
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --draft \
+              --verify-tag \
+              --title "Outfit420 Cloak Watch ${VERSION} Preview" \
+              --notes "Unsigned preview build. Download only from this repository; review the installation and third-party-tool guidance before use."
+          fi
+          gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber

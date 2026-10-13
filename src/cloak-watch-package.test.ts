@@ -71,6 +71,10 @@ test('cloak watch release workflow verifies and packages both desktop platforms 
     .filter(Boolean)
     .join('\n');
   assert.match(releaseCommands, /cloak-watch-v\$\{VERSION\}/);
+  assert.match(releaseCommands, /gh release view/);
   assert.match(releaseCommands, /gh release create/);
   assert.equal((releaseCommands.match(/gh release create/g) ?? []).length, 1);
+  assert.match(releaseCommands, /isDraft/);
+  assert.match(releaseCommands, /gh release upload/);
+  assert.match(releaseCommands, /--clobber/);
 });
