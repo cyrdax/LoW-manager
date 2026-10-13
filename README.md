@@ -405,6 +405,12 @@ If you move the boss into a squad mid-op, subsequent `Invite all` calls will fai
 
 ---
 
+## Cloak Watch desktop companion
+
+[Outfit420 Cloak Watch](desktop/cloak-watch/README.md) is an optional local-only tray app that watches newly appended EVE GameLogs for recognized cloak-deactivation messages and provides sound or desktop alerts. Native macOS and Windows preview downloads are published through GitHub Releases; the desktop README covers installation, privacy boundaries, unsigned-app warnings, and development commands.
+
+---
+
 ## Architecture
 
 ```

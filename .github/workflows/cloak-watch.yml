@@ -1,0 +1,64 @@
+name: Cloak Watch Desktop
+
+on:
+  pull_request:
+    paths:
+      - 'desktop/cloak-watch/**'
+      - '.github/workflows/cloak-watch.yml'
+      - 'src/cloak-watch-package.test.ts'
+  push:
+    branches: [main]
+    tags: ['cloak-watch-v*']
+    paths:
+      - 'desktop/cloak-watch/**'
+      - '.github/workflows/cloak-watch.yml'
+      - 'src/cloak-watch-package.test.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            package_script: package:mac
+            publish_script: publish:mac
+            artifact_name: cloak-watch-macos
+          - os: windows-latest
+            package_script: package:win
+            publish_script: publish:win
+            artifact_name: cloak-watch-windows
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop/cloak-watch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/cloak-watch/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - name: Package branch artifact
+        if: ${{ !startsWith(github.ref, 'refs/tags/cloak-watch-v') }}
+        run: npm run ${{ matrix.package_script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Package and publish draft release
+        if: ${{ startsWith(github.ref, 'refs/tags/cloak-watch-v') }}
+        run: npm run ${{ matrix.publish_script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: desktop/cloak-watch/release/**
+          if-no-files-found: error
