@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Outfit420 Cloak Watch</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="settings-shell">
+      <header class="settings-header">
+        <div>
+          <h1>Cloak Watch</h1>
+          <p>Local alerts from your EVE GameLogs.</p>
+        </div>
+        <div class="monitor-state" aria-live="polite">
+          <span class="status-light" aria-hidden="true"></span>
+          <span id="status-text">Starting monitor…</span>
+        </div>
+      </header>
+
+      <section class="log-source" aria-labelledby="log-source-title">
+        <div>
+          <h2 id="log-source-title">Game log folder</h2>
+          <p id="log-directory">Finding the conventional EVE log folder…</p>
+        </div>
+        <button id="choose-folder" type="button">Choose log folder</button>
+      </section>
+
+      <section class="preferences" aria-labelledby="preferences-title">
+        <h2 id="preferences-title">Alerts</h2>
+        <label>
+          <span><strong>Sound</strong><small>Play a local two-tone warning.</small></span>
+          <input id="sound-enabled" type="checkbox" />
+        </label>
+        <label>
+          <span><strong>Notifications</strong><small>Show the pilot and decloak reason.</small></span>
+          <input id="notifications-enabled" type="checkbox" />
+        </label>
+        <label>
+          <span><strong>Start at login</strong><small>Begin watching when you sign in.</small></span>
+          <input id="start-at-login" type="checkbox" />
+        </label>
+      </section>
+
+      <section class="latest-event" aria-labelledby="latest-event-title">
+        <div>
+          <h2 id="latest-event-title">Latest detection</h2>
+          <p id="latest-event-text">No decloak detected this session.</p>
+        </div>
+        <button id="test-alert" type="button">Test alert</button>
+      </section>
+
+      <p id="warning" class="warning" role="alert" hidden></p>
+
+      <footer>
+        <p>Cloak Watch reads new lines from local EVE GameLogs. It makes no network requests and never controls or modifies the EVE client.</p>
+        <p>It reports supported decloak messages only. It cannot determine whether a ship is continuously cloaked.</p>
+      </footer>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
