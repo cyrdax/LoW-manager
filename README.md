@@ -4,7 +4,7 @@ Self-hosted single-user web app to monitor a fleet of EVE Online characters you 
 
 Designed for ~6–20 alts. Scales comfortably further within ESI's rate limits.
 
-The dashboard has seven top-level views, toggled in the sidebar (selection persists in `localStorage.efd.view`):
+The dashboard has ten top-level views, toggled in the sidebar (selection persists in `localStorage.efd.view`):
 
 - **Pilots** — the per-character status table (location, ship, wallet, training, etc.) plus fleet-boss controls and waypoint search.
 - **Planets** — PI dashboard: per-pilot colony health, system scout search, saved systems, per-colony pin drill-down, and fleet-wide inventory roll-up.
@@ -13,6 +13,7 @@ The dashboard has seven top-level views, toggled in the sidebar (selection persi
 - **Market** — two sub-tabs: **PLEX** (price chart, sell-side calculator with sales-tax / broker fee math) and **Shopping List** (paste a multi-item buy order, get a per-item + total cost quote in Jita or Amarr, walking the order book).
 - **Contracts** — public ship-contract search: pick a hull and origin system, query the warm local contract index for item-exchange and auction contracts within a default 30-jump radius, and sort results by jumps then price.
 - **Industry** — manufacturing and build-chain planner: search any bundled manufacturing blueprint, compare max skills vs one of your pilots, see material/job-time/skill gaps, and model invention/copy/input-build chains with system cost indexes and structure/rig bonuses.
+- **Tools** — public downloads and installation guidance for the local-only Cloak Watch desktop companion.
 
 ---
 

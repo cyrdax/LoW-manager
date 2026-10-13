@@ -13,6 +13,7 @@ import { IndustryView } from './components/IndustryView.tsx';
 import { ContractsView } from './components/ContractsView.tsx';
 import { FitsView } from './components/FitsView.tsx';
 import { AssetsView } from './components/AssetsView.tsx';
+import { ToolsView } from './components/ToolsView.tsx';
 import { AuthGate } from './components/AuthGate.tsx';
 import { deleteCharacter, fetchCurrentUser, logout, setBoss, setMainCharacter, type CharacterStatus, type CurrentUser } from './api.ts';
 import { parseAppRoute, pathForRoute, routeForView, type AppRoute, type View } from './app-routes.ts';
@@ -196,7 +197,7 @@ export function App() {
     return <div className="auth-page"><div className="auth-panel"><div className="empty">Loading...</div></div></div>;
   }
 
-  const publicRoute = ['fits', 'market', 'contracts'].includes(route.view);
+  const publicRoute = ['fits', 'market', 'contracts', 'tools'].includes(route.view);
   if (!currentUser && !publicRoute) {
     return <AuthGate onAuthenticated={setCurrentUser} />;
   }
@@ -272,6 +273,7 @@ export function App() {
       )}
 
       {view === 'planets' && <PlanetsView chars={list} />}
+      {view === 'tools' && <ToolsView />}
       {view === 'skills' && <SkillsView chars={list} />}
       {view === 'fleet' && <FleetView chars={list} selection={selection} />}
       {view === 'market' && (

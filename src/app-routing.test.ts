@@ -13,6 +13,7 @@ test('app routes parse top-level shareable pages', () => {
   assert.deepEqual(parseAppRoute('/contracts'), { view: 'contracts' });
   assert.deepEqual(parseAppRoute('/industry'), { view: 'industry' });
   assert.deepEqual(parseAppRoute('/planets'), { view: 'planets' });
+  assert.deepEqual(parseAppRoute('/tools'), { view: 'tools' });
   assert.deepEqual(parseAppRoute('/fits-v2'), { view: 'fits', mode: 'fits' });
 });
 
@@ -32,4 +33,5 @@ test('app routes parse and format fit and doctrine deep links', () => {
   assert.equal(pathForRoute({ view: 'market', marketTab: 'plex' }), '/market/plex');
   assert.equal(pathForRoute({ view: 'market', marketTab: 'shopping' }), '/market');
   assert.equal(pathForRoute(routeForView('assets')), '/assets');
+  assert.equal(pathForRoute(routeForView('tools')), '/tools');
 });
